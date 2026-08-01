@@ -38,6 +38,7 @@ let recordingStream;
 let recordingChunks = [];
 let recordingStartedAt = 0;
 let recordingTimer;
+let recordingToken = 0;
 let audioUploadInFlight = false;
 let loadedTabUrl = '';
 
@@ -160,22 +161,36 @@ const startAudioRecording = async () => {
   audioAssetId = '';
   audioDurationSeconds = 0;
   recordingChunks = [];
+  const token = ++recordingToken;
+  const sourceUrl = currentTab.url;
   try {
     recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (token !== recordingToken || currentTab.url !== sourceUrl) {
+      recordingStream.getTracks().forEach((track) => track.stop());
+      recordingStream = null;
+      return;
+    }
     const mimeType = preferredAudioMimeType();
-    mediaRecorder = new MediaRecorder(recordingStream, mimeType ? { mimeType } : undefined);
+    const recorder = new MediaRecorder(recordingStream, mimeType ? { mimeType } : undefined);
+    mediaRecorder = recorder;
     recordingStartedAt = Date.now();
-    mediaRecorder.addEventListener('dataavailable', (event) => { if (event.data.size) recordingChunks.push(event.data); });
-    mediaRecorder.addEventListener('stop', async () => {
+    recorder.addEventListener('dataavailable', (event) => { if (event.data.size) recordingChunks.push(event.data); });
+    recorder.addEventListener('stop', async () => {
       recordingStream?.getTracks().forEach((track) => track.stop());
       recordingStream = null;
       audioDurationSeconds = clampAudioDuration((Date.now() - recordingStartedAt) / 1000);
-      const mimeType = mediaRecorder.mimeType || 'audio/webm';
-      const blob = new Blob(recordingChunks, { type: mimeType });
+      const recordedMimeType = recorder.mimeType || 'audio/webm';
+      const blob = new Blob(recordingChunks, { type: recordedMimeType });
       recordingChunks = [];
-      mediaRecorder = null;
+      if (mediaRecorder === recorder) mediaRecorder = null;
+      if (token !== recordingToken || currentTab.url !== sourceUrl) return;
       try {
-        audioDraftId = await stageAudioDraft(blob, { duration: audioDurationSeconds });
+        const stagedId = await stageAudioDraft(blob, { duration: audioDurationSeconds, mimeType: recordedMimeType });
+        if (token !== recordingToken || currentTab.url !== sourceUrl) {
+          await deleteAudioDraft(stagedId).catch(() => {});
+          return;
+        }
+        audioDraftId = stagedId;
         saveDraft();
         setAudioStatus('Audio note saved locally', 'Uploading the staged take…');
         await uploadStagedAudio();
@@ -184,7 +199,7 @@ const startAudioRecording = async () => {
       }
       syncComposer();
     });
-    mediaRecorder.start(250);
+    recorder.start(250);
     setAudioStatus('Recording your take…', `Tap stop · max ${format(MAX_AUDIO_SECONDS)}`);
     recordingTimer = setInterval(() => {
       audioDurationSeconds = clampAudioDuration((Date.now() - recordingStartedAt) / 1000);
@@ -246,6 +261,12 @@ async function readSelection(tabId) {
 
 async function resetForNewTab(sourceType) {
   draftReady = false;
+  recordingToken += 1;
+  clearInterval(recordingTimer);
+  if (mediaRecorder?.state === 'recording') mediaRecorder.stop();
+  recordingStream?.getTracks().forEach((track) => track.stop());
+  recordingStream = null;
+  mediaRecorder = null;
   if (audioDraftId) await deleteAudioDraft(audioDraftId).catch(() => {});
   selectedText = '';
   commentaryMode = 'text';

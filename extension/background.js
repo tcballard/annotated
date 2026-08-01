@@ -1,8 +1,9 @@
 import { apiOrigin, authHeaders } from './config.js';
-import { extensionStorage } from './storage.js';
+import { extensionStorage, MAX_PENDING_ATTEMPTS } from './storage.js';
 import { deleteAudioDraft, readAudioDraft } from './media-draft-store.js';
 
-const uploadStagedAudio = async (payload) => {
+const uploadStagedAudio = async (capture) => {
+  const payload = capture.payload;
   if (!payload.audioDraftId || payload.audioAssetId) return payload;
   const staged = await readAudioDraft(payload.audioDraftId);
   if (!staged?.blob) {
@@ -25,17 +26,32 @@ const uploadStagedAudio = async (payload) => {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(body.errors?.join(' ') || body.error || `Audio upload failed (${response.status}).`);
+    error.status = response.status;
     error.retryable = response.status >= 500 || response.status === 429;
     throw error;
   }
-  return { ...payload, audioAssetId: body.media?.id || '', audioDuration: payload.audioDuration || staged.duration || 0 };
+  const uploadedPayload = {
+    ...payload,
+    audioAssetId: body.media?.id || '',
+    audioDuration: payload.audioDuration || staged.duration || 0,
+    audioDraftId: '',
+  };
+  if (!uploadedPayload.audioAssetId) {
+    const error = new Error('Audio upload did not return an asset ID.');
+    error.retryable = true;
+    throw error;
+  }
+  await extensionStorage.updatePendingCapture(capture.id, { payload: uploadedPayload });
+  await deleteAudioDraft(payload.audioDraftId).catch(() => {});
+  return uploadedPayload;
 };
 
 const retryPendingCaptures = async () => {
   const captures = await extensionStorage.getPendingCaptures().catch(() => []);
   for (const capture of captures) {
+    if (capture.status === 'blocked' || capture.attempts >= MAX_PENDING_ATTEMPTS) continue;
     try {
-      const payload = await uploadStagedAudio(capture.payload);
+      const payload = await uploadStagedAudio(capture);
       const response = await fetch(`${await apiOrigin()}/api/annotations`, {
         method: 'POST',
         credentials: 'omit',
@@ -44,15 +60,19 @@ const retryPendingCaptures = async () => {
       });
       if (response.ok) {
         const body = await response.json().catch(() => ({}));
-        if (capture.payload.audioDraftId) await deleteAudioDraft(capture.payload.audioDraftId).catch(() => {});
+        if (payload.audioDraftId) await deleteAudioDraft(payload.audioDraftId).catch(() => {});
         await extensionStorage.removePendingCapture(capture.id);
         if (body.annotation) await extensionStorage.savePublished(body.annotation);
-      } else if (response.status < 500 && response.status !== 429) {
-        await extensionStorage.markPendingAttempt(capture);
+      } else {
+        const body = await response.json().catch(() => ({}));
+        const error = new Error(body.errors?.join(' ') || body.error || `Publish failed (${response.status}).`);
+        error.status = response.status;
+        error.retryable = response.status >= 500 || response.status === 429;
+        await extensionStorage.markPendingAttempt(capture, error);
       }
     } catch (error) {
-      if (error.retryable === false) await extensionStorage.removePendingCapture(capture.id);
-      else await extensionStorage.markPendingAttempt(capture);
+      const updated = await extensionStorage.markPendingAttempt(capture, error);
+      if (error.retryable === false && !updated?.payload?.audioAssetId) await extensionStorage.removePendingCapture(capture.id);
     }
   }
 };

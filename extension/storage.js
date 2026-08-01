@@ -4,6 +4,7 @@ const CONFIG_KEY = 'annotatedConfig';
 const PENDING_KEY = 'annotatedPendingCaptures';
 const SESSION_KEY = 'annotatedSession';
 export const MAX_PENDING_CAPTURES = 5;
+export const MAX_PENDING_ATTEMPTS = 8;
 
 const sourceTypes = new Set(['video', 'article', 'podcast']);
 
@@ -46,6 +47,9 @@ export const compactPending = (capture = {}) => ({
   payload: compactDraft(capture.payload || {}),
   queuedAt: boundedString(capture.queuedAt || new Date().toISOString(), 40),
   attempts: Math.max(0, Number(capture.attempts) || 0),
+  status: capture.status === 'blocked' ? 'blocked' : 'queued',
+  lastError: boundedString(capture.lastError, 240),
+  lastAttemptAt: boundedString(capture.lastAttemptAt, 40),
 });
 
 export const extensionStorage = {
@@ -115,9 +119,33 @@ export const extensionStorage = {
     await chrome.storage.local.set({ [PENDING_KEY]: (result[PENDING_KEY] || []).filter((capture) => capture.id !== id) });
   },
 
-  async markPendingAttempt(capture) {
+  async updatePendingCapture(id, changes = {}) {
     const result = await chrome.storage.local.get(PENDING_KEY);
-    const next = (result[PENDING_KEY] || []).map((item) => item.id === capture.id ? compactPending({ ...item, attempts: Number(item.attempts || 0) + 1 }) : compactPending(item));
+    let updated = null;
+    const next = (result[PENDING_KEY] || []).map((item) => {
+      if (item.id !== id) return compactPending(item);
+      updated = compactPending({ ...item, ...changes, payload: changes.payload || item.payload });
+      return updated;
+    });
     await chrome.storage.local.set({ [PENDING_KEY]: next });
+    return updated;
+  },
+
+  async markPendingAttempt(capture, error = null) {
+    const result = await chrome.storage.local.get(PENDING_KEY);
+    const attempts = Number(capture.attempts || 0) + 1;
+    const next = (result[PENDING_KEY] || []).map((item) => item.id === capture.id ? compactPending({
+      ...item,
+      attempts,
+      status: error?.retryable === false || attempts >= MAX_PENDING_ATTEMPTS ? 'blocked' : 'queued',
+      lastError: error?.message || error || item.lastError,
+      lastAttemptAt: new Date().toISOString(),
+    }) : compactPending(item));
+    await chrome.storage.local.set({ [PENDING_KEY]: next });
+    return next.find((item) => item.id === capture.id) || null;
+  },
+
+  async retryPendingCapture(id) {
+    return this.updatePendingCapture(id, { attempts: 0, status: 'queued', lastError: '', lastAttemptAt: '' });
   },
 };
