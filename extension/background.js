@@ -2,6 +2,16 @@ import { apiOrigin, authHeaders } from './config.js';
 import { extensionStorage, MAX_PENDING_ATTEMPTS } from './storage.js';
 import { deleteAudioDraft, readAudioDraft } from './media-draft-store.js';
 
+const runBackgroundTask = (label, task) => {
+  void (async () => {
+    try {
+      await task();
+    } catch (error) {
+      console.error(`annotated ${label} failed:`, error);
+    }
+  })();
+};
+
 const uploadStagedAudio = async (capture) => {
   const payload = capture.payload;
   if (!payload.audioDraftId || payload.audioAssetId) return payload;
@@ -78,13 +88,21 @@ const retryPendingCaptures = async () => {
 };
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-  chrome.alarms.create('annotated-retry', { periodInMinutes: 1 });
+  runBackgroundTask('installation setup', async () => {
+    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+    await chrome.alarms.create('annotated-retry', { periodInMinutes: 1 });
+  });
 });
 
-chrome.runtime.onStartup.addListener(() => chrome.alarms.create('annotated-retry', { periodInMinutes: 1 }));
-chrome.alarms.onAlarm.addListener((alarm) => { if (alarm.name === 'annotated-retry') retryPendingCaptures(); });
+chrome.runtime.onStartup.addListener(() => {
+  runBackgroundTask('startup setup', () => chrome.alarms.create('annotated-retry', { periodInMinutes: 1 }));
+});
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'annotated-retry') runBackgroundTask('pending capture retry', retryPendingCaptures);
+});
 
-chrome.action.onClicked.addListener(async (tab) => {
-  if (tab?.windowId) await chrome.sidePanel.open({ windowId: tab.windowId });
+chrome.action.onClicked.addListener((tab) => {
+  runBackgroundTask('side panel open', async () => {
+    if (tab?.windowId) await chrome.sidePanel.open({ windowId: tab.windowId });
+  });
 });

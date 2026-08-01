@@ -68,6 +68,22 @@ test('deployed extension origins require HTTPS while local development remains u
   assert.throws(() => normalizeApiOrigin('file:///tmp/api'), /http or https/);
 });
 
+test('tampered stored API origins fall back to the local development origin', async () => {
+  const previousChrome = globalThis.chrome;
+  globalThis.chrome = {
+    storage: {
+      local: {
+        async get() { return { annotatedConfig: { apiOrigin: 'http://annotated.example.com/unsafe' } }; },
+      },
+    },
+  };
+  try {
+    assert.equal(await extensionStorage.getApiOrigin(), 'http://localhost:8787');
+  } finally {
+    globalThis.chrome = previousChrome;
+  }
+});
+
 test('expired extension sessions are removed before a bearer token is returned', async () => {
   const previousChrome = globalThis.chrome;
   let removed = '';

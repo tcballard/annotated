@@ -216,7 +216,16 @@ const startAudioRecording = async () => {
   }
 };
 
-const toggleAudioRecording = () => mediaRecorder?.state === 'recording' ? stopAudioRecording() : startAudioRecording();
+const toggleAudioRecording = () => {
+  if (mediaRecorder?.state === 'recording') {
+    stopAudioRecording();
+    return;
+  }
+  void startAudioRecording().catch((recordingError) => {
+    showError(recordingError.message || 'Audio recording failed.');
+    syncComposer();
+  });
+};
 
 const draftPayload = () => ({
   sourceUrl: currentTab.url,
