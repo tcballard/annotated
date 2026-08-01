@@ -1,6 +1,10 @@
 # Annotated brief acceptance
 
-Last verified: 2026-08-01 against <https://annotated.lovable.app/>.
+Last verified: 2026-08-01 against <https://annotated.lovable.app/>. The
+handoff URL <https://annotated.com/brief> returned HTTP 404 on that date; the
+reachable Lovable brief is the current source used here and describes the same
+Chrome-sidebar, source-link, claim, identity, media, commentary, and social-feed
+requirements recorded below.
 
 Status meanings: `done` has current code and direct validation evidence; `partial` has a working slice but misses part of the brief or production boundary; `missing` has no working implementation; `blocked` requires owner credentials or external access for final proof.
 
