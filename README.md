@@ -25,6 +25,7 @@ Then open the local Vite URL. The Vite dev server proxies `/api` to `http://loca
 - Source URL resolver with URL validation, source classification, metadata extraction, and SSRF-safe host checks
 - Public annotation slugs and source citations
 - Streamed audio asset storage with playable public audio-note URLs
+- Asynchronous source-clip jobs with explicit queued, processing, ready, and failed states
 - A Manifest V3 Chrome side panel in `extension/` that reads the active tab, captures a text selection, and publishes text annotations through the local API
 
-OAuth, source media extraction/transcoding, durable object storage, social graph persistence, moderation operations, and production hosting are being added as separate product slices. The web audio note is real; YouTube/podcast clip derivatives are still the next worker boundary. To try the extension, start `npm run dev:server`, open `chrome://extensions`, enable Developer mode, choose “Load unpacked”, and select the `extension/` folder. See [PERFORMANCE.md](PERFORMANCE.md) for the Rust/media-worker migration plan.
+OAuth, durable object storage, social graph persistence, moderation operations, and production hosting are being added as separate product slices. Direct-media source clips now run through the FFmpeg worker; YouTube/podcast provider extraction requires an installed `yt-dlp` adapter and remains explicit when unavailable. To try the extension, start `npm run dev:server`, open `chrome://extensions`, enable Developer mode, choose “Load unpacked”, and select the `extension/` folder. See [PERFORMANCE.md](PERFORMANCE.md) for the Rust/media-worker migration plan.

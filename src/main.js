@@ -91,6 +91,8 @@ const normalizeSource = (item = {}) => {
     caption: item.description || item.excerpt || 'A source ready to annotate.',
     excerpt: item.excerpt || item.sourceExcerpt || '',
     imageUrl: item.imageUrl || item.thumbnailUrl || null,
+    mediaUrl: item.mediaUrl || item.sourceMediaUrl || '',
+    provider: item.provider || '',
   };
 };
 
@@ -108,6 +110,8 @@ const initialState = {
   audioUrl: '',
   audioDuration: 0,
   recordingSeconds: 0,
+  clipUrl: '',
+  mediaStatus: 'not-applicable',
   published: false,
   liked: false,
   following: false,
@@ -139,6 +143,7 @@ let recordingStream;
 let recordingChunks = [];
 let recordingTimer;
 let recordingStartedAt = 0;
+let mediaPollTimer;
 
 const persist = () => {
   try {
@@ -198,6 +203,8 @@ const annotationToFeedItem = (annotation) => {
     host: annotation.sourceHost || (() => { try { return new URL(annotation.sourceUrl).hostname.replace(/^www\./, ''); } catch { return 'source'; } })(),
     sourceUrl: annotation.sourceUrl,
     url: annotation.url,
+    clipUrl: annotation.clipUrl || '',
+    mediaStatus: annotation.mediaStatus || 'not-applicable',
     duration: formatTime(Math.max(0, Number(annotation.clipEnd) - Number(annotation.clipStart))),
     quote: annotation.sourceExcerpt || annotation.commentary || 'A moment kept with its context.',
     title: annotation.sourceTitle,
@@ -227,6 +234,8 @@ const hydrateAnnotation = (annotation) => {
   state.audioAssetId = annotation.audioAssetId || '';
   state.audioUrl = annotation.audioUrl || '';
   state.audioDuration = Number(annotation.audioDuration) || 0;
+  state.clipUrl = annotation.clipUrl || '';
+  state.mediaStatus = annotation.mediaStatus || 'not-applicable';
 };
 
 const bootstrap = async () => {
@@ -241,6 +250,7 @@ const bootstrap = async () => {
     if (state.publishedSlug) {
       const { annotation } = await api.getAnnotation(state.publishedSlug);
       hydrateAnnotation(annotation);
+      watchMediaProcessing();
     }
     const { annotations } = await api.feed();
     state.feedAnnotations = annotations || [];
@@ -395,6 +405,17 @@ const feedView = () => `
   <div class="view-head feed-head"><div><span class="eyebrow">Public feed</span><h2>What people kept.</h2><p>A stream of moments with enough context to be worth opening.</p></div><div class="feed-controls"><button class="filter-button is-active">Following</button><button class="filter-button">For you</button><button class="search-button" data-action="search" aria-label="Search feed">${icon('search')}</button></div></div>
   <div class="feed-layout"><main class="feed-list">${(state.feedAnnotations.length ? state.feedAnnotations.map(annotationToFeedItem) : feedItems).map(feedCard).join('')}</main><aside class="feed-aside"><div class="aside-card profile-card"><div class="profile-top"><div class="profile-avatar">TB</div><span class="profile-stamp">LIVE</span></div><h3>Tom Ballard</h3><p>Collecting the moments that deserve a second look.</p><div class="profile-metrics"><span><strong>${state.feedAnnotations.length || (state.published ? '1' : '0')}</strong> annotations</span><span><strong>24</strong> following</span></div><button class="dark-button" data-action="set-view" data-view="published">View your page ${icon('arrow')}</button></div><div class="aside-card rule-card"><span class="eyebrow">The annotated rule</span><h3>A clip without its source is just a rumour.</h3><div class="rule-line"></div><p>Every public page points back to the original. Context travels with the moment.</p></div></aside></div>`;
 
+const annotationHero = () => {
+  const clipUrl = state.publishedAnnotation?.clipUrl || state.clipUrl;
+  const audioUrl = state.publishedAnnotation?.audioUrl || state.audioUrl;
+  const status = state.mediaStatus === 'failed' ? 'Clip unavailable — source adapter required.' : state.mediaStatus === 'processing' ? 'Preparing a 240p clip…' : 'Clip queued for processing…';
+  if (state.sourceType === 'article') return `<div class="annotation-article-text"><span class="quote-mark">“</span><p>${escapeHTML(source().excerpt || 'The most valuable part of a link is often the part that doesn’t fit in the answer.')}</p><span>Highlighted passage</span></div>`;
+  if (state.sourceType === 'video') return clipUrl
+    ? `<video class="annotation-video-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></video>`
+    : `<div class="annotation-video-bg"><div class="video-silhouette small"></div><span class="media-status">${status}</span></div><button class="annotation-play" data-action="toggle-preview">${icon('play')}</button><span class="annotation-clip-time">${formatTime(state.clipStart)} — ${formatTime(state.clipEnd)}</span>`;
+  return `<div class="annotation-audio"><div class="podcast-orbit small"><span></span><span></span><span></span></div>${clipUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></audio>` : audioUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : icon('play')}<div class="mini-wave large">${Array.from({ length: 34 }, (_, i) => `<i style="height:${16 + ((i * 19) % 58)}%"></i>`).join('')}</div>${clipUrl && audioUrl ? `<audio class="commentary-audio" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : !clipUrl ? `<span class="media-status">${status}</span>` : ''}</div>`;
+};
+
 const publishedView = () => {
   const publishedSource = source();
   const publishedComments = state.publishedAnnotation?.comments || [];
@@ -403,7 +424,7 @@ const publishedView = () => {
   const hasNote = Boolean((state.publishedAnnotation?.commentary || state.commentary).trim()) || state.recordedAudio;
   return `
     <div class="view-head published-head"><div><span class="eyebrow">Your public page</span><h2>${state.published ? 'The moment, with your margin note.' : 'Your first annotation is waiting.'}</h2><p>${state.published ? 'A permanent link back to the source, with the context only you could add.' : 'Capture something from the page you are on, then publish it here.'}</p></div>${state.published ? `<button class="ghost-button" data-action="set-view" data-view="capture">${icon('back')} Capture another</button>` : ''}</div>
-    ${state.published ? `<div class="annotation-layout"><article class="annotation-page"><div class="annotation-page-bar"><span class="source-pill">${icon(state.sourceType)} ${publishedSource.label}</span><span>Published just now</span></div><div class="annotation-hero ${state.sourceType}">${state.sourceType === 'video' ? `<div class="annotation-video-bg"><div class="video-silhouette small"></div></div><button class="annotation-play" data-action="toggle-preview">${icon('play')}</button><span class="annotation-clip-time">${formatTime(state.clipStart)} — ${formatTime(state.clipEnd)}</span>` : state.sourceType === 'article' ? `<div class="annotation-article-text"><span class="quote-mark">“</span><p>${escapeHTML(publishedSource.excerpt || 'The most valuable part of a link is often the part that doesn’t fit in the answer.')}</p><span>Highlighted passage</span></div>` : `<div class="annotation-audio"><div class="podcast-orbit small"><span></span><span></span><span></span></div>${state.publishedAnnotation?.audioUrl || state.audioUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(state.publishedAnnotation?.audioUrl || state.audioUrl)}"></audio>` : icon('play')}<div class="mini-wave large">${Array.from({ length: 34 }, (_, i) => `<i style="height:${16 + ((i * 19) % 58)}%"></i>`).join('')}</div></div>`}</div><div class="annotation-body"><div class="annotation-byline"><div class="feed-avatar avatar-0">TB</div><div><strong>Tom Ballard</strong><span>@tcballard · just now</span></div><button class="icon-button" aria-label="More options">${icon('more')}</button></div><h3>${escapeHTML(publishedSource.title)}</h3>${hasNote ? `<p class="annotation-copy">${state.publishedAnnotation?.commentary ? escapeHTML(state.publishedAnnotation.commentary) : state.commentary ? escapeHTML(state.commentary) : 'An audio annotation attached to this moment.'}</p>` : '<p class="annotation-copy empty-copy">No commentary added.</p>'}<div class="source-citation"><span>${icon('link')} Source</span><a href="${escapeHTML(publishedSource.url)}" target="_blank" rel="noreferrer">${escapeHTML(publishedSource.host)} ${icon('external')}</a></div></div><div class="annotation-actions"><button data-action="toggle-like" class="feed-action ${state.liked ? 'is-liked' : ''}">${icon('heart')} ${state.liked ? 'Liked' : 'Like'}</button><button class="feed-action" data-action="focus-comment">${icon('message')} ${publishedComments.length} comments</button><button class="feed-action" data-action="share">${icon('link')} Copy link</button></div><div class="annotation-comments">${publishedComments.length ? publishedComments.map((comment) => `<div class="commenter-avatar">TB</div><p><strong>@${escapeHTML(comment.authorId === 'local-tom' ? 'tcballard' : comment.authorId)}</strong> ${escapeHTML(comment.body)}</p>`).join('') : '<p class="empty-copy">No comments yet. Add the first considered response.</p>'}</div><form class="comment-row annotation-comment-row" data-action="comment-form"><input aria-label="Add a comment" placeholder="Add a considered comment…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" /><button aria-label="Post comment">${icon('arrow')}</button></form></article><aside class="annotation-aside"><div class="claim-card"><span class="eyebrow">Source & rights</span><h3>Something wrong with this annotation?</h3><p>Every page keeps the source visible. If this clip misuses your work, file a claim and we’ll review it.</p><button class="claim-button" data-action="toggle-claim">File a claim ${icon('arrow')}</button></div><div class="share-card"><span class="eyebrow">Share this page</span><div class="share-url"><strong>${escapeHTML(publicLabel)}</strong><button data-action="copy-link" aria-label="Copy page link">${icon('link')}</button></div><p>It opens with the clip, the source, and the note.</p></div></aside></div>` : `<div class="empty-published"><div class="empty-symbol">a<span>.</span></div><h3>Nothing published yet.</h3><p>Start with the page you are already reading. The sidebar will do the rest.</p><button class="dark-button" data-action="set-view" data-view="capture">Open capture desk ${icon('arrow')}</button></div>`}
+    ${state.published ? `<div class="annotation-layout"><article class="annotation-page"><div class="annotation-page-bar"><span class="source-pill">${icon(state.sourceType)} ${publishedSource.label}</span><span>Published just now</span></div><div class="annotation-hero ${state.sourceType}">${annotationHero()}</div><div class="annotation-body"><div class="annotation-byline"><div class="feed-avatar avatar-0">TB</div><div><strong>Tom Ballard</strong><span>@tcballard · just now</span></div><button class="icon-button" aria-label="More options">${icon('more')}</button></div><h3>${escapeHTML(publishedSource.title)}</h3>${hasNote ? `<p class="annotation-copy">${state.publishedAnnotation?.commentary ? escapeHTML(state.publishedAnnotation.commentary) : state.commentary ? escapeHTML(state.commentary) : 'An audio annotation attached to this moment.'}</p>` : '<p class="annotation-copy empty-copy">No commentary added.</p>'}<div class="source-citation"><span>${icon('link')} Source</span><a href="${escapeHTML(publishedSource.url)}" target="_blank" rel="noreferrer">${escapeHTML(publishedSource.host)} ${icon('external')}</a></div></div><div class="annotation-actions"><button data-action="toggle-like" class="feed-action ${state.liked ? 'is-liked' : ''}">${icon('heart')} ${state.liked ? 'Liked' : 'Like'}</button><button class="feed-action" data-action="focus-comment">${icon('message')} ${publishedComments.length} comments</button><button class="feed-action" data-action="share">${icon('link')} Copy link</button></div><div class="annotation-comments">${publishedComments.length ? publishedComments.map((comment) => `<div class="commenter-avatar">TB</div><p><strong>@${escapeHTML(comment.authorId === 'local-tom' ? 'tcballard' : comment.authorId)}</strong> ${escapeHTML(comment.body)}</p>`).join('') : '<p class="empty-copy">No comments yet. Add the first considered response.</p>'}</div><form class="comment-row annotation-comment-row" data-action="comment-form"><input aria-label="Add a comment" placeholder="Add a considered comment…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" /><button aria-label="Post comment">${icon('arrow')}</button></form></article><aside class="annotation-aside"><div class="claim-card"><span class="eyebrow">Source & rights</span><h3>Something wrong with this annotation?</h3><p>Every page keeps the source visible. If this clip misuses your work, file a claim and we’ll review it.</p><button class="claim-button" data-action="toggle-claim">File a claim ${icon('arrow')}</button></div><div class="share-card"><span class="eyebrow">Share this page</span><div class="share-url"><strong>${escapeHTML(publicLabel)}</strong><button data-action="copy-link" aria-label="Copy page link">${icon('link')}</button></div><p>It opens with the clip, the source, and the note.</p></div></aside></div>` : `<div class="empty-published"><div class="empty-symbol">a<span>.</span></div><h3>Nothing published yet.</h3><p>Start with the page you are already reading. The sidebar will do the rest.</p><button class="dark-button" data-action="set-view" data-view="capture">Open capture desk ${icon('arrow')}</button></div>`}
     ${state.claimOpen ? claimModal() : ''}`;
 };
 
@@ -488,6 +509,20 @@ const refreshFeed = async () => {
   } catch { /* the capture flow should remain usable when feed loading fails */ }
 };
 
+const watchMediaProcessing = () => {
+  clearInterval(mediaPollTimer);
+  if (!state.publishedSlug || !['queued', 'processing'].includes(state.mediaStatus)) return;
+  mediaPollTimer = setInterval(async () => {
+    if (state.serverStatus !== 'online') return;
+    try {
+      const { annotation } = await api.getAnnotation(state.publishedSlug);
+      hydrateAnnotation(annotation);
+      if (!['queued', 'processing'].includes(state.mediaStatus)) clearInterval(mediaPollTimer);
+      render();
+    } catch { /* a transient poll failure should not interrupt the page */ }
+  }, 1500);
+};
+
 const loadSource = async () => {
   const url = state.sourceUrl.trim();
   if (!url) { notify('Paste a source URL first.'); return; }
@@ -544,10 +579,13 @@ const publishAnnotation = async () => {
       commentaryMode: state.commentaryMode,
       audioAssetId: state.audioAssetId || undefined,
       audioDuration: state.audioDuration || undefined,
+      mediaUrl: currentSource.mediaUrl || undefined,
+      provider: currentSource.provider || undefined,
     });
     hydrateAnnotation(annotation);
     state.activeView = 'published';
     state.isPublishing = false;
+    watchMediaProcessing();
     await refreshFeed();
     persist();
     notify('Published with a permanent source link.');

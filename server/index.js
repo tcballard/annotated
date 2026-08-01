@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { readStore, updateStore } from './store.js';
 import { mediaDirectory, writeIncomingMedia } from './media-store.js';
+import { enqueueMediaJob, recoverMediaJobs } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 
@@ -37,6 +38,7 @@ const withComments = (annotation, store) => ({
   ...annotation,
   url: `${publicOrigin}/a/${annotation.slug}`,
   audioUrl: annotation.audioAssetId ? `${publicOrigin}/media/${annotation.audioAssetId}` : null,
+  clipUrl: annotation.mediaAssetId ? `${publicOrigin}/media/${annotation.mediaAssetId}` : null,
   comments: store.comments.filter((comment) => comment.annotationId === annotation.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   claims: undefined,
 });
@@ -74,8 +76,10 @@ const handleApi = async (request, response, pathname) => {
     const now = new Date().toISOString();
     const id = randomUUID();
     const baseSlug = slugify(normalized.sourceTitle);
-    const annotation = { id, slug: `${baseSlug}-${id.slice(0, 6)}`, status: 'published', createdAt: now, authorId: 'local-tom', ...normalized };
+    const isMedia = normalized.sourceType !== 'article';
+    const annotation = { id, slug: `${baseSlug}-${id.slice(0, 6)}`, status: 'published', createdAt: now, authorId: 'local-tom', mediaStatus: isMedia ? 'queued' : 'not-applicable', ...normalized };
     const next = await updateStore((store) => ({ ...store, annotations: [...store.annotations, annotation] }));
+    if (isMedia) void enqueueMediaJob({ annotationId: id, sourceUrl: normalized.sourceUrl, sourceType: normalized.sourceType, sourceMediaUrl: normalized.mediaUrl, mediaUrl: normalized.mediaUrl, provider: normalized.provider, clipStart: normalized.clipStart, clipEnd: normalized.clipEnd }).catch((error) => console.error(error));
     return send(response, 201, { annotation: withComments(annotation, next) });
   }
 
@@ -173,4 +177,7 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, '127.0.0.1', () => console.log(`annotated server listening on http://localhost:${port}`));
+server.listen(port, '127.0.0.1', () => {
+  console.log(`annotated server listening on http://localhost:${port}`);
+  recoverMediaJobs().catch((error) => console.error('media recovery failed', error));
+});

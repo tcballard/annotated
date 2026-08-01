@@ -18,6 +18,8 @@ Annotated should be fast at the point of capture and resilient when media work i
 - Media processing: asynchronous, with an explicit `queued`, `processing`, `ready`, or `failed` state.
 - API memory: bounded by request limits; no full media buffering in the web process.
 
+The local worker uses `ffmpeg` for direct media URLs and accepts `YTDLP_BIN` for an optional provider adapter. Provider extraction failures are stored as a visible `failed` media state rather than being presented as playable media.
+
 ## Migration order
 
 1. Keep the current API paths and validation semantics stable.

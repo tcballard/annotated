@@ -20,7 +20,7 @@ The product is not ready until these are real end-to-end flows, not local UI sim
 
 - Slice 1: server-backed local vertical slice — source resolution, persistence, public slugs, comments, claims.
 - Slice 2: real capture — active-tab context, text selection, and media source adapters.
-- Slice 3: media worker — audio commentary upload is in place; source extraction, 90-second enforcement, 240p transcode, object storage, and processing states remain.
+- Slice 3: media worker — audio commentary upload and asynchronous FFmpeg job states are in place; durable object storage, provider extraction, and production transcode delivery remain.
 - Slice 4: accounts — Google/X OAuth, sessions, ownership, rate limits, and claim moderation.
 - Slice 5: social product — persisted feed, follow, like, comment, profiles, and public sharing.
 - Slice 6: production — extension API configuration, deployment, observability, security review, and end-to-end tests.

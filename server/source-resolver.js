@@ -1,5 +1,7 @@
 const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'youtu.be', 'www.youtu.be']);
 const PODCAST_HOST_HINTS = ['podcast', 'overcast', 'spotify', 'soundcloud', 'transistor.fm', 'simplecast'];
+const VIDEO_EXTENSIONS = /\.(?:mp4|webm|mov|m3u8)(?:$|\?)/i;
+const AUDIO_EXTENSIONS = /\.(?:mp3|m4a|wav|ogg|aac|flac)(?:$|\?)/i;
 
 const blockedHostname = (hostname) => {
   const value = hostname.toLowerCase();
@@ -21,8 +23,8 @@ export function parseSourceUrl(value) {
 export function classifySource(value) {
   const url = parseSourceUrl(value);
   const hostname = url.hostname.toLowerCase();
-  if (YOUTUBE_HOSTS.has(hostname)) return 'video';
-  if (PODCAST_HOST_HINTS.some((hint) => hostname.includes(hint)) || /\.(mp3|m4a|wav|ogg)(?:$|\?)/i.test(url.pathname)) return 'podcast';
+  if (YOUTUBE_HOSTS.has(hostname) || VIDEO_EXTENSIONS.test(url.pathname)) return 'video';
+  if (PODCAST_HOST_HINTS.some((hint) => hostname.includes(hint)) || AUDIO_EXTENSIONS.test(url.pathname)) return 'podcast';
   return 'article';
 }
 
@@ -54,6 +56,23 @@ const articleExcerpt = (html) => {
   return candidates[0]?.slice(0, 420) || null;
 };
 
+const mediaUrlFromHTML = (html, pageUrl) => {
+  const candidates = [
+    meta(html, 'og:audio'),
+    meta(html, 'og:video'),
+    meta(html, 'twitter:player:stream'),
+    html.match(/<(?:audio|video|source)[^>]+src=["']([^"']+)["']/i)?.[1],
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      const resolved = new URL(candidate, pageUrl).toString();
+      parseSourceUrl(resolved);
+      return resolved;
+    } catch { /* ignore unusable embedded media URLs */ }
+  }
+  return null;
+};
+
 const fetchText = async (url, timeoutMs = 8000) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -74,12 +93,15 @@ export async function resolveSource(value) {
   const url = parseSourceUrl(value);
   const kind = classifySource(value);
   const base = { sourceUrl: url.toString(), sourceType: kind, host: url.hostname.replace(/^www\./, '') };
+  if (VIDEO_EXTENSIONS.test(url.pathname) || AUDIO_EXTENSIONS.test(url.pathname)) base.mediaUrl = url.toString();
+
+  if (base.mediaUrl) return { ...base, title: base.host, author: base.host, description: null, imageUrl: null, excerpt: null, processing: 'ready-for-range' };
 
   if (kind === 'video' && YOUTUBE_HOSTS.has(url.hostname.toLowerCase())) {
     try {
       const oembed = await fetchText(`https://www.youtube.com/oembed?url=${encodeURIComponent(url.toString())}&format=json`);
       const data = JSON.parse(oembed);
-      return { ...base, title: data.title || 'YouTube video', author: data.author_name || 'YouTube', thumbnailUrl: data.thumbnail_url || null, processing: 'ready-for-range' };
+      return { ...base, title: data.title || 'YouTube video', author: data.author_name || 'YouTube', thumbnailUrl: data.thumbnail_url || null, processing: 'ready-for-range', provider: 'youtube' };
     } catch {
       return { ...base, title: 'YouTube video', author: 'YouTube', thumbnailUrl: null, processing: 'metadata-unavailable' };
     }
@@ -94,6 +116,7 @@ export async function resolveSource(value) {
       description: meta(html, 'og:description') || meta(html, 'description', 'name') || null,
       imageUrl: meta(html, 'og:image') || null,
       excerpt: kind === 'article' ? articleExcerpt(html) : null,
+      mediaUrl: base.mediaUrl || mediaUrlFromHTML(html, url.toString()),
       processing: kind === 'article' ? 'text-ready' : 'ready-for-range',
     };
   } catch (error) {

@@ -1,10 +1,17 @@
 const allowedTypes = new Set(['video', 'article', 'podcast']);
 const allowedModes = new Set(['text', 'audio']);
+import { parseSourceUrl } from './source-resolver.js';
 
 export function validateAnnotation(input) {
   const errors = [];
   if (!input || typeof input !== 'object') return { errors: ['A JSON annotation payload is required.'] };
   if (typeof input.sourceUrl !== 'string' || input.sourceUrl.length > 2048) errors.push('sourceUrl is required.');
+  else {
+    try { parseSourceUrl(input.sourceUrl); } catch (error) { errors.push(error.message); }
+  }
+  if (input.mediaUrl) {
+    try { parseSourceUrl(input.mediaUrl); } catch (error) { errors.push(`mediaUrl: ${error.message}`); }
+  }
   if (!allowedTypes.has(input.sourceType)) errors.push('sourceType must be video, article, or podcast.');
   if (typeof input.sourceTitle !== 'string' || !input.sourceTitle.trim() || input.sourceTitle.length > 500) errors.push('sourceTitle is required.');
   if (!allowedModes.has(input.commentaryMode)) errors.push('commentaryMode must be text or audio.');
