@@ -4,6 +4,8 @@ import { classifySource, parseSourceUrl, resolveSource } from '../server/source-
 import { resolveInput } from '../server/media-worker.js';
 import { matchesFeedQuery, normalizeFeedQuery } from '../server/feed.js';
 
+const publicLookup = async () => [{ address: '93.184.216.34', family: 4 }];
+
 test('source classification covers the three brief source categories', () => {
   assert.equal(classifySource('https://www.youtube.com/watch?v=abc'), 'video');
   assert.equal(classifySource('https://podcasts.example/show/episode'), 'podcast');
@@ -24,7 +26,7 @@ test('article resolution is bounded and preserves the page canonical URL', async
     arrayBuffer: async () => Buffer.from('<html><head><title>Example</title><link rel="canonical" href="https://news.example/canonical"></head><body><article><p>This is a sufficiently long article passage that should be extracted as bounded source context for the annotation landing page.</p></article></body></html>'),
   });
   try {
-    const source = await resolveSource('https://news.example/story?utm_source=test');
+    const source = await resolveSource('https://news.example/story?utm_source=test', { lookup: publicLookup });
     assert.equal(source.sourceType, 'article');
     assert.equal(source.canonicalUrl, 'https://news.example/canonical');
     assert.match(source.excerpt, /sufficiently long article passage/);
@@ -43,7 +45,7 @@ test('source resolution follows a bounded safe redirect and rejects private redi
     return { ok: true, status: 200, arrayBuffer: async () => Buffer.from(html) };
   };
   try {
-    const source = await resolveSource('https://news.example/story-start');
+    const source = await resolveSource('https://news.example/story-start', { lookup: publicLookup });
     assert.equal(source.title, 'Redirected article');
     assert.deepEqual(calls, ['https://news.example/story-start', 'https://news.example/story-final']);
   } finally {
@@ -52,16 +54,30 @@ test('source resolution follows a bounded safe redirect and rejects private redi
 
   globalThis.fetch = async () => ({ ok: false, status: 302, headers: { get: () => 'http://127.0.0.1/private' } });
   try {
-    const source = await resolveSource('https://news.example/private-redirect');
+    const source = await resolveSource('https://news.example/private-redirect', { lookup: publicLookup });
     assert.match(source.error, /not allowed/);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
+test('source resolution rejects DNS answers that enter private address space', async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = async () => { fetchCalls += 1; return { ok: true, status: 200, arrayBuffer: async () => Buffer.from('') }; };
+  try {
+    const source = await resolveSource('https://rebinding.example/story', { lookup: async () => [{ address: '10.0.0.8', family: 4 }] });
+    assert.match(source.error, /not allowed/);
+    assert.equal(fetchCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('direct media worker inputs remain SSRF-safe', async () => {
-  assert.equal(await resolveInput({ sourceUrl: 'https://cdn.example/audio.mp3', sourceType: 'podcast' }), 'https://cdn.example/audio.mp3');
+  assert.equal(await resolveInput({ sourceUrl: 'https://cdn.example/audio.mp3', sourceType: 'podcast' }, { lookup: publicLookup }), 'https://cdn.example/audio.mp3');
   await assert.rejects(() => resolveInput({ sourceUrl: 'http://127.0.0.1/audio.mp3', sourceType: 'podcast' }), /not allowed/);
+  await assert.rejects(() => resolveInput({ sourceUrl: 'https://cdn.example/audio.mp3', sourceType: 'podcast' }, { lookup: async () => [{ address: '192.168.1.9', family: 4 }] }), /not allowed/);
 });
 
 test('feed search matches source and author context with a bounded query', () => {

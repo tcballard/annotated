@@ -4,6 +4,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mediaWorkDirectory, removeMediaFile, storeMediaFile } from './media-store.js';
 import { readStore, updateStore } from './store.js';
+import { assertPublicUrl } from './ssrf.js';
 import { parseSourceUrl } from './source-resolver.js';
 
 const maxConcurrentJobs = Number(process.env.MEDIA_WORKER_CONCURRENCY || 2);
@@ -65,9 +66,10 @@ const run = (command, args, { maxOutput = 64_000, jobId = '' } = {}) => new Prom
 
 export const shouldAbortMediaJob = (job, store, cancelled = cancelledJobs) => cancelled.has(job.id) || (store.mediaJobs || []).some((item) => item.id === job.id && item.status === 'cancelled');
 
-export const resolveInput = async (job) => {
-  const sourceUrl = parseSourceUrl(job.sourceUrl).toString();
-  if (job.mediaUrl && directMediaUrl(parseSourceUrl(job.mediaUrl).toString())) return job.mediaUrl;
+export const resolveInput = async (job, { lookup } = {}) => {
+  const sourceUrl = (await assertPublicUrl(parseSourceUrl(job.sourceUrl).toString(), { lookup })).toString();
+  const mediaUrl = job.mediaUrl ? (await assertPublicUrl(parseSourceUrl(job.mediaUrl).toString(), { lookup })).toString() : '';
+  if (mediaUrl && directMediaUrl(mediaUrl)) return mediaUrl;
   if (directMediaUrl(sourceUrl)) return sourceUrl;
   if (job.provider === 'youtube' || job.provider === 'podcast' || job.sourceType === 'podcast' || /(?:youtube\.com|youtu\.be)/i.test(sourceUrl)) {
     const format = job.sourceType === 'video' ? 'best[height<=240]/best' : 'bestaudio/best';

@@ -1,18 +1,11 @@
+import { assertPublicUrl, blockedHostname } from './ssrf.js';
+
 const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'youtu.be', 'www.youtu.be']);
 const PODCAST_HOST_HINTS = ['podcast', 'overcast', 'spotify', 'soundcloud', 'transistor.fm', 'simplecast'];
 const VIDEO_EXTENSIONS = /\.(?:mp4|webm|mov|m3u8)(?:$|\?)/i;
 const AUDIO_EXTENSIONS = /\.(?:mp3|m4a|wav|ogg|aac|flac)(?:$|\?)/i;
 const maxSourceBytes = 2 * 1024 * 1024;
 export const maxSourceRedirects = 3;
-
-const blockedHostname = (hostname) => {
-  const value = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (value === 'localhost' || value === '::1' || value.endsWith('.localhost')) return true;
-  if (/^127\./.test(value) || /^10\./.test(value) || /^192\.168\./.test(value)) return true;
-  const private172 = value.match(/^172\.(\d+)\./);
-  if (private172 && Number(private172[1]) >= 16 && Number(private172[1]) <= 31) return true;
-  return value === '169.254.169.254' || value.endsWith('.internal') || value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe80:');
-};
 
 export function parseSourceUrl(value) {
   let url;
@@ -82,11 +75,11 @@ const mediaUrlFromHTML = (html, pageUrl) => {
   return null;
 };
 
-const fetchText = async (url, timeoutMs = 8000) => {
+const fetchText = async (url, timeoutMs = 8000, { lookup } = {}) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    let currentUrl = parseSourceUrl(url).toString();
+    let currentUrl = (await assertPublicUrl(url, { lookup })).toString();
     for (let redirectCount = 0; redirectCount <= maxSourceRedirects; redirectCount += 1) {
       const response = await fetch(currentUrl, {
         signal: controller.signal,
@@ -97,7 +90,7 @@ const fetchText = async (url, timeoutMs = 8000) => {
         if (redirectCount === maxSourceRedirects) throw new Error('Source redirected too many times.');
         const location = response.headers?.get?.('location') || response.headers?.location;
         if (!location) throw new Error('Source redirect did not include a location.');
-        currentUrl = parseSourceUrl(new URL(location, currentUrl).toString()).toString();
+        currentUrl = (await assertPublicUrl(new URL(location, currentUrl).toString(), { lookup })).toString();
         continue;
       }
       if (!response.ok) throw new Error(`Source returned ${response.status}.`);
@@ -111,7 +104,7 @@ const fetchText = async (url, timeoutMs = 8000) => {
   }
 };
 
-export async function resolveSource(value) {
+export async function resolveSource(value, { lookup } = {}) {
   const url = parseSourceUrl(value);
   const kind = classifySource(value);
   const base = { sourceUrl: url.toString(), canonicalUrl: url.toString(), sourceType: kind, host: url.hostname.replace(/^www\./, '') };
@@ -121,7 +114,7 @@ export async function resolveSource(value) {
 
   if (kind === 'video' && YOUTUBE_HOSTS.has(url.hostname.toLowerCase())) {
     try {
-      const oembed = await fetchText(`https://www.youtube.com/oembed?url=${encodeURIComponent(url.toString())}&format=json`);
+      const oembed = await fetchText(`https://www.youtube.com/oembed?url=${encodeURIComponent(url.toString())}&format=json`, 8000, { lookup });
       const data = JSON.parse(oembed);
       return { ...base, title: data.title || 'YouTube video', author: data.author_name || 'YouTube', thumbnailUrl: data.thumbnail_url || null, processing: 'ready-for-range', provider: 'youtube' };
     } catch {
@@ -130,7 +123,7 @@ export async function resolveSource(value) {
   }
 
   try {
-    const html = await fetchText(url.toString());
+    const html = await fetchText(url.toString(), 8000, { lookup });
     const canonicalUrl = canonicalFromHTML(html, url.toString());
     return {
       ...base,
