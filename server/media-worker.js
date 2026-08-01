@@ -11,6 +11,8 @@ const ytdlpBinary = process.env.YTDLP_BIN || 'yt-dlp';
 const maxAttempts = Math.max(1, Number(process.env.MEDIA_WORKER_MAX_ATTEMPTS || 3));
 const retryDelayMs = Math.max(100, Number(process.env.MEDIA_WORKER_RETRY_DELAY_MS || 1500));
 const queue = [];
+const activeProcesses = new Map();
+const cancelledJobs = new Set();
 let activeJobs = 0;
 
 const directMediaUrl = (value) => /\.(?:mp4|webm|mov|m3u8|mp3|m4a|wav|ogg|aac|flac)(?:$|\?)/i.test(value);
@@ -28,15 +30,24 @@ export const buildFfmpegArgs = (job, input, outputPath) => {
   return args;
 };
 
-const run = (command, args, { maxOutput = 64_000 } = {}) => new Promise((resolve, reject) => {
+const run = (command, args, { maxOutput = 64_000, jobId = '' } = {}) => new Promise((resolve, reject) => {
   const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  if (jobId) activeProcesses.set(jobId, child);
   let stdout = '';
   let stderr = '';
+  const cleanup = () => { if (jobId && activeProcesses.get(jobId) === child) activeProcesses.delete(jobId); };
   child.stdout.on('data', (chunk) => { stdout = `${stdout}${chunk}`.slice(-maxOutput); });
   child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-maxOutput); });
-  child.on('error', reject);
-  child.on('close', (code) => code === 0 ? resolve({ stdout, stderr }) : reject(new Error(stderr.trim() || `${command} exited with code ${code}.`)));
+  child.on('error', (error) => { cleanup(); reject(error); });
+  child.on('close', (code, signal) => {
+    cleanup();
+    if (jobId && cancelledJobs.has(jobId)) return reject(new Error('Media processing cancelled by the owner.'));
+    if (code === 0) return resolve({ stdout, stderr });
+    reject(new Error(stderr.trim() || `${command} exited with ${signal ? `signal ${signal}` : `code ${code}`}.`));
+  });
 });
+
+export const shouldAbortMediaJob = (job, store, cancelled = cancelledJobs) => cancelled.has(job.id) || (store.mediaJobs || []).some((item) => item.id === job.id && item.status === 'cancelled');
 
 export const resolveInput = async (job) => {
   const sourceUrl = parseSourceUrl(job.sourceUrl).toString();
@@ -44,7 +55,7 @@ export const resolveInput = async (job) => {
   if (directMediaUrl(sourceUrl)) return sourceUrl;
   if (job.provider === 'youtube' || job.provider === 'podcast' || job.sourceType === 'podcast' || /(?:youtube\.com|youtu\.be)/i.test(sourceUrl)) {
     const format = job.sourceType === 'video' ? 'best[height<=240]/best' : 'bestaudio/best';
-    const result = await run(ytdlpBinary, ['--no-playlist', '--format', format, '--get-url', sourceUrl]);
+    const result = await run(ytdlpBinary, ['--no-playlist', '--format', format, '--get-url', sourceUrl], { jobId: job.id });
     const input = result.stdout.trim().split(/\s+/)[0];
     if (!input) throw new Error('The media provider returned no playable stream.');
     return input;
@@ -70,24 +81,54 @@ const runJob = async (job) => {
     await mkdir(mediaWorkDirectory, { recursive: true });
     const input = await resolveInput(job);
     const args = buildFfmpegArgs(job, input, outputPath);
-    await run('ffmpeg', args);
+    await run('ffmpeg', args, { jobId: job.id });
+    const completed = await readStore();
+    if (shouldAbortMediaJob(job, completed)) {
+      await removeMediaFile(outputPath);
+      cancelledJobs.delete(job.id);
+      return;
+    }
     const asset = await storeMediaFile(outputPath, { id: assetId, key, mimeType: output.mimeType });
-    await updateStore((store) => ({
-      ...store,
-      media: [...(store.media || []), { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, kind: 'clip', createdAt: new Date().toISOString() }],
-      annotations: store.annotations.map((annotation) => annotation.id === job.annotationId ? { ...annotation, mediaAssetId: assetId, mediaStatus: 'ready', mediaError: null } : annotation),
-      mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: 'ready', completedAt: new Date().toISOString() } : item),
-    }));
+    let published = false;
+    await updateStore((store) => {
+      if (shouldAbortMediaJob(job, store)) return store;
+      published = true;
+      return {
+        ...store,
+        media: [...(store.media || []), { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, kind: 'clip', createdAt: new Date().toISOString() }],
+        annotations: store.annotations.map((annotation) => annotation.id === job.annotationId ? { ...annotation, mediaAssetId: assetId, mediaStatus: 'ready', mediaError: null } : annotation),
+        mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: 'ready', completedAt: new Date().toISOString() } : item),
+      };
+    });
+    if (!published) {
+      await removeMediaFile(outputPath);
+      cancelledJobs.delete(job.id);
+      return;
+    }
     await removeMediaFile(outputPath);
   } catch (error) {
     await removeMediaFile(outputPath);
+    const latest = await readStore();
+    if (shouldAbortMediaJob(job, latest)) {
+      cancelledJobs.delete(job.id);
+      return;
+    }
     const attempts = Number(job.attempts || 0) + 1;
     const retry = attempts < maxAttempts;
-    await updateStore((store) => ({
-      ...store,
-      annotations: store.annotations.map((item) => item.id === job.annotationId ? { ...item, mediaStatus: retry ? 'queued' : 'failed', mediaError: retry ? `Retrying media processing (${attempts}/${maxAttempts}).` : error.message } : item),
-      mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: retry ? 'queued' : 'failed', attempts, error: error.message, retryAt: retry ? new Date(Date.now() + retryDelayMs * attempts).toISOString() : null, completedAt: retry ? null : new Date().toISOString() } : item),
-    }));
+    let recordedFailure = false;
+    await updateStore((store) => {
+      if (shouldAbortMediaJob(job, store)) return store;
+      recordedFailure = true;
+      return {
+        ...store,
+        annotations: store.annotations.map((item) => item.id === job.annotationId ? { ...item, mediaStatus: retry ? 'queued' : 'failed', mediaError: retry ? `Retrying media processing (${attempts}/${maxAttempts}).` : error.message } : item),
+        mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: retry ? 'queued' : 'failed', attempts, error: error.message, retryAt: retry ? new Date(Date.now() + retryDelayMs * attempts).toISOString() : null, completedAt: retry ? null : new Date().toISOString() } : item),
+      };
+    });
+    if (!recordedFailure) {
+      cancelledJobs.delete(job.id);
+      return;
+    }
     if (retry) setTimeout(() => { queue.push({ ...job, attempts, status: 'queued' }); drain(); }, retryDelayMs * attempts);
   }
 };
@@ -122,6 +163,11 @@ export async function cancelMediaJob(jobId, userId) {
     };
   });
   if (cancelled) {
+    const child = activeProcesses.get(jobId);
+    if (child) {
+      cancelledJobs.add(jobId);
+      if (!child.killed) child.kill('SIGTERM');
+    }
     for (let index = queue.length - 1; index >= 0; index -= 1) if (queue[index].id === jobId) queue.splice(index, 1);
   }
   return cancelled;
