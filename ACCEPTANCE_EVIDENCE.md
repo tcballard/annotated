@@ -8,8 +8,8 @@ production gates are complete.
 
 ## Clean-checkout validation
 
-The following checks passed from a fresh clone at `a9adde4` on the final
-production-image stack tip (`agent/brief-26-production-image`):
+The following checks passed from a fresh clone at `5a43133` on the final
+acceptance stack tip (`agent/brief-27-acceptance-evidence`):
 
 ```text
 npm ci
