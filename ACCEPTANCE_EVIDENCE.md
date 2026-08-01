@@ -8,12 +8,12 @@ production gates are complete.
 
 ## Clean-checkout validation
 
-The following checks passed on `agent/brief-11-feed-search`:
+The following checks passed on `agent/brief-15-extension-lifecycle`:
 
 ```text
 npm ci
 npm run build
-npm test                         # 27 passing tests
+npm test                         # 33 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -62,6 +62,9 @@ The local browser run exercised the user-facing flows below:
 - The owner-only Moderation view loaded persisted claims, showed each source
   and reporter, and changed the first claim from `open` to `in review`; the UI
   displayed `Claim marked in review.` and the API recorded the audit transition.
+- Extension storage tests prove draft/pending payloads remain metadata-only,
+  the pending queue cap remains five captures, deployed API origins require
+  HTTPS, and expired session tokens are discarded before use.
 
 ## Deliberately unverified external gates
 

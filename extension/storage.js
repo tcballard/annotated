@@ -3,13 +3,14 @@ const LAST_PUBLISHED_KEY = 'annotatedLastPublished';
 const CONFIG_KEY = 'annotatedConfig';
 const PENDING_KEY = 'annotatedPendingCaptures';
 const SESSION_KEY = 'annotatedSession';
+export const MAX_PENDING_CAPTURES = 5;
 
 const sourceTypes = new Set(['video', 'article', 'podcast']);
 
 const boundedString = (value, max) => String(value || '').slice(0, max);
 const boundedNumber = (value) => Math.max(0, Math.min(90, Number(value) || 0));
 
-const compactDraft = (draft = {}) => ({
+export const compactDraft = (draft = {}) => ({
   sourceUrl: boundedString(draft.sourceUrl, 2048),
   sourceType: sourceTypes.has(draft.sourceType) ? draft.sourceType : 'article',
   sourceTitle: boundedString(draft.sourceTitle, 500),
@@ -24,7 +25,7 @@ const compactDraft = (draft = {}) => ({
   audioDraftId: boundedString(draft.audioDraftId, 80),
 });
 
-const compactPublished = (annotation = {}) => ({
+export const compactPublished = (annotation = {}) => ({
   id: boundedString(annotation.id, 80),
   slug: boundedString(annotation.slug, 120),
   url: boundedString(annotation.url, 2048),
@@ -32,7 +33,15 @@ const compactPublished = (annotation = {}) => ({
   createdAt: boundedString(annotation.createdAt, 40),
 });
 
-const compactPending = (capture = {}) => ({
+export const normalizeApiOrigin = (apiOrigin) => {
+  const parsed = new URL(apiOrigin);
+  if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('API origin must use http or https.');
+  const local = parsed.hostname === 'localhost' || parsed.hostname === '::1' || /^127\./.test(parsed.hostname);
+  if (parsed.protocol !== 'https:' && !local) throw new Error('API origin must use https outside local development.');
+  return parsed.origin;
+};
+
+export const compactPending = (capture = {}) => ({
   id: boundedString(capture.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`, 80),
   payload: compactDraft(capture.payload || {}),
   queuedAt: boundedString(capture.queuedAt || new Date().toISOString(), 40),
@@ -63,19 +72,24 @@ export const extensionStorage = {
   },
 
   async saveApiOrigin(apiOrigin) {
-    const parsed = new URL(apiOrigin);
-    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('API origin must use http or https.');
-    await chrome.storage.local.set({ [CONFIG_KEY]: { apiOrigin: parsed.origin } });
+    await chrome.storage.local.set({ [CONFIG_KEY]: { apiOrigin: normalizeApiOrigin(apiOrigin) } });
   },
 
   async getAuthToken() {
     if (!chrome.storage.session) return null;
     const result = await chrome.storage.session.get(SESSION_KEY);
-    return result[SESSION_KEY]?.token || null;
+    const session = result[SESSION_KEY];
+    if (!session?.token) return null;
+    if (session.expiresAt && Date.parse(session.expiresAt) <= Date.now()) {
+      await chrome.storage.session.remove(SESSION_KEY);
+      return null;
+    }
+    return session.token;
   },
 
   async saveAuthSession(session) {
     if (!chrome.storage.session) throw new Error('Chrome session storage is unavailable.');
+    if (!session?.token) throw new Error('The sign-in response did not include a session token.');
     await chrome.storage.session.set({ [SESSION_KEY]: { token: boundedString(session.token, 200), expiresAt: boundedString(session.expiresAt, 40), user: session.user || null } });
   },
 
@@ -86,7 +100,7 @@ export const extensionStorage = {
   async queueCapture(payload) {
     const result = await chrome.storage.local.get(PENDING_KEY);
     const current = Array.isArray(result[PENDING_KEY]) ? result[PENDING_KEY].map(compactPending) : [];
-    const next = [...current, compactPending({ payload })].slice(-5);
+    const next = [...current, compactPending({ payload })].slice(-MAX_PENDING_CAPTURES);
     await chrome.storage.local.set({ [PENDING_KEY]: next });
     return next[next.length - 1].id;
   },
