@@ -9,7 +9,7 @@ production gates are complete.
 ## Clean-checkout validation
 
 The following checks passed from a fresh clone of the final acceptance stack
-tip (`agent/brief-32-reproducible-ci`):
+tip (`agent/brief-33-production-services`):
 
 ```text
 npm ci
@@ -27,7 +27,7 @@ verified `/api/health`, `/api/ready`, restricted-origin rejection, provider
 configuration reporting, the development identity boundary, idempotent
 annotation publishing, public annotation reload, feed loading, comments,
 active-claim deduplication, reporter claim status, and owner moderation
-transitions. It passed as part of the 54-test run. The Docker daemon was not
+transitions. It passed as part of the 57-test local run. The Docker daemon was not
 available in this environment, so the production image itself remains an
 external gate; the Dockerfile build order, non-root user, and context boundary
 are covered by static tests.
