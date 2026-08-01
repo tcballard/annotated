@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: annotated-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Node checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build web app
+        run: npm run build
+      - name: Run tests
+        run: npm test
+      - name: Check JavaScript syntax
+        shell: bash
+        run: for file in server/*.js src/*.js extension/*.js test/*.js scripts/*.js; do node --check "$file"; done
+      - name: Check package diff
+        run: git diff --check
+      - name: Package extension
+        run: npm run package:extension
+      - name: Check extension package contents
+        shell: bash
+        run: |
+          test "$(unzip -Z1 annotated-extension-v0.1.0.zip | wc -l | tr -d ' ')" = 12
+          if unzip -Z1 annotated-extension-v0.1.0.zip | grep -E '(^|/)(\.env|data/|node_modules/|dist/)'; then
+            echo "runtime extension package contains development files" >&2
+            exit 1
+          fi
+
+  image:
+    name: Production image (${{ matrix.platform }})
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            tag: annotated-ci-amd64
+          - platform: linux/arm64
+            tag: annotated-ci-arm64
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: ${{ matrix.tag }}
+          provenance: false
+      - name: Verify pinned provider runtime
+        run: docker run --rm --platform "${{ matrix.platform }}" --entrypoint /usr/local/bin/yt-dlp "${{ matrix.tag }}" --version

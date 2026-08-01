@@ -123,6 +123,11 @@ The local browser run exercised the user-facing flows below:
   official release assets were independently downloaded and matched the
   committed checksums. Docker daemon execution was unavailable in this
   environment, so the image build remains an external gate.
+- `.github/workflows/ci.yml` now makes that external image gate reproducible in
+  GitHub Actions: it runs the clean Node/package checks and builds both
+  `linux/amd64` and `linux/arm64` images under QEMU, then executes the pinned
+  provider binary in each image. The workflow itself still needs a passing run
+  on GitHub before it becomes observed evidence.
 
 ## Deliberately unverified external gates
 

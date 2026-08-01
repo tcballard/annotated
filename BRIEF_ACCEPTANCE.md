@@ -34,7 +34,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 - [ ] Provider extraction and FFmpeg processing enforce duration/resolution, retries, cancellation/recovery, cleanup, and visible failures; production readiness probes the actual FFmpeg/FFprobe/provider runtime and the image pins the provider executable.
 - [ ] Feed, profiles, follows, likes, comments, sharing, pagination, and authorization persist server-side.
 - [ ] Claims have review states, audit records, rate limits, and user-visible reporting outcomes.
-- [ ] CORS, secure headers, request limits, URL and DNS-answer SSRF defenses, bounded request telemetry, health/readiness, reproducible non-root image builds, migrations, backups, and recovery are documented and tested.
+- [ ] CORS, secure headers, request limits, URL and DNS-answer SSRF defenses, bounded request telemetry, health/readiness, reproducible non-root image builds, migrations, backups, and recovery are documented and tested; CI now defines amd64/arm64 image and provider-runtime checks, pending a passing hosted run.
 - [ ] A clean-checkout automated suite and Chrome browser acceptance run pass with evidence linked from the final draft PR.
 
 ## Explicit non-goals from the brief
