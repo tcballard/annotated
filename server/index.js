@@ -16,6 +16,7 @@ import { assertHardeningConfiguration, rateLimit, requestId, securityHeaders } f
 import { canUseAudioAsset } from './media-access.js';
 import { metricsSnapshot, recordRequest } from './observability.js';
 import { findIdempotentAnnotation } from './idempotency.js';
+import { findActiveClaim, validateClaimTransition } from './moderation.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
@@ -262,15 +263,33 @@ const handleApi = async (request, response, pathname) => {
     const payload = await readJson(request);
     const validation = validateClaim(payload);
     if (validation.error) return send(response, 422, { error: validation.error });
+    const reporterId = actor?.id || 'local-tom';
+    let created = false;
+    let claim;
     const result = await updateStore((store) => {
       const annotation = store.annotations.find((item) => item.slug === claimsMatch[1] || item.id === claimsMatch[1]);
       if (!annotation) return store;
-      store.claims.push({ id: randomUUID(), annotationId: annotation.id, reason: validation.reason, status: 'open', reporterId: actor?.id || 'local-tom', createdAt: new Date().toISOString() });
-      return store;
+      const existing = findActiveClaim(store.claims, annotation.id, reporterId);
+      if (existing) { claim = existing; return store; }
+      created = true;
+      claim = { id: randomUUID(), annotationId: annotation.id, reason: validation.reason, status: 'open', reporterId, createdAt: new Date().toISOString() };
+      return {
+        ...store,
+        claims: [...(store.claims || []), claim],
+        moderationAudit: [...(store.moderationAudit || []), { id: randomUUID(), claimId: claim.id, actorId: reporterId, from: null, to: 'open', note: '', createdAt: new Date().toISOString() }],
+      };
     });
-    return result.claims.some((claim) => claim.annotationId === (result.annotations.find((item) => item.slug === claimsMatch[1] || item.id === claimsMatch[1])?.id))
-      ? send(response, 201, { status: 'received' })
-      : notFound(response);
+    const annotation = result.annotations.find((item) => item.slug === claimsMatch[1] || item.id === claimsMatch[1]);
+    if (!annotation) return notFound(response);
+    return send(response, created ? 201 : 200, { status: created ? 'received' : 'already-received', claim: { id: claim.id, status: claim.status } });
+  }
+
+  if (request.method === 'GET' && pathname === '/api/claims') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
+    const store = await readStore();
+    const reporterId = actor?.id || 'local-tom';
+    return send(response, 200, { claims: (store.claims || []).filter((claim) => claim.reporterId === reporterId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((claim) => ({ ...claim, annotation: store.annotations.find((item) => item.id === claim.annotationId) || null })) });
   }
 
   if (request.method === 'GET' && pathname === '/api/moderation/claims') {
@@ -287,8 +306,11 @@ const handleApi = async (request, response, pathname) => {
     if (!actor && authIsRequired()) return unauthorized(response);
     if (!isModerator(actor)) return forbidden(response);
     const payload = await readJson(request);
-    const allowedStatuses = new Set(['open', 'in_review', 'resolved', 'rejected']);
-    if (!allowedStatuses.has(payload.status)) return send(response, 422, { error: 'Claim status must be open, in_review, resolved, or rejected.' });
+    const currentStore = await readStore();
+    const currentClaim = (currentStore.claims || []).find((item) => item.id === moderateClaimMatch[1]);
+    if (!currentClaim) return notFound(response);
+    const transitionError = validateClaimTransition(currentClaim.status, payload.status);
+    if (transitionError) return send(response, 422, { error: transitionError });
     let found = false;
     const result = await updateStore((store) => {
       const claim = (store.claims || []).find((item) => item.id === moderateClaimMatch[1]);
