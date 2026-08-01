@@ -11,14 +11,18 @@ test('development defaults to the explicit file adapter', () => {
 
 test('postgres repository serializes the existing store contract transactionally', async () => {
   const state = { annotations: [], comments: [], claims: [], media: [], mediaJobs: [], users: [] };
+  const statements = [];
   const pool = {
     async query(sql) {
+      statements.push(sql);
       if (sql.startsWith('SELECT state FROM annotated_state')) return { rows: [{ state }] };
+      if (sql.startsWith('SELECT version FROM annotated_schema_migrations')) return { rows: [{ version: '002_entity_records' }] };
       return { rows: [] };
     },
     async connect() {
       return {
         async query(sql) {
+          statements.push(sql);
           if (sql.startsWith('SELECT state FROM annotated_state')) return { rows: [{ state }] };
           return { rows: [] };
         },
@@ -33,6 +37,40 @@ test('postgres repository serializes the existing store contract transactionally
   await repository.check();
   const next = await repository.update((current) => ({ ...current, users: [{ id: 'u1' }] }));
   assert.deepEqual(next.users, [{ id: 'u1' }]);
+  assert.ok(statements.some((sql) => sql.startsWith('INSERT INTO annotated_records')));
+  await repository.close();
+});
+
+test('postgres repository reconstructs the API store contract from entity records', async () => {
+  const rows = [
+    { collection: 'users', record_id: 'u1', payload: { id: 'u1', handle: 'reader' } },
+    { collection: 'annotations', record_id: 'a1', payload: { id: 'a1', status: 'published' } },
+  ];
+  const pool = {
+    async query(sql) {
+      if (sql.startsWith('SELECT collection, record_id, payload')) return { rows };
+      return { rows: [] };
+    },
+    async end() {},
+  };
+  const repository = createPostgresStore({ pool });
+  const result = await repository.read();
+  assert.ok(result.users.some((user) => user.id === 'u1' && user.handle === 'reader'));
+  assert.deepEqual(result.annotations, [{ id: 'a1', status: 'published' }]);
+  assert.deepEqual(result.comments, []);
+  await repository.close();
+});
+
+test('postgres readiness rejects an unapplied migration set', async () => {
+  const pool = {
+    async query(sql) {
+      if (sql.startsWith('SELECT version FROM annotated_schema_migrations')) return { rows: [{ version: '001_initial' }] };
+      return { rows: [] };
+    },
+    async end() {},
+  };
+  const repository = createPostgresStore({ pool });
+  await assert.rejects(() => repository.check(), /migrations are not current/);
   await repository.close();
 });
 
