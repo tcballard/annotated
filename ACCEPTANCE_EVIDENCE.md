@@ -13,7 +13,7 @@ The following checks passed on `agent/brief-16-source-redirects`:
 ```text
 npm ci
 npm run build
-npm test                         # 44 passing tests
+npm test                         # 46 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -81,6 +81,8 @@ The local browser run exercised the user-facing flows below:
   checks; ownership tests reject attaching another account's audio asset.
 - Hardening tests cover origin validation, security headers, and bounded request
   telemetry; the server emits request IDs and structured `http_request` logs.
+- Annotation validation and idempotency tests cover bounded client request IDs
+  and author-scoped retry lookup; web and extension drafts preserve the key.
 
 ## Deliberately unverified external gates
 

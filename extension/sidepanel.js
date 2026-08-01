@@ -41,6 +41,7 @@ let recordingTimer;
 let recordingToken = 0;
 let audioUploadInFlight = false;
 let loadedTabUrl = '';
+let clientRequestId = crypto.randomUUID();
 
 const format = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
 
@@ -230,6 +231,7 @@ const draftPayload = () => ({
   audioAssetId,
   audioDuration: audioDurationSeconds,
   audioDraftId,
+  clientRequestId,
 });
 
 const saveDraft = () => {
@@ -273,6 +275,7 @@ async function resetForNewTab(sourceType) {
   audioAssetId = '';
   audioDurationSeconds = 0;
   audioDraftId = '';
+  clientRequestId = crypto.randomUUID();
   note.value = '';
   const defaults = sourceType === 'podcast' ? [10, 64] : sourceType === 'video' ? [14, 62] : [0, 0];
   start.value = startNumber.value = defaults[0];
@@ -310,6 +313,7 @@ async function loadCurrentTab() {
       audioAssetId = draft.audioAssetId || '';
       audioDurationSeconds = Number(draft.audioDuration) > 0 ? clampAudioDuration(draft.audioDuration) : 0;
       audioDraftId = draft.audioDraftId || '';
+      clientRequestId = draft.clientRequestId || clientRequestId;
       note.placeholder = 'What stayed with you? Add the context the original clip is missing…';
       document.querySelectorAll('[data-mode]').forEach((button) => button.classList.toggle('active', button.dataset.mode === commentaryMode));
       syncRange();
@@ -400,6 +404,7 @@ document.querySelector('#publish').addEventListener('click', async () => {
     commentaryMode,
     audioAssetId: commentaryMode === 'audio' ? audioAssetId : undefined,
     audioDuration: commentaryMode === 'audio' ? audioDurationSeconds : undefined,
+    clientRequestId,
   };
   try {
     const { annotation } = await apiRequest('/api/annotations', { method: 'POST', body: JSON.stringify(payload) });

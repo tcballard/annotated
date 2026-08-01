@@ -15,6 +15,7 @@ export function validateAnnotation(input) {
   if (input.canonicalUrl) {
     try { parseSourceUrl(input.canonicalUrl); } catch (error) { errors.push(`canonicalUrl: ${error.message}`); }
   }
+  if (input.clientRequestId !== undefined && (typeof input.clientRequestId !== 'string' || !/^[A-Za-z0-9._:-]{1,80}$/.test(input.clientRequestId))) errors.push('clientRequestId must be a bounded request ID.');
   if (!allowedTypes.has(input.sourceType)) errors.push('sourceType must be video, article, or podcast.');
   if (typeof input.sourceTitle !== 'string' || !input.sourceTitle.trim() || input.sourceTitle.length > 500) errors.push('sourceTitle is required.');
   if (!allowedModes.has(input.commentaryMode)) errors.push('commentaryMode must be text or audio.');
@@ -25,7 +26,7 @@ export function validateAnnotation(input) {
   const end = Number(input.clipEnd || 0);
   if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < 0 || end < start) errors.push('Clip range is invalid.');
   if (input.sourceType !== 'article' && end - start > 90) errors.push('Media clips must be 90 seconds or shorter.');
-  return { errors, normalized: { ...input, canonicalUrl: input.canonicalUrl || input.sourceUrl, clipStart: start, clipEnd: end, commentary: String(input.commentary || '').trim().slice(0, 280) } };
+  return { errors, normalized: { ...input, clientRequestId: input.clientRequestId || null, canonicalUrl: input.canonicalUrl || input.sourceUrl, clipStart: start, clipEnd: end, commentary: String(input.commentary || '').trim().slice(0, 280) } };
 }
 
 export function validateComment(input) {

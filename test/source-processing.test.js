@@ -3,6 +3,7 @@ import test from 'node:test';
 import { classifySource, parseSourceUrl, resolveSource } from '../server/source-resolver.js';
 import { resolveInput, validatePlayableInput } from '../server/media-worker.js';
 import { matchesFeedQuery, normalizeFeedQuery } from '../server/feed.js';
+import { findIdempotentAnnotation } from '../server/idempotency.js';
 
 const publicLookup = async () => [{ address: '93.184.216.34', family: 4 }];
 
@@ -94,4 +95,11 @@ test('feed search matches source and author context with a bounded query', () =>
   assert.equal(matchesFeedQuery(annotation, users, 'unrelated'), false);
   assert.equal(normalizeFeedQuery('  one   two '), 'one two');
   assert.equal(normalizeFeedQuery('x'.repeat(100)).length, 80);
+});
+
+test('idempotent annotation lookup is scoped to the author and request ID', () => {
+  const annotations = [{ id: 'a1', authorId: 'u1', clientRequestId: 'capture-1' }];
+  assert.equal(findIdempotentAnnotation(annotations, 'u1', 'capture-1')?.id, 'a1');
+  assert.equal(findIdempotentAnnotation(annotations, 'u2', 'capture-1'), null);
+  assert.equal(findIdempotentAnnotation(annotations, 'u1', 'capture-2'), null);
 });

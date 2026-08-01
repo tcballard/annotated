@@ -22,7 +22,7 @@ The extension never stores audio/video Blobs in `chrome.storage`. The web app ne
 - Signed or public CDN URLs for playback; the API acknowledges uploads without proxying large media through the web process.
 - `chrome.storage.local` only for small draft metadata, preferences, and pending IDs.
 - `chrome.storage.session` for ephemeral runtime state; no long-lived provider secrets in extension storage.
-- The extension's bearer session token is ephemeral `chrome.storage.session` state; pending capture payloads are bounded metadata in `chrome.storage.local` and are retried by the service worker. A successful media upload is recorded as an asset ID before the annotation retry; eight failed or non-retryable attempts become a metadata-only blocked item for explicit recovery instead of an infinite loop.
+- The extension's bearer session token is ephemeral `chrome.storage.session` state; pending capture payloads are bounded metadata in `chrome.storage.local` and are retried by the service worker. A successful media upload is recorded as an asset ID before the annotation retry; a bounded client request ID makes the publish idempotent; eight failed or non-retryable attempts become a metadata-only blocked item for explicit recovery instead of an infinite loop.
 - IndexedDB or OPFS for short-lived offline media staging in the extension/web capture flow.
 
 ## Invariants

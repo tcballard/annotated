@@ -54,8 +54,11 @@ const postgresSchema = `
   );
   CREATE INDEX IF NOT EXISTS annotated_records_collection_idx ON annotated_records (collection);
   CREATE INDEX IF NOT EXISTS annotated_records_payload_gin_idx ON annotated_records USING gin (payload);
+  CREATE INDEX IF NOT EXISTS annotated_records_annotation_request_idx
+    ON annotated_records ((payload->>'authorId'), (payload->>'clientRequestId'))
+    WHERE collection = 'annotations';
 `;
-export const latestMigrationVersion = '002_entity_records';
+export const latestMigrationVersion = '003_idempotency_index';
 
 const recordCollections = Object.keys(emptyStore);
 const recordId = (collection, value, index) => String(value?.id || value?.tokenHash || `${collection}-${index}`);
