@@ -126,8 +126,9 @@ The local browser run exercised the user-facing flows below:
 - `.github/workflows/ci.yml` now makes that external image gate reproducible in
   GitHub Actions: it runs the clean Node/package checks and builds both
   `linux/amd64` and `linux/arm64` images under QEMU, then executes the pinned
-  provider binary in each image. The workflow itself still needs a passing run
-  on GitHub before it becomes observed evidence.
+  provider binary in each image. Both the push and pull-request runs for PR32
+  passed on 2026-08-01 (for example,
+  [run 30721572499](https://github.com/tcballard/annotated/actions/runs/30721572499)).
 
 ## Deliberately unverified external gates
 
