@@ -1,3 +1,4 @@
+const API_ORIGIN = 'http://localhost:8787';
 const start = document.querySelector('#start');
 const end = document.querySelector('#end');
 const startNumber = document.querySelector('#startNumber');
@@ -7,8 +8,40 @@ const trackFill = document.querySelector('#trackFill');
 const note = document.querySelector('#note');
 const noteCount = document.querySelector('#noteCount');
 const success = document.querySelector('#success');
+const successLink = document.querySelector('#successLink');
+const error = document.querySelector('#error');
+const backendStatus = document.querySelector('#backendStatus');
+const selectionCard = document.querySelector('#selectionCard');
+const selectionText = document.querySelector('#selectionText');
+
+let currentTab = { url: '', title: 'Current browser tab', host: '', sourceType: 'article' };
+let selectedText = '';
+let commentaryMode = 'text';
 
 const format = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
+
+const classify = (url) => {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (host.includes('youtube') || host === 'youtu.be') return 'video';
+    if (host.includes('podcast') || host.includes('spotify') || host.includes('overcast') || host.includes('soundcloud')) return 'podcast';
+  } catch { /* restricted or unavailable tab */ }
+  return 'article';
+};
+
+const showError = (message) => {
+  error.textContent = message;
+  error.hidden = false;
+  success.hidden = true;
+};
+
+const apiRequest = async (path, options = {}) => {
+  const response = await fetch(`${API_ORIGIN}${path}`, { headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.errors?.join(' ') || body.error || `Request failed (${response.status}).`);
+  return body;
+};
 
 function syncRange() {
   let from = Math.max(0, Math.min(90, Number(start.value)));
@@ -23,37 +56,84 @@ function syncRange() {
 
 function syncNote() { noteCount.textContent = `${note.value.length}/280`; }
 
+async function readSelection(tabId) {
+  try {
+    const result = await chrome.scripting.executeScript({ target: { tabId }, func: () => window.getSelection()?.toString() || '' });
+    return String(result?.[0]?.result || '').trim().slice(0, 2000);
+  } catch { return ''; }
+}
+
+async function loadCurrentTab() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab) return;
+    const url = tab.url || '';
+    const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
+    currentTab = { url, title: tab.title || 'Current browser tab', host, sourceType: classify(url) };
+    document.querySelector('#sourceTitle').textContent = currentTab.title;
+    document.querySelector('#sourceUrl').textContent = url || 'Source URL unavailable';
+    document.querySelector('#sourceIcon').textContent = currentTab.sourceType === 'video' ? '▶' : currentTab.sourceType === 'podcast' ? '◉' : 'T';
+    selectedText = tab.id ? await readSelection(tab.id) : '';
+    selectionCard.hidden = !selectedText;
+    selectionText.textContent = selectedText;
+  } catch {
+    showError('The active tab is restricted; paste its URL into the web capture desk.');
+  }
+}
+
+async function checkBackend() {
+  try {
+    await apiRequest('/api/health');
+    backendStatus.innerHTML = '<i></i> LIVE';
+  } catch {
+    backendStatus.innerHTML = '<i></i> OFFLINE';
+    showError('Start the annotated backend on localhost:8787 before publishing.');
+  }
+}
+
 [start, end].forEach((input) => input.addEventListener('input', syncRange));
 startNumber.addEventListener('change', () => { start.value = startNumber.value; syncRange(); });
 endNumber.addEventListener('change', () => { end.value = endNumber.value; syncRange(); });
 note.addEventListener('input', syncNote);
 
 document.querySelectorAll('[data-mode]').forEach((mode) => mode.addEventListener('click', () => {
+  commentaryMode = mode.dataset.mode;
   document.querySelectorAll('[data-mode]').forEach((button) => button.classList.toggle('active', button === mode));
-  note.placeholder = mode.dataset.mode === 'audio' ? 'Audio capture is ready in the full extension build.' : 'What stayed with you? Add the context the original clip is missing…';
+  note.placeholder = commentaryMode === 'audio' ? 'Audio publishing is coming with the media worker.' : 'What stayed with you? Add the context the original clip is missing…';
 }));
 
 document.querySelector('#publish').addEventListener('click', async () => {
-  if (!note.value.trim()) {
-    note.focus();
-    return;
-  }
-  const payload = { start: start.value, end: end.value, note: note.value, createdAt: Date.now() };
-  try { await chrome.storage.local.set({ annotatedDraft: payload }); } catch { /* browser preview fallback */ }
-  success.hidden = false;
-});
-
-async function loadCurrentTab() {
+  error.hidden = true;
+  if (!note.value.trim()) { note.focus(); showError('Add a text annotation before publishing.'); return; }
+  if (commentaryMode === 'audio') { showError('Audio publishing is coming with the media worker. Use Text for this pass.'); return; }
+  let protocol = '';
+  try { protocol = new URL(currentTab.url).protocol; } catch { /* invalid source */ }
+  if (!['http:', 'https:'].includes(protocol)) { showError('This tab does not expose a publishable http(s) source URL.'); return; }
+  const payload = {
+    sourceUrl: currentTab.url,
+    sourceType: currentTab.sourceType,
+    sourceTitle: currentTab.title,
+    sourceHost: currentTab.host,
+    sourceExcerpt: selectedText,
+    clipStart: currentTab.sourceType === 'article' ? 0 : Number(start.value),
+    clipEnd: currentTab.sourceType === 'article' ? 0 : Number(end.value),
+    commentary: note.value.trim().slice(0, 280),
+    commentaryMode: 'text',
+  };
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) return;
-    document.querySelector('#sourceTitle').textContent = tab.title || 'Current browser tab';
-    document.querySelector('#sourceUrl').textContent = tab.url || 'Source URL unavailable';
-    const host = tab.url ? new URL(tab.url).hostname.replace('www.', '') : '';
-    document.querySelector('#sourceIcon').textContent = host.includes('youtube') ? '▶' : host.includes('spotify') || host.includes('overcast') ? '◉' : 'T';
-  } catch { /* restricted tabs still leave the capture surface usable */ }
-}
+    const { annotation } = await apiRequest('/api/annotations', { method: 'POST', body: JSON.stringify(payload) });
+    success.hidden = false;
+    error.hidden = true;
+    successLink.href = annotation.url;
+    successLink.textContent = `Open ${annotation.url.replace(/^https?:\/\//, '')} →`;
+    successLink.hidden = false;
+    try { await chrome.storage.local.set({ annotatedDraft: payload, annotatedAnnotation: annotation }); } catch { /* storage is optional */ }
+  } catch (publishError) {
+    showError(publishError.message || 'Annotation could not be published.');
+  }
+});
 
 syncRange();
 syncNote();
 loadCurrentTab();
+checkBackend();

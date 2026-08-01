@@ -1,26 +1,29 @@
-# annotated — prototype
+# annotated
 
-A self-contained, browser-based prototype for the annotated.com concept: a Chrome-sidebar-first way to keep a moment, add the meaning, and preserve the link back to the source.
+A Chrome-sidebar-first product for keeping a moment, adding the meaning, and preserving the link back to the source.
 
 ## Run it
 
 ```bash
 npm install
+npm run dev:server # in a second terminal
 npm run dev
 ```
 
-Then open the local Vite URL. `npm run build` produces the production bundle.
+Then open the local Vite URL. The Vite dev server proxies `/api` to `http://localhost:8787`. `npm run build` produces the production bundle; `npm start` serves the built app and API together.
 
-## Included in this pass
+## Current product slice
 
 - Capture desk with a browser/source preview and sidebar capture flow
 - Video, article, and podcast source modes
 - 90-second clip selection for media sources
-- Text annotation and simulated audio annotation modes
+- Text annotation and an explicitly gated audio mode (media worker not connected yet)
 - Published annotation page with source citation and visible “File a claim” flow
 - Public discovery feed with follow, like, comment, and share interactions
 - Responsive desktop/mobile layouts with reduced-motion support
-- Local persistence for the draft and published state
-- A loadable Manifest V3 Chrome side-panel shell in `extension/`
+- Server-backed persistence for annotations, comments, and claims in `data/store.json`
+- Source URL resolver with URL validation, source classification, metadata extraction, and SSRF-safe host checks
+- Public annotation slugs and source citations
+- A Manifest V3 Chrome side panel in `extension/` that reads the active tab, captures a text selection, and publishes text annotations through the local API
 
-This is intentionally a frontend-first prototype: OAuth, media extraction/transcoding, server persistence, the social graph, and production hosting are the next integration layer. To try the extension shell, open `chrome://extensions`, enable Developer mode, choose “Load unpacked”, and select the `extension/` folder.
+OAuth, media extraction/transcoding, object storage, social graph persistence, moderation operations, and production hosting are being added as separate product slices. To try the extension, start `npm run dev:server`, open `chrome://extensions`, enable Developer mode, choose “Load unpacked”, and select the `extension/` folder. See [PERFORMANCE.md](PERFORMANCE.md) for the Rust/media-worker migration plan.

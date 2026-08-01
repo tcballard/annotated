@@ -5,12 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>annotated</title>
     <link rel="stylesheet" href="sidepanel.css" />
+    <link rel="stylesheet" href="extra.css" />
   </head>
   <body>
     <header class="panel-header">
       <div class="mark">a</div>
       <div><strong>annotated<span>.</span></strong><small>SIDEBAR</small></div>
-      <span class="local"><i></i> LOCAL</span>
+      <span class="local" id="backendStatus"><i></i> CONNECTING</span>
     </header>
     <main>
       <p class="eyebrow">Capture from this page</p>
@@ -18,6 +19,10 @@
       <section class="current-source">
         <div class="source-icon" id="sourceIcon">▶</div>
         <div><strong id="sourceTitle">Current browser tab</strong><small id="sourceUrl">Reading the page you are on</small></div>
+      </section>
+      <section class="selection-card" id="selectionCard" hidden>
+        <div class="selection-label">Selected passage from this tab</div>
+        <p id="selectionText"></p>
       </section>
       <section class="clip-card">
         <div class="card-heading"><span>Select a moment</span><b><span id="clipLength">0:48</span> / 1:30 max</b></div>
@@ -31,7 +36,8 @@
       </section>
       <button class="publish" id="publish">Publish annotation <b>→</b></button>
       <p class="privacy"><i></i> Nothing is published until you choose to publish.</p>
-      <div class="success" id="success" hidden><span>✓</span><div><strong>Ready to share.</strong><small>Your annotation is saved locally in this prototype.</small></div></div>
+      <p class="panel-error" id="error" role="alert" hidden></p>
+      <div class="success" id="success" hidden><span>✓</span><div><strong>Ready to share.</strong><small>Saved to the annotated backend.</small><a id="successLink" target="_blank" rel="noreferrer" hidden>Open public page →</a></div></div>
     </main>
     <script src="sidepanel.js"></script>
   </body>
