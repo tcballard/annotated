@@ -28,5 +28,7 @@ export const api = {
   unfollow: (userId) => apiRequest(`/api/users/${encodeURIComponent(userId)}/unfollow`, { method: 'POST' }),
   profile: (handle) => apiRequest(`/api/profiles/${encodeURIComponent(handle)}`),
   fileClaim: (slug, reason) => apiRequest(`/api/annotations/${encodeURIComponent(slug)}/claims`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  moderationClaims: () => apiRequest('/api/moderation/claims'),
+  moderateClaim: (id, status, note = '') => apiRequest(`/api/moderation/claims/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify({ status, note }) }),
   uploadAudio: (blob) => uploadRequest('/api/media/audio', blob),
 };

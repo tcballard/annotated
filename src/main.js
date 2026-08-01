@@ -73,6 +73,7 @@ const sourceData = {
 };
 
 const sourceLabels = { video: 'Video', article: 'Article', podcast: 'Podcast' };
+const canModerate = () => Boolean(state.user && ['owner', 'admin', 'moderator'].includes(state.user.role));
 
 const normalizeSource = (item = {}) => {
   const type = item.sourceType || item.type || 'article';
@@ -134,6 +135,8 @@ const initialState = {
   feedCursor: null,
   feedQuery: '',
   showFeedSearch: false,
+  moderationClaims: [],
+  moderationLoading: false,
   user: null,
   authProviders: {},
   authRequired: false,
@@ -284,6 +287,7 @@ const bootstrap = async () => {
     state.authProviders = providers.providers || {};
     state.authRequired = Boolean(providers.required);
     state.user = await api.me().then((result) => result.user).catch(() => null);
+    if (canModerate()) await loadModerationClaims();
     if (state.publishedSlug) {
       const { annotation } = await api.getAnnotation(state.publishedSlug);
       hydrateAnnotation(annotation);
@@ -324,6 +328,7 @@ const appHeader = () => `
       ${button('Capture', 'set-view', `nav-link ${state.activeView === 'capture' ? 'is-active' : ''}`, 'data-view="capture"')}
       ${button('Discover', 'set-view', `nav-link ${state.activeView === 'feed' ? 'is-active' : ''}`, 'data-view="feed"')}
       ${button('My annotation', 'set-view', `nav-link ${state.activeView === 'published' ? 'is-active' : ''}`, 'data-view="published"')}
+      ${canModerate() ? button('Moderation', 'set-view', `nav-link ${state.activeView === 'moderation' ? 'is-active' : ''}`, 'data-view="moderation"') : ''}
     </nav>
     <div class="header-actions">
       <span class="connection-status"><span class="status-dot ${state.serverStatus === 'offline' ? 'is-offline' : ''}"></span> ${state.serverStatus === 'online' ? 'Live backend' : state.serverStatus === 'checking' ? 'Connecting…' : 'Backend offline'}</span>
@@ -462,6 +467,20 @@ const annotationHero = () => {
   return `<div class="annotation-audio"><div class="podcast-orbit small"><span></span><span></span><span></span></div>${clipUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></audio>` : audioUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : icon('play')}<div class="mini-wave large">${Array.from({ length: 34 }, (_, i) => `<i style="height:${16 + ((i * 19) % 58)}%"></i>`).join('')}</div>${clipUrl && audioUrl ? `<audio class="commentary-audio" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : !clipUrl ? `<span class="media-status">${status}</span>` : ''}</div>`;
 };
 
+const moderationView = () => {
+  if (!canModerate()) return `<div class="feed-empty"><span class="eyebrow">Restricted</span><h3>Moderation access is required.</h3><p>Sign in with an owner, admin, or moderator account to review claims.</p></div>`;
+  const statuses = ['open', 'in_review', 'resolved', 'rejected'];
+  const claims = state.moderationClaims || [];
+  return `
+    <div class="view-head moderation-head"><div><span class="eyebrow">Source & rights</span><h2>Review claims.</h2><p>Keep every report attached to the annotation, record the decision, and leave an audit trail.</p></div><button class="ghost-button" data-action="refresh-moderation">${state.moderationLoading ? 'Refreshing…' : 'Refresh queue'} ${icon('arrow')}</button></div>
+    <main class="moderation-list">${claims.length ? claims.map((claim) => {
+      const annotation = claim.annotation || {};
+      const sourceUrl = annotation.sourceUrl || '#';
+      const current = claim.status || 'open';
+      return `<article class="moderation-card"><div class="moderation-card-head"><span class="claim-status status-${escapeHTML(current)}">${escapeHTML(current.replace('_', ' '))}</span><span class="moderation-date">${escapeHTML(claim.createdAt ? new Date(claim.createdAt).toLocaleString() : 'Recently')}</span></div><h3>${escapeHTML(annotation.sourceTitle || 'Untitled annotation')}</h3><p class="moderation-reason">${escapeHTML(claim.reason || 'No reason supplied.')}</p><div class="moderation-source"><span>${escapeHTML(annotation.sourceHost || 'source')}</span><a href="${escapeHTML(sourceUrl)}" target="_blank" rel="noreferrer">Open source ${icon('external')}</a></div><div class="moderation-meta">Reported by ${escapeHTML(claim.reporter?.displayName || claim.reporter?.handle || claim.reporterId || 'unknown reporter')}</div><div class="moderation-actions">${statuses.map((status) => `<button class="moderation-status ${current === status ? 'is-current' : ''}" data-action="moderate-claim" data-claim-id="${escapeHTML(claim.id)}" data-status="${status}" ${current === status ? 'disabled' : ''}>${status.replace('_', ' ')}</button>`).join('')}</div>${claim.resolutionNote ? `<p class="moderation-note">${escapeHTML(claim.resolutionNote)}</p>` : ''}</article>`;
+    }).join('') : `<div class="feed-empty"><span class="eyebrow">Queue clear</span><h3>${state.moderationLoading ? 'Loading claims…' : 'No claims need review.'}</h3><p>New rights reports will appear here with their source and reporter attached.</p></div>`}</main>`;
+};
+
 const publishedView = () => {
   const publishedSource = source();
   const publishedComments = state.publishedAnnotation?.comments || [];
@@ -479,7 +498,7 @@ const claimModal = () => `<div class="modal-backdrop" data-action="toggle-claim"
 const toast = () => state.toast ? `<div class="toast" role="status"><span class="toast-icon">${icon('check')}</span>${escapeHTML(state.toast)}</div>` : '';
 
 const render = () => {
-  app.innerHTML = `${appHeader()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : publishedView()}</main></div>${toast()}`;
+  app.innerHTML = `${appHeader()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : publishedView()}</main></div>${toast()}`;
 };
 
 const ensureClipBounds = () => {
@@ -580,6 +599,20 @@ const toggleAudioRecording = () => state.isRecording ? stopAudioRecording() : st
 const refreshFeed = async () => {
   if (state.serverStatus !== 'online') return;
   await loadFeed();
+};
+
+const loadModerationClaims = async () => {
+  if (!canModerate() || state.serverStatus !== 'online') return;
+  state.moderationLoading = true;
+  try {
+    const result = await api.moderationClaims();
+    state.moderationClaims = result.claims || [];
+  } catch (error) {
+    state.moderationClaims = [];
+    state.serverError = error.message;
+  } finally {
+    state.moderationLoading = false;
+  }
 };
 
 const loadFeed = async ({ append = false } = {}) => {
@@ -740,7 +773,14 @@ app.addEventListener('click', (event) => {
   const action = target.dataset.action;
 
   if (target.dataset.stopClick === 'true') return;
-  if (action === 'set-view') { state.activeView = target.dataset.view; persist(); render(); return; }
+  if (action === 'set-view') {
+    if (target.dataset.view === 'moderation' && !canModerate()) { notify('Moderation access is required.'); return; }
+    state.activeView = target.dataset.view;
+    if (state.activeView === 'moderation') loadModerationClaims().then(render);
+    persist();
+    render();
+    return;
+  }
   if (action === 'source-type') { setSource(target.dataset.type); return; }
   if (action === 'toggle-source-input') { state.showSourceInput = !state.showSourceInput; if (!state.showSourceInput) state.sourceError = ''; render(); return; }
   if (action === 'load-source') { loadSource(); return; }
@@ -752,6 +792,21 @@ app.addEventListener('click', (event) => {
   if (action === 'search') { state.showFeedSearch = !state.showFeedSearch; render(); if (state.showFeedSearch) document.querySelector('#feed-search')?.focus(); return; }
   if (action === 'clear-feed-search') { state.feedQuery = ''; state.feedCursor = null; loadFeed().then(() => { render(); document.querySelector('#feed-search')?.focus(); }); return; }
   if (action === 'feed-more') { loadFeed({ append: true }).then(render); return; }
+  if (action === 'refresh-moderation') { loadModerationClaims().then(render); return; }
+  if (action === 'moderate-claim') {
+    if (!canModerate() || state.serverStatus !== 'online') { notify('Moderation is unavailable while the backend is offline.'); return; }
+    const claimId = target.dataset.claimId;
+    const status = target.dataset.status;
+    (async () => {
+      try {
+        await api.moderateClaim(claimId, status);
+        await loadModerationClaims();
+        render();
+        notify(`Claim marked ${status.replace('_', ' ')}.`);
+      } catch (error) { notify(error.message || 'Claim status could not be saved.'); }
+    })();
+    return;
+  }
   if (action === 'toggle-like') {
     const slug = target.dataset.slug;
     if (slug && state.serverStatus === 'online') {

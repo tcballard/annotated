@@ -38,6 +38,6 @@ The unpacked extension's options page controls its API origin. It stores only bo
 
 Source processing uses bounded HTML metadata extraction and canonical-link preservation. Direct media and configured `yt-dlp` provider streams are transcoded asynchronously; FFprobe inspects duration, audio streams, and video height before a clip is marked ready. Active provider/FFmpeg processes can be cancelled by the owner, and late completions cannot revive a cancelled job. Set `YTDLP_BIN`, `MEDIA_WORKER_MAX_ATTEMPTS`, and `MEDIA_WORKER_RETRY_DELAY_MS` explicitly for a deployed worker. A provider binary or credential is not assumed merely because the adapter exists.
 
-Production also requires an explicit non-wildcard `CORS_ORIGIN` and `PUBLIC_ORIGIN`; `/api/ready` checks the configured metadata and object-store boundaries. Claims are reviewed through `/api/moderation/claims` by the owner/admin IDs in `MODERATOR_USER_IDS`, with status transitions and append-only audit records.
+Production also requires an explicit non-wildcard `CORS_ORIGIN` and `PUBLIC_ORIGIN`; `/api/ready` checks the configured metadata and object-store boundaries. Claims are reviewed through the owner/moderator **Moderation** queue and `/api/moderation/claims`, using the IDs in `MODERATOR_USER_IDS`, with status transitions and append-only audit records.
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the container, migration, readiness, backup, and rollback boundary.
