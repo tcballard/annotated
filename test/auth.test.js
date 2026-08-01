@@ -44,3 +44,16 @@ test('production authentication fails fast when either required provider is abse
 test('unconfigured providers fail instead of emitting fake OAuth URLs', async () => {
   await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'x'), /OAuth is not configured/);
 });
+
+test('extension OAuth return URLs are constrained to Chromium app redirects', async () => {
+  const saved = envSnapshot();
+  process.env.GOOGLE_CLIENT_ID = 'google-client';
+  process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
+  try {
+    const result = await startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://example.chromiumapp.org/annotated-auth');
+    assert.equal(result.cookies.length, 3);
+    await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://evil.example/callback'), /return URL is not allowed/);
+  } finally {
+    restoreEnv(saved);
+  }
+});

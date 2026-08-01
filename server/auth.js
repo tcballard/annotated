@@ -31,6 +31,7 @@ const providers = {
 const cookieName = 'annotated_session';
 const stateCookieName = 'annotated_oauth_state';
 const verifierCookieName = 'annotated_oauth_verifier';
+const returnCookieName = 'annotated_oauth_return';
 
 const base64url = (value) => Buffer.from(value).toString('base64url');
 const hashToken = (value) => createHash('sha256').update(value).digest('hex');
@@ -54,6 +55,16 @@ const providerFor = (name) => {
   return provider;
 };
 
+const validateReturnTo = (value) => {
+  if (!value) return null;
+  let url;
+  try { url = new URL(value); } catch { throw new Error('OAuth return URL is invalid.'); }
+  const allowedExtension = url.protocol === 'https:' && url.hostname.endsWith('.chromiumapp.org');
+  const allowedApp = value.startsWith(process.env.APP_ORIGIN || publicOrigin);
+  if (!allowedExtension && !allowedApp) throw new Error('OAuth return URL is not allowed.');
+  return url.toString();
+};
+
 const requestOrigin = (request) => request.socket?.remoteAddress || 'unknown';
 const rateBuckets = new Map();
 const enforceRateLimit = (request, providerName) => {
@@ -66,7 +77,7 @@ const enforceRateLimit = (request, providerName) => {
   if (current.count > 10) throw new Error('Too many sign-in attempts. Try again later.');
 };
 
-export const startOAuth = async (request, providerName) => {
+export const startOAuth = async (request, providerName, returnTo = '') => {
   enforceRateLimit(request, providerName);
   const provider = providerFor(providerName);
   const state = base64url(randomBytes(24));
@@ -80,9 +91,10 @@ export const startOAuth = async (request, providerName) => {
     code_challenge: codeChallenge(verifier),
     code_challenge_method: 'S256',
   });
+  const validatedReturnTo = validateReturnTo(returnTo);
   return {
     location: `${provider.authorize}?${params}`,
-    cookies: [cookie(stateCookieName, state, { maxAge: oauthStateTtlSeconds }), cookie(verifierCookieName, verifier, { maxAge: oauthStateTtlSeconds })],
+    cookies: [cookie(stateCookieName, state, { maxAge: oauthStateTtlSeconds }), cookie(verifierCookieName, verifier, { maxAge: oauthStateTtlSeconds }), ...(validatedReturnTo ? [cookie(returnCookieName, validatedReturnTo, { maxAge: oauthStateTtlSeconds })] : [])],
   };
 };
 
@@ -129,24 +141,61 @@ const upsertUser = async (identity) => {
   return next.users.find((item) => item.id === user.id);
 };
 
+const createSession = async (user) => {
+  const sessionToken = base64url(randomBytes(32));
+  const expiresAt = new Date(Date.now() + sessionTtlSeconds * 1000).toISOString();
+  await updateStore((store) => ({ ...store, sessions: [...(store.sessions || []).filter((session) => new Date(session.expiresAt) > new Date()), { id: randomUUID(), tokenHash: hashToken(sessionToken), userId: user.id, createdAt: new Date().toISOString(), expiresAt }] }));
+  return { token: sessionToken, expiresAt };
+};
+
+const createExtensionTicket = async (user, returnTo) => {
+  const ticket = base64url(randomBytes(32));
+  const expiresAt = new Date(Date.now() + 120_000).toISOString();
+  await updateStore((store) => ({ ...store, extensionTickets: [...(store.extensionTickets || []).filter((item) => new Date(item.expiresAt) > new Date()), { tokenHash: hashToken(ticket), userId: user.id, returnTo, expiresAt }] }));
+  return { ticket, expiresAt };
+};
+
 export const finishOAuth = async (request, providerName, url) => {
   const provider = providerFor(providerName);
   const cookies = parseCookies(request.headers.cookie);
   if (!url.searchParams.get('code') || !url.searchParams.get('state') || !cookies[stateCookieName] || !cookies[verifierCookieName] || !timingSafeEqual(Buffer.from(url.searchParams.get('state')), Buffer.from(cookies[stateCookieName]))) throw new Error('OAuth state validation failed.');
   const tokens = await exchangeCode(provider, url.searchParams.get('code'), cookies[verifierCookieName]);
   const user = await upsertUser(await profileFromProvider(providerName, provider, tokens.access_token));
-  const sessionToken = base64url(randomBytes(32));
-  const expiresAt = new Date(Date.now() + sessionTtlSeconds * 1000).toISOString();
-  await updateStore((store) => ({ ...store, sessions: [...(store.sessions || []).filter((session) => new Date(session.expiresAt) > new Date()), { id: randomUUID(), tokenHash: hashToken(sessionToken), userId: user.id, createdAt: new Date().toISOString(), expiresAt }] }));
-  return { user, cookie: cookie(cookieName, sessionToken, { maxAge: sessionTtlSeconds }), clearCookies: [cookie(stateCookieName, '', { clear: true }), cookie(verifierCookieName, '', { clear: true })] };
+  const session = await createSession(user);
+  const returnTo = cookies[returnCookieName] || null;
+  const extension = returnTo ? await createExtensionTicket(user, returnTo) : null;
+  return { user, cookie: cookie(cookieName, session.token, { maxAge: sessionTtlSeconds }), redirectTo: extension ? `${returnTo}${returnTo.includes('?') ? '&' : '?'}ticket=${encodeURIComponent(extension.ticket)}` : null, clearCookies: [cookie(stateCookieName, '', { clear: true }), cookie(verifierCookieName, '', { clear: true }), cookie(returnCookieName, '', { clear: true })] };
+};
+
+const requestToken = (request) => {
+  const authorization = String(request.headers.authorization || '');
+  return authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : parseCookies(request.headers.cookie)[cookieName];
 };
 
 export const sessionUser = async (request) => {
-  const token = parseCookies(request.headers.cookie)[cookieName];
+  const token = requestToken(request);
   if (!token) return null;
   const store = await readStore();
   const session = (store.sessions || []).find((item) => item.tokenHash === hashToken(token) && new Date(item.expiresAt) > new Date());
   return session ? (store.users || []).find((user) => user.id === session.userId) || null : null;
+};
+
+export const exchangeExtensionTicket = async (ticket) => {
+  if (!ticket || typeof ticket !== 'string') throw new Error('An extension auth ticket is required.');
+  let userId;
+  const now = new Date();
+  await updateStore((store) => {
+    const match = (store.extensionTickets || []).find((item) => item.tokenHash === hashToken(ticket) && new Date(item.expiresAt) > now);
+    if (!match) return store;
+    userId = match.userId;
+    return { ...store, extensionTickets: (store.extensionTickets || []).filter((item) => item !== match) };
+  });
+  if (!userId) throw new Error('Extension auth ticket is invalid or expired.');
+  const store = await readStore();
+  const user = (store.users || []).find((item) => item.id === userId);
+  if (!user) throw new Error('The extension account no longer exists.');
+  const session = await createSession(user);
+  return { token: session.token, expiresAt: session.expiresAt, user };
 };
 
 export const currentUser = async (request) => {
@@ -162,4 +211,4 @@ export const logout = async (request) => {
   return cookie(cookieName, '', { clear: true });
 };
 
-export { cookieName, oauthStateTtlSeconds, providers, publicOrigin, sessionTtlSeconds, stateCookieName, verifierCookieName };
+export { cookieName, oauthStateTtlSeconds, providers, publicOrigin, returnCookieName, sessionTtlSeconds, stateCookieName, verifierCookieName };

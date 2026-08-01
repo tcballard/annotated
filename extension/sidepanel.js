@@ -1,6 +1,6 @@
 import { extensionStorage } from './storage.js';
+import { apiOrigin, authHeaders, signIn } from './config.js';
 
-const API_ORIGIN = 'http://localhost:8787';
 const start = document.querySelector('#start');
 const end = document.querySelector('#end');
 const startNumber = document.querySelector('#startNumber');
@@ -15,6 +15,7 @@ const error = document.querySelector('#error');
 const backendStatus = document.querySelector('#backendStatus');
 const selectionCard = document.querySelector('#selectionCard');
 const selectionText = document.querySelector('#selectionText');
+const authActions = document.querySelector('#authActions');
 
 let currentTab = { url: '', title: 'Current browser tab', host: '', sourceType: 'article' };
 let selectedText = '';
@@ -41,9 +42,20 @@ const showError = (message) => {
 };
 
 const apiRequest = async (path, options = {}) => {
-  const response = await fetch(`${API_ORIGIN}${path}`, { headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
+  let response;
+  try {
+    response = await fetch(`${await apiOrigin()}${path}`, { credentials: 'omit', headers: { 'content-type': 'application/json', ...(await authHeaders()), ...(options.headers || {}) }, ...options });
+  } catch (requestError) {
+    requestError.retryable = true;
+    throw requestError;
+  }
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.errors?.join(' ') || body.error || `Request failed (${response.status}).`);
+  if (!response.ok) {
+    const requestError = new Error(body.errors?.join(' ') || body.error || `Request failed (${response.status}).`);
+    requestError.status = response.status;
+    requestError.retryable = response.status >= 500 || response.status === 429;
+    throw requestError;
+  }
   return body;
 };
 
@@ -124,11 +136,26 @@ async function checkBackend() {
   try {
     await apiRequest('/api/health');
     backendStatus.innerHTML = '<i></i> LIVE';
+    const auth = await apiRequest('/api/auth/providers').catch(() => ({ providers: {} }));
+    const providers = auth.providers || {};
+    authActions.hidden = !(providers.google || providers.x);
+    authActions.querySelectorAll('[data-auth]').forEach((button) => { button.hidden = !providers[button.dataset.auth]; });
   } catch {
     backendStatus.innerHTML = '<i></i> OFFLINE';
     showError('Start the annotated backend on localhost:8787 before publishing.');
   }
 }
+
+authActions.querySelectorAll('[data-auth]').forEach((button) => button.addEventListener('click', async () => {
+  try {
+    await signIn(button.dataset.auth);
+    authActions.hidden = true;
+    error.hidden = true;
+    error.textContent = '';
+  } catch (authError) {
+    showError(authError.message || 'Sign-in failed.');
+  }
+}));
 
 [start, end].forEach((input) => input.addEventListener('input', syncRange));
 startNumber.addEventListener('change', () => { start.value = startNumber.value; syncRange(); });
@@ -170,7 +197,10 @@ document.querySelector('#publish').addEventListener('click', async () => {
     await extensionStorage.clearDraft().catch(() => {});
     await extensionStorage.savePublished(annotation).catch(() => {});
   } catch (publishError) {
-    showError(publishError.message || 'Annotation could not be published.');
+    if (publishError.retryable) {
+      await extensionStorage.queueCapture(payload).catch(() => {});
+      showError('Backend unavailable. This capture is queued locally and will retry when the service worker reconnects.');
+    } else showError(publishError.message || 'Annotation could not be published.');
   }
 });
 

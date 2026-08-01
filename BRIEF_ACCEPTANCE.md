@@ -6,7 +6,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 
 | Requirement | Status | Current evidence | Completion evidence still required |
 | --- | --- | --- | --- |
-| Chrome side-panel extension is the primary capture surface | partial | Manifest V3 side panel reads the active tab and selected text and publishes text annotations. | Configurable production API, extension audio capture, resilient pending uploads, packaged-browser acceptance. |
+| Chrome side-panel extension is the primary capture surface | partial | Manifest V3 side panel reads the active tab and selected text, uses a configurable API origin, can exchange OAuth tickets for bearer sessions, and queues retryable publishes in bounded local metadata. | Extension audio capture, packaged-browser acceptance, and a real deployed-origin run. |
 | Clip media, text, audio, or video from a website | partial | Web capture handles all three source categories; extension captures selected text and media ranges. | End-to-end provider clips from the extension for YouTube and podcasts. |
 | Text and recorded-audio commentary | partial | Web capture records, stages, uploads, publishes, and replays audio; extension publishes text only. | Extension audio flow and browser evidence. |
 | Public annotation landing page | partial | Stable `/a/:slug` route reloads published state from the API. | Durable production persistence and clean-checkout browser evidence. |
@@ -14,7 +14,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 | Public social feed | partial | Published annotations and comments load from the local server store. | Durable database, pagination, profiles, authorization, and production evidence. |
 | Follow other users | missing | Follow UI is local-only state. | Persisted social graph and authorization tests. |
 | Comment on annotations | partial | Comments persist in the local server store. | Identity, authorization, abuse controls, and durable database tests. |
-| Sign up with X or Google OAuth only | partial | Configurable Google/X OAuth starts and callbacks use PKCE; sessions, logout, expiry, and owner IDs are server-backed. Local mode retains the development user. | Real provider credentials, callback success/cancellation/expiry browser evidence, and extension handoff. |
+| Sign up with X or Google OAuth only | partial | Configurable Google/X OAuth starts and callbacks use PKCE; sessions, logout, expiry, owner IDs, and one-time extension tickets are server-backed. Local mode retains the development user. | Real provider credentials and callback success/cancellation/expiry browser evidence. |
 | Paste a URL or use the active page | partial | Web app resolves pasted URLs; extension reads the active tab. | Unified production API configuration and browser coverage. |
 | Support YouTube videos | partial | Metadata uses YouTube oEmbed and the worker can invoke `yt-dlp`. | Installed/configured provider adapter, failure/retry coverage, playable output evidence. |
 | Support news articles with selected passage and metadata | partial | Resolver extracts bounded metadata; extension reads the user's selection. | Canonical URL handling, robust extraction, and selected-passage contract tests. |

@@ -13,6 +13,7 @@ const emptyStore = {
   media: [],
   mediaJobs: [],
   sessions: [],
+  extensionTickets: [],
   users: [{ id: 'local-tom', handle: 'tcballard', displayName: 'Tom Ballard' }],
 };
 
