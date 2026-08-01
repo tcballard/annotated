@@ -15,6 +15,14 @@ build, test, syntax, diff, and extension-package check, followed by production
 image builds for both `linux/amd64` and `linux/arm64`. Each image executes the
 pin-verified `/usr/local/bin/yt-dlp --version` check before the workflow can pass.
 
+The Node job also runs the production adapters against ephemeral PostgreSQL 16
+and an S3-compatible MinIO service. The integration test applies the checked-in
+migrations, exercises the transactional repository, creates and checks the
+media bucket, uploads a fixture, verifies its signed delivery URL, and deletes
+the object. Local `npm test` skips that test unless `DATABASE_URL` and the
+required `S3_*` values are present; it never substitutes the file/local
+adapters for this production-service evidence.
+
 Backups and recovery are external operational gates: take a PostgreSQL snapshot before migrations, retain object-store versioning/retention for published assets, and keep the prior image available for rollback. Source and provider requests re-check DNS answers for private/link-local address space at each input or redirect hop; keep egress controls at the deployment boundary as a second layer. A failed readiness check must remove the instance from service; do not fall back to the file adapter in production.
 
 The Docker image installs FFmpeg. It intentionally does not pretend that a provider extractor is present; install/pin `yt-dlp` in a reviewed worker-image extension and verify the actual runtime before enabling YouTube/podcast jobs.
