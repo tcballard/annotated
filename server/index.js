@@ -14,6 +14,7 @@ import { validateAnnotation, validateClaim, validateComment } from './validation
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, rateLimit, requestId, securityHeaders } from './hardening.js';
 import { canUseAudioAsset } from './media-access.js';
+import { metricsSnapshot, recordRequest } from './observability.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
@@ -61,7 +62,7 @@ const withComments = (annotation, store, viewerId = '') => ({
 });
 
 const handleApi = async (request, response, pathname) => {
-  if (request.method === 'GET' && pathname === '/api/health') return send(response, 200, { status: 'ok', version: '0.2.0', persistence: storageDescription() });
+  if (request.method === 'GET' && pathname === '/api/health') return send(response, 200, { status: 'ok', version: '0.2.0', persistence: storageDescription(), metrics: metricsSnapshot() });
   if (request.method === 'GET' && pathname === '/api/ready') {
     try {
       await checkStore();
@@ -317,8 +318,16 @@ const serveStatic = async (request, response, pathname) => {
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || '/', publicOrigin);
-  response.setHeader('x-request-id', requestId(request));
+  const id = requestId(request);
+  const startedAt = process.hrtime.bigint();
+  response.setHeader('x-request-id', id);
+  response.once('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    recordRequest({ method: request.method || 'UNKNOWN', path: url.pathname, status: response.statusCode, durationMs });
+    console.info(JSON.stringify({ event: 'http_request', requestId: id, method: request.method, path: url.pathname, status: response.statusCode, durationMs: Math.round(durationMs) }));
+  });
   try {
+    if (url.pathname.startsWith('/api/') && corsOrigin !== '*' && request.headers.origin && request.headers.origin !== corsOrigin) return send(response, 403, { error: 'Request origin is not allowed.' }, { 'access-control-allow-origin': 'null' });
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) return send(response, 204, '');
     if (request.method === 'GET' && url.pathname.startsWith('/media/')) return serveMedia(response, url.pathname.slice('/media/'.length));
     if (url.pathname.startsWith('/api/')) {
