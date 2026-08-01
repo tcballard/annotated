@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { createPostgresStore, fileStore, storageDescription } from '../server/store.js';
-import { S3ObjectStore } from '../server/object-store.js';
+import { LocalObjectStore, S3ObjectStore } from '../server/object-store.js';
 
 test('development defaults to the explicit file adapter', () => {
   assert.equal(storageDescription(), 'file');
@@ -30,6 +30,7 @@ test('postgres repository serializes the existing store contract transactionally
   const repository = createPostgresStore({ pool });
   const read = await repository.read();
   assert.deepEqual(read.annotations, []);
+  await repository.check();
   const next = await repository.update((current) => ({ ...current, users: [{ id: 'u1' }] }));
   assert.deepEqual(next.users, [{ id: 'u1' }]);
   await repository.close();
@@ -51,4 +52,24 @@ test('production S3 configuration is validated before serving media', () => {
   assert.throws(() => new S3ObjectStore(), /requires S3_BUCKET/);
   for (const [name, value] of Object.entries(saved)) process.env[name] = value;
   for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
+});
+
+test('local and S3 object stores expose explicit readiness checks', async () => {
+  await new LocalObjectStore().check();
+  const saved = { ...process.env };
+  Object.assign(process.env, {
+    S3_BUCKET: 'annotated-test',
+    S3_REGION: 'auto',
+    S3_ACCESS_KEY_ID: 'test-key',
+    S3_SECRET_ACCESS_KEY: 'test-secret',
+  });
+  const inputs = [];
+  try {
+    const store = new S3ObjectStore({ client: { async send(command) { inputs.push(command.input); } } });
+    await store.check();
+    assert.deepEqual(inputs, [{ Bucket: 'annotated-test' }]);
+  } finally {
+    for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
+    for (const [name, value] of Object.entries(saved)) process.env[name] = value;
+  }
 });

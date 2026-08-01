@@ -55,6 +55,10 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
     const result = await pool.query('SELECT state FROM annotated_state WHERE id = 1');
     return result.rows[0] ? normalizeStore(result.rows[0].state) : clone(emptyStore);
   };
+  const check = async () => {
+    await ensureSchema();
+    await pool.query('SELECT 1');
+  };
   const update = async (mutator) => {
     await ensureSchema();
     const client = await pool.connect();
@@ -77,7 +81,7 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
       client.release();
     }
   };
-  return { read, update, close: () => pool.end(), mode: 'postgres' };
+  return { read, update, check, close: () => pool.end(), mode: 'postgres' };
 };
 
 const fileStore = {
@@ -93,6 +97,7 @@ const fileStore = {
       return clone(emptyStore);
     }
   },
+  check: async () => { await fileStore.read(); },
   update: async (mutator) => {
     const current = await fileStore.read();
     const next = await mutator(current);
@@ -110,6 +115,10 @@ const selectedStore = storageMode === 'postgres' ? createPostgresStore() : fileS
 
 export async function readStore() {
   return selectedStore.read();
+}
+
+export async function checkStore() {
+  return selectedStore.check ? selectedStore.check() : selectedStore.read();
 }
 
 export function updateStore(mutator) {

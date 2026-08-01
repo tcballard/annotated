@@ -1,7 +1,7 @@
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Transform } from 'node:stream';
 import { dataDirectory } from './store.js';
@@ -23,6 +23,10 @@ const assertS3Configuration = () => {
 };
 
 class LocalObjectStore {
+  async check() {
+    await mkdir(localDirectory, { recursive: true });
+  }
+
   async putStream(request, { key, mimeType, maxBytes }) {
     const filePath = safeLocalPath(key);
     await mkdir(path.dirname(filePath), { recursive: true });
@@ -89,16 +93,20 @@ class LocalObjectStore {
 }
 
 class S3ObjectStore {
-  constructor() {
+  constructor({ client } = {}) {
     assertS3Configuration();
     this.bucket = process.env.S3_BUCKET;
     this.publicBaseUrl = process.env.S3_PUBLIC_BASE_URL?.replace(/\/$/, '');
-    this.client = new S3Client({
+    this.client = client || new S3Client({
       region: process.env.S3_REGION,
       endpoint: process.env.S3_ENDPOINT || undefined,
       forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
       credentials: { accessKeyId: process.env.S3_ACCESS_KEY_ID, secretAccessKey: process.env.S3_SECRET_ACCESS_KEY },
     });
+  }
+
+  async check() {
+    await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
   }
 
   async putStream(request, { key, mimeType, maxBytes }) {
