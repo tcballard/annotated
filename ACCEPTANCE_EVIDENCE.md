@@ -8,7 +8,7 @@ production gates are complete.
 
 ## Clean-checkout validation
 
-The following checks passed on `agent/brief-15-extension-lifecycle`:
+The following checks passed on `agent/brief-16-source-redirects`:
 
 ```text
 npm ci
