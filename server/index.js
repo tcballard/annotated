@@ -10,19 +10,26 @@ import { getObjectStore } from './object-store.js';
 import { enqueueMediaJob, recoverMediaJobs } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
+import { assertAuthConfiguration, authIsRequired, currentUser, finishOAuth, logout, providerStatus, startOAuth } from './auth.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
 const port = Number(process.env.PORT || 8787);
 const publicOrigin = process.env.PUBLIC_ORIGIN || `http://localhost:${port}`;
+const corsOrigin = process.env.CORS_ORIGIN || '*';
 
 const send = (response, status, body, headers = {}) => {
   const payload = typeof body === 'string' ? body : JSON.stringify(body);
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type', ...headers });
+  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'access-control-allow-origin': corsOrigin, 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type', ...(corsOrigin === '*' ? {} : { 'access-control-allow-credentials': 'true', vary: 'Origin' }), ...headers });
   response.end(payload);
 };
 
 const notFound = (response) => send(response, 404, { error: 'Not found.' });
+const redirect = (response, location, headers = {}) => {
+  response.writeHead(302, { location, 'cache-control': 'no-store', ...headers });
+  response.end();
+};
+const unauthorized = (response) => send(response, 401, { error: 'Sign in is required.' });
 
 const readJson = async (request) => {
   let body = '';
@@ -46,7 +53,35 @@ const withComments = (annotation, store) => ({
 
 const handleApi = async (request, response, pathname) => {
   if (request.method === 'GET' && pathname === '/api/health') return send(response, 200, { status: 'ok', version: '0.2.0', persistence: storageDescription() });
-  if (request.method === 'GET' && pathname === '/api/me') return send(response, 200, { user: (await readStore()).users[0] });
+  if (request.method === 'GET' && pathname === '/api/auth/providers') return send(response, 200, { required: authIsRequired(), providers: providerStatus() });
+
+  const authStartMatch = pathname.match(/^\/api\/auth\/(google|x)\/start$/);
+  if (authStartMatch && request.method === 'GET') {
+    try {
+      const result = await startOAuth(request, authStartMatch[1]);
+      return redirect(response, result.location, { 'set-cookie': result.cookies });
+    } catch (error) {
+      return send(response, error.message.startsWith('Too many') ? 429 : 503, { error: error.message });
+    }
+  }
+
+  const authCallbackMatch = pathname.match(/^\/api\/auth\/(google|x)\/callback$/);
+  if (authCallbackMatch && request.method === 'GET') {
+    try {
+      const result = await finishOAuth(request, authCallbackMatch[1], new URL(request.url || '/', publicOrigin));
+      return redirect(response, `${process.env.APP_ORIGIN || publicOrigin}/?auth=success`, { 'set-cookie': [result.cookie, ...result.clearCookies] });
+    } catch (error) {
+      console.error('OAuth callback failed:', error.message);
+      return redirect(response, `${process.env.APP_ORIGIN || publicOrigin}/?auth=error`);
+    }
+  }
+
+  if (request.method === 'POST' && pathname === '/api/auth/logout') return send(response, 200, { status: 'signed-out' }, { 'set-cookie': await logout(request) });
+
+  if (request.method === 'GET' && pathname === '/api/me') {
+    const user = await currentUser(request);
+    return user ? send(response, 200, { user, authenticated: true }) : unauthorized(response);
+  }
 
   if (request.method === 'POST' && pathname === '/api/sources/resolve') {
     const payload = await readJson(request);
@@ -54,10 +89,12 @@ const handleApi = async (request, response, pathname) => {
   }
 
   if (request.method === 'POST' && pathname === '/api/media/audio') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
     const mimeType = String(request.headers['content-type'] || '').split(';')[0].toLowerCase();
     if (!mimeType.startsWith('audio/')) return send(response, 415, { error: 'Audio uploads must use an audio content type.' });
     const media = await writeIncomingMedia(request, mimeType);
-    await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, createdAt: media.createdAt }] }));
+    await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, ownerId: actor?.id || 'local-tom', createdAt: media.createdAt }] }));
     return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, url: `${publicOrigin}/media/${media.id}` } });
   }
 
@@ -67,6 +104,8 @@ const handleApi = async (request, response, pathname) => {
   }
 
   if (request.method === 'POST' && pathname === '/api/annotations') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
     const payload = await readJson(request);
     const { errors, normalized } = validateAnnotation(payload);
     if (errors.length) return send(response, 422, { errors });
@@ -78,7 +117,7 @@ const handleApi = async (request, response, pathname) => {
     const id = randomUUID();
     const baseSlug = slugify(normalized.sourceTitle);
     const isMedia = normalized.sourceType !== 'article';
-    const annotation = { id, slug: `${baseSlug}-${id.slice(0, 6)}`, status: 'published', createdAt: now, authorId: 'local-tom', mediaStatus: isMedia ? 'queued' : 'not-applicable', ...normalized };
+    const annotation = { id, slug: `${baseSlug}-${id.slice(0, 6)}`, status: 'published', createdAt: now, authorId: actor?.id || 'local-tom', mediaStatus: isMedia ? 'queued' : 'not-applicable', ...normalized };
     const next = await updateStore((store) => ({ ...store, annotations: [...store.annotations, annotation] }));
     if (isMedia) void enqueueMediaJob({ annotationId: id, sourceUrl: normalized.sourceUrl, sourceType: normalized.sourceType, sourceMediaUrl: normalized.mediaUrl, mediaUrl: normalized.mediaUrl, provider: normalized.provider, clipStart: normalized.clipStart, clipEnd: normalized.clipEnd }).catch((error) => console.error(error));
     return send(response, 201, { annotation: withComments(annotation, next) });
@@ -93,6 +132,8 @@ const handleApi = async (request, response, pathname) => {
 
   const commentsMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/comments$/);
   if (commentsMatch && request.method === 'POST') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
     const payload = await readJson(request);
     const validation = validateComment(payload);
     if (validation.error) return send(response, 422, { error: validation.error });
@@ -100,7 +141,7 @@ const handleApi = async (request, response, pathname) => {
     const result = await updateStore((store) => {
       const annotation = store.annotations.find((item) => item.slug === commentsMatch[1] || item.id === commentsMatch[1]);
       if (!annotation) return store;
-      store.comments.push({ id: randomUUID(), annotationId: annotation.id, authorId: 'local-tom', body: validation.body, createdAt: now });
+      store.comments.push({ id: randomUUID(), annotationId: annotation.id, authorId: actor?.id || 'local-tom', body: validation.body, createdAt: now });
       return store;
     });
     const annotation = result.annotations.find((item) => item.slug === commentsMatch[1] || item.id === commentsMatch[1]);
@@ -109,13 +150,15 @@ const handleApi = async (request, response, pathname) => {
 
   const claimsMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/claims$/);
   if (claimsMatch && request.method === 'POST') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
     const payload = await readJson(request);
     const validation = validateClaim(payload);
     if (validation.error) return send(response, 422, { error: validation.error });
     const result = await updateStore((store) => {
       const annotation = store.annotations.find((item) => item.slug === claimsMatch[1] || item.id === claimsMatch[1]);
       if (!annotation) return store;
-      store.claims.push({ id: randomUUID(), annotationId: annotation.id, reason: validation.reason, status: 'open', createdAt: new Date().toISOString() });
+      store.claims.push({ id: randomUUID(), annotationId: annotation.id, reason: validation.reason, status: 'open', reporterId: actor?.id || 'local-tom', createdAt: new Date().toISOString() });
       return store;
     });
     return result.claims.some((claim) => claim.annotationId === (result.annotations.find((item) => item.slug === claimsMatch[1] || item.id === claimsMatch[1])?.id))
@@ -171,6 +214,7 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
+  assertAuthConfiguration();
   getObjectStore();
   console.log(`annotated server listening on http://localhost:${port}`);
   recoverMediaJobs().catch((error) => console.error('media recovery failed', error));
