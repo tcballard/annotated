@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildFfmpegArgs, shouldAbortMediaJob, validateMediaProbe } from '../server/media-worker.js';
+import { buildFfmpegArgs, checkMediaRuntime, shouldAbortMediaJob, validateMediaProbe } from '../server/media-worker.js';
 
 test('video transcodes are capped at 90 seconds and 240p', () => {
   const args = buildFfmpegArgs({ sourceType: 'video', clipStart: 5, clipEnd: 200 }, 'input.mp4', 'output.mp4');
@@ -12,6 +12,26 @@ test('podcast transcodes remove video and use the requested bounded duration', (
   const args = buildFfmpegArgs({ sourceType: 'podcast', clipStart: 12, clipEnd: 42 }, 'input.mp3', 'output.webm');
   assert.equal(args[args.indexOf('-t') + 1], '30');
   assert.ok(args.includes('-vn'));
+});
+
+test('production readiness checks ffmpeg, ffprobe, and the configured provider extractor', async () => {
+  const calls = [];
+  const runtime = await checkMediaRuntime({
+    includeProvider: true,
+    runCommand: async (command, args) => {
+      calls.push({ command, args });
+      return { stdout: `${command} version test`, stderr: '' };
+    },
+  });
+  assert.deepEqual(calls.map(({ command }) => command), ['ffmpeg', 'ffprobe', 'yt-dlp']);
+  assert.deepEqual(runtime, { status: 'ready', checks: ['ffmpeg', 'ffprobe', 'provider extractor'] });
+});
+
+test('production readiness fails explicitly when a media runtime binary is unavailable', async () => {
+  await assert.rejects(
+    () => checkMediaRuntime({ includeProvider: true, runCommand: async (command) => { throw new Error(`${command} not found`); } }),
+    /Media runtime ffmpeg is unavailable: ffmpeg not found/,
+  );
 });
 
 test('zero-length media clips are rejected before spawning ffmpeg', () => {
