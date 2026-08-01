@@ -30,6 +30,22 @@ export const buildFfmpegArgs = (job, input, outputPath) => {
   return args;
 };
 
+export const validateMediaProbe = (sourceType, probe) => {
+  const duration = Number(probe?.format?.duration);
+  if (!Number.isFinite(duration) || duration <= 0) throw new Error('Media output has no measurable duration.');
+  if (duration > 90.05) throw new Error('Media output exceeds the 90-second limit.');
+  const streams = Array.isArray(probe?.streams) ? probe.streams : [];
+  if (!streams.some((stream) => stream.codec_type === 'audio')) throw new Error('Media output contains no audio stream.');
+  if (sourceType === 'video') {
+    const video = streams.find((stream) => stream.codec_type === 'video');
+    const height = Number(video?.height);
+    if (!Number.isFinite(height) || height <= 0) throw new Error('Video output has no measurable height.');
+    if (height > 240) throw new Error('Video output exceeds the 240p limit.');
+  }
+  if (sourceType !== 'video' && streams.some((stream) => stream.codec_type === 'video')) throw new Error('Audio output unexpectedly contains a video stream.');
+  return { duration, streams };
+};
+
 const run = (command, args, { maxOutput = 64_000, jobId = '' } = {}) => new Promise((resolve, reject) => {
   const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   if (jobId) activeProcesses.set(jobId, child);
@@ -82,6 +98,10 @@ const runJob = async (job) => {
     const input = await resolveInput(job);
     const args = buildFfmpegArgs(job, input, outputPath);
     await run('ffmpeg', args, { jobId: job.id });
+    const probeResult = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type,height', '-of', 'json', outputPath], { jobId: job.id });
+    let probe;
+    try { probe = JSON.parse(probeResult.stdout); } catch { throw new Error('Media output inspection returned invalid data.'); }
+    validateMediaProbe(job.sourceType, probe);
     const completed = await readStore();
     if (shouldAbortMediaJob(job, completed)) {
       await removeMediaFile(outputPath);

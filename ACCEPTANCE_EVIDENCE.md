@@ -53,6 +53,12 @@ The local browser run exercised the user-facing flows below:
 - Media-policy tests cover cancellation checks before both a late successful
   publish and a retry update, preventing a cancelled job from being revived by
   a child-process completion.
+- Media-policy tests cover the FFprobe boundary for duration, required audio,
+  audio-only outputs, and the 240px video-height limit; the generated artifact
+  is inspected before the worker marks it ready.
+- A local FFmpeg fixture using the worker's `scale=-2:240` policy produced an
+  MP4 whose FFprobe report showed duration `1.266667`, a video height of `240`,
+  and an audio stream.
 
 ## Deliberately unverified external gates
 
