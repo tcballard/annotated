@@ -39,13 +39,6 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
-      minio:
-        image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
-        ports:
-          - 9000:9000
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -56,6 +49,13 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Start S3-compatible service
+        run: >-
+          docker run --detach --rm --name annotated-minio
+          --publish 9000:9000
+          --env MINIO_ROOT_USER=minioadmin
+          --env MINIO_ROOT_PASSWORD=minioadmin
+          minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
       - name: Wait for S3-compatible service
         shell: bash
         run: |
@@ -87,6 +87,9 @@ jobs:
             echo "runtime extension package contains development files" >&2
             exit 1
           fi
+      - name: Stop S3-compatible service
+        if: always()
+        run: docker stop annotated-minio 2>/dev/null || true
 
   image:
     name: Production image (${{ matrix.platform }})
