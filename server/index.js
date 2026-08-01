@@ -42,12 +42,15 @@ const readJson = async (request) => {
 
 const slugify = (value) => String(value).toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'annotation';
 
-const withComments = (annotation, store) => ({
+const withComments = (annotation, store, viewerId = '') => ({
   ...annotation,
   url: `${publicOrigin}/a/${annotation.slug}`,
   audioUrl: annotation.audioAssetId ? `${publicOrigin}/media/${annotation.audioAssetId}` : null,
   clipUrl: annotation.mediaAssetId ? `${publicOrigin}/media/${annotation.mediaAssetId}` : null,
-  comments: store.comments.filter((comment) => comment.annotationId === annotation.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+  author: (store.users || []).find((user) => user.id === annotation.authorId) || { id: annotation.authorId, handle: annotation.authorId, displayName: annotation.authorId },
+  likes: (store.likes || []).filter((like) => like.annotationId === annotation.id).length,
+  likedByMe: Boolean(viewerId && (store.likes || []).some((like) => like.annotationId === annotation.id && like.userId === viewerId)),
+  comments: store.comments.filter((comment) => comment.annotationId === annotation.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((comment) => ({ ...comment, author: (store.users || []).find((user) => user.id === comment.authorId) || { id: comment.authorId, handle: comment.authorId } })),
   claims: undefined,
 });
 
@@ -105,7 +108,45 @@ const handleApi = async (request, response, pathname) => {
 
   if (request.method === 'GET' && pathname === '/api/feed') {
     const store = await readStore();
-    return send(response, 200, { annotations: store.annotations.filter((item) => item.status === 'published').sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((item) => withComments(item, store)) });
+    const viewer = await currentUser(request);
+    const query = new URL(request.url || '/', publicOrigin).searchParams;
+    const limit = Math.min(50, Math.max(1, Number(query.get('limit') || 20)));
+    const offset = Math.max(0, Number(query.get('cursor') || 0));
+    const sourceType = query.get('sourceType');
+    const followingOnly = query.get('following') === 'true' && viewer;
+    const followedIds = new Set((store.follows || []).filter((follow) => follow.followerId === viewer?.id).map((follow) => follow.followingId));
+    const candidates = store.annotations.filter((item) => item.status === 'published' && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const page = candidates.slice(offset, offset + limit);
+    return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null });
+  }
+
+  const profileMatch = pathname.match(/^\/api\/profiles\/([^/]+)$/);
+  if (profileMatch && request.method === 'GET') {
+    const store = await readStore();
+    const profile = (store.users || []).find((user) => user.handle === decodeURIComponent(profileMatch[1]) || user.id === decodeURIComponent(profileMatch[1]));
+    if (!profile) return notFound(response);
+    const viewer = await currentUser(request);
+    return send(response, 200, { profile: { ...profile, followers: (store.follows || []).filter((follow) => follow.followingId === profile.id).length, following: (store.follows || []).filter((follow) => follow.followerId === profile.id).length, isFollowing: Boolean(viewer && (store.follows || []).some((follow) => follow.followerId === viewer.id && follow.followingId === profile.id)) } });
+  }
+
+  const followMatch = pathname.match(/^\/api\/users\/([^/]+)\/(follow|unfollow)$/);
+  if (followMatch && request.method === 'POST') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
+    const targetId = decodeURIComponent(followMatch[1]);
+    const knownUsers = (await readStore()).users || [];
+    if (!knownUsers.some((user) => user.id === targetId)) return notFound(response);
+    if (targetId === actor?.id) return send(response, 422, { error: 'You cannot follow yourself.' });
+    let following = followMatch[2] === 'follow';
+    const result = await updateStore((store) => {
+      const exists = (store.follows || []).some((follow) => follow.followerId === (actor?.id || 'local-tom') && follow.followingId === targetId);
+      const follows = following && !exists
+        ? [...(store.follows || []), { id: randomUUID(), followerId: actor?.id || 'local-tom', followingId: targetId, createdAt: new Date().toISOString() }]
+        : !following ? (store.follows || []).filter((follow) => !(follow.followerId === (actor?.id || 'local-tom') && follow.followingId === targetId)) : store.follows || [];
+      return { ...store, follows };
+    });
+    following = result.follows.some((follow) => follow.followerId === (actor?.id || 'local-tom') && follow.followingId === targetId);
+    return send(response, 200, { following });
   }
 
   const cancelJobMatch = pathname.match(/^\/api\/media\/jobs\/([0-9a-f-]+)\/cancel$/i);
@@ -158,7 +199,23 @@ const handleApi = async (request, response, pathname) => {
       return store;
     });
     const annotation = result.annotations.find((item) => item.slug === commentsMatch[1] || item.id === commentsMatch[1]);
-    return annotation ? send(response, 201, { annotation: withComments(annotation, result) }) : notFound(response);
+    return annotation ? send(response, 201, { annotation: withComments(annotation, result, actor?.id) }) : notFound(response);
+  }
+
+  const likeMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/(like|unlike)$/);
+  if (likeMatch && request.method === 'POST') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
+    const result = await updateStore((store) => {
+      const annotation = store.annotations.find((item) => item.slug === likeMatch[1] || item.id === likeMatch[1]);
+      if (!annotation) return store;
+      const userId = actor?.id || 'local-tom';
+      const key = (like) => like.annotationId === annotation.id && like.userId === userId;
+      const likes = likeMatch[2] === 'like' ? ((store.likes || []).some(key) ? store.likes : [...(store.likes || []), { id: randomUUID(), annotationId: annotation.id, userId, createdAt: new Date().toISOString() }]) : (store.likes || []).filter((like) => !key(like));
+      return { ...store, likes };
+    });
+    const annotation = result.annotations.find((item) => item.slug === likeMatch[1] || item.id === likeMatch[1]);
+    return annotation ? send(response, 200, { annotation: withComments(annotation, result, actor?.id) }) : notFound(response);
   }
 
   const claimsMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/claims$/);
