@@ -40,4 +40,9 @@ export async function serveStoredMedia(response, media) {
   return getObjectStore().serve(response, media);
 }
 
+export async function removeStoredMedia(media) {
+  if (!media?.key && !media?.fileName) return;
+  return getObjectStore().remove(media);
+}
+
 export { maxMediaBytes, mediaDirectory, mediaWorkDirectory, objectStorageMode };

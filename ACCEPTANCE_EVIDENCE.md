@@ -13,7 +13,7 @@ The following checks passed on `agent/brief-16-source-redirects`:
 ```text
 npm ci
 npm run build
-npm test                         # 39 passing tests
+npm test                         # 40 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -75,6 +75,8 @@ The local browser run exercised the user-facing flows below:
   migration ledger.
 - Storage tests cover reconstruction from collection records and the write path
   that persists entity records while retaining the compatibility state row.
+- Source/media tests revalidate provider-returned URLs before FFmpeg use, and
+  object-store tests cover deletion of abandoned derived objects.
 
 ## Deliberately unverified external gates
 

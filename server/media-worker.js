@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { mediaWorkDirectory, removeMediaFile, storeMediaFile } from './media-store.js';
+import { mediaWorkDirectory, removeMediaFile, removeStoredMedia, storeMediaFile } from './media-store.js';
 import { readStore, updateStore } from './store.js';
 import { assertPublicUrl } from './ssrf.js';
 import { parseSourceUrl } from './source-resolver.js';
@@ -76,10 +76,14 @@ export const resolveInput = async (job, { lookup } = {}) => {
     const result = await run(ytdlpBinary, ['--no-playlist', '--format', format, '--get-url', sourceUrl], { jobId: job.id });
     const input = result.stdout.trim().split(/\s+/)[0];
     if (!input) throw new Error('The media provider returned no playable stream.');
-    return input;
+    return validatePlayableInput(input, { lookup });
   }
   throw new Error('No playable media stream was found for this source.');
 };
+
+export async function validatePlayableInput(value, { lookup } = {}) {
+  return (await assertPublicUrl(parseSourceUrl(value).toString(), { lookup })).toString();
+}
 
 const updateAnnotation = (annotationId, changes) => updateStore((store) => ({
   ...store,
@@ -95,6 +99,7 @@ const runJob = async (job) => {
   const output = outputFor(job.sourceType, assetId);
   const key = `clips/${output.fileName}`;
   const outputPath = path.join(mediaWorkDirectory, output.fileName);
+  let storedAsset;
   try {
     await mkdir(mediaWorkDirectory, { recursive: true });
     const input = await resolveInput(job);
@@ -111,6 +116,7 @@ const runJob = async (job) => {
       return;
     }
     const asset = await storeMediaFile(outputPath, { id: assetId, key, mimeType: output.mimeType });
+    storedAsset = { id: assetId, key, fileName: asset.fileName || key, mimeType: output.mimeType };
     let published = false;
     await updateStore((store) => {
       if (shouldAbortMediaJob(job, store)) return store;
@@ -123,12 +129,14 @@ const runJob = async (job) => {
       };
     });
     if (!published) {
+      await removeStoredMedia(storedAsset).catch(() => {});
       await removeMediaFile(outputPath);
       cancelledJobs.delete(job.id);
       return;
     }
     await removeMediaFile(outputPath);
   } catch (error) {
+    if (storedAsset) await removeStoredMedia(storedAsset).catch(() => {});
     await removeMediaFile(outputPath);
     const latest = await readStore();
     if (shouldAbortMediaJob(job, latest)) {

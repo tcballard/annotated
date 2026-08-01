@@ -1,7 +1,7 @@
 import { createReadStream, createWriteStream } from 'node:fs';
 import { mkdir, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Transform } from 'node:stream';
 import { dataDirectory } from './store.js';
@@ -79,6 +79,10 @@ class LocalObjectStore {
     return { bytes: info.size, fileName: key, mimeType };
   }
 
+  async remove({ key, fileName }) {
+    await unlink(safeLocalPath(key || fileName)).catch((error) => { if (error.code !== 'ENOENT') throw error; });
+  }
+
   async serve(response, media) {
     const filePath = safeLocalPath(media.key || media.fileName);
     try {
@@ -128,6 +132,10 @@ class S3ObjectStore {
     const info = await stat(filePath);
     await this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: createReadStream(filePath), ContentType: mimeType, ContentLength: info.size }));
     return { bytes: info.size, fileName: key, mimeType };
+  }
+
+  async remove({ key, fileName }) {
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key || fileName }));
   }
 
   async url(media) {

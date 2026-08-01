@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { classifySource, parseSourceUrl, resolveSource } from '../server/source-resolver.js';
-import { resolveInput } from '../server/media-worker.js';
+import { resolveInput, validatePlayableInput } from '../server/media-worker.js';
 import { matchesFeedQuery, normalizeFeedQuery } from '../server/feed.js';
 
 const publicLookup = async () => [{ address: '93.184.216.34', family: 4 }];
@@ -78,6 +78,12 @@ test('direct media worker inputs remain SSRF-safe', async () => {
   assert.equal(await resolveInput({ sourceUrl: 'https://cdn.example/audio.mp3', sourceType: 'podcast' }, { lookup: publicLookup }), 'https://cdn.example/audio.mp3');
   await assert.rejects(() => resolveInput({ sourceUrl: 'http://127.0.0.1/audio.mp3', sourceType: 'podcast' }), /not allowed/);
   await assert.rejects(() => resolveInput({ sourceUrl: 'https://cdn.example/audio.mp3', sourceType: 'podcast' }, { lookup: async () => [{ address: '192.168.1.9', family: 4 }] }), /not allowed/);
+});
+
+test('provider-returned playable URLs are revalidated before FFmpeg use', async () => {
+  assert.equal(await validatePlayableInput('https://stream.example/episode.m4a', { lookup: publicLookup }), 'https://stream.example/episode.m4a');
+  await assert.rejects(() => validatePlayableInput('https://stream.example/episode.m4a', { lookup: async () => [{ address: '10.0.0.9', family: 4 }] }), /not allowed/);
+  await assert.rejects(() => validatePlayableInput('file:///tmp/private-media', { lookup: publicLookup }), /Only http and https/);
 });
 
 test('feed search matches source and author context with a bounded query', () => {

@@ -105,7 +105,8 @@ test('local and S3 object stores expose explicit readiness checks', async () => 
   try {
     const store = new S3ObjectStore({ client: { async send(command) { inputs.push(command.input); } } });
     await store.check();
-    assert.deepEqual(inputs, [{ Bucket: 'annotated-test' }]);
+    await store.remove({ key: 'clips/old.mp4' });
+    assert.deepEqual(inputs, [{ Bucket: 'annotated-test' }, { Bucket: 'annotated-test', Key: 'clips/old.mp4' }]);
   } finally {
     for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
     for (const [name, value] of Object.entries(saved)) process.env[name] = value;
