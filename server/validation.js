@@ -9,6 +9,7 @@ export function validateAnnotation(input) {
   if (typeof input.sourceTitle !== 'string' || !input.sourceTitle.trim() || input.sourceTitle.length > 500) errors.push('sourceTitle is required.');
   if (!allowedModes.has(input.commentaryMode)) errors.push('commentaryMode must be text or audio.');
   if (input.commentaryMode === 'text' && (!input.commentary || !String(input.commentary).trim())) errors.push('Text commentary is required.');
+  if (input.commentaryMode === 'audio' && (!input.audioAssetId || typeof input.audioAssetId !== 'string')) errors.push('An uploaded audio asset is required.');
   if (String(input.commentary || '').length > 280) errors.push('Text commentary must be 280 characters or fewer.');
   const start = Number(input.clipStart || 0);
   const end = Number(input.clipEnd || 0);

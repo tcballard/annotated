@@ -104,6 +104,10 @@ const initialState = {
   commentaryMode: 'text',
   isRecording: false,
   recordedAudio: false,
+  audioAssetId: '',
+  audioUrl: '',
+  audioDuration: 0,
+  recordingSeconds: 0,
   published: false,
   liked: false,
   following: false,
@@ -130,6 +134,11 @@ const saved = (() => {
 const state = { ...initialState, ...saved };
 if (!state.publishedSlug) state.published = false;
 let toastTimer;
+let mediaRecorder;
+let recordingStream;
+let recordingChunks = [];
+let recordingTimer;
+let recordingStartedAt = 0;
 
 const persist = () => {
   try {
@@ -142,6 +151,9 @@ const persist = () => {
       commentary: state.commentary,
       commentaryMode: state.commentaryMode,
       recordedAudio: state.recordedAudio,
+      audioAssetId: state.audioAssetId,
+      audioUrl: state.audioUrl,
+      audioDuration: state.audioDuration,
       published: state.published,
       publishedSlug: state.publishedSlug,
       customSource: state.customSource,
@@ -212,6 +224,9 @@ const hydrateAnnotation = (annotation) => {
   state.commentary = annotation.commentary || '';
   state.commentaryMode = annotation.commentaryMode || 'text';
   state.recordedAudio = state.commentaryMode === 'audio';
+  state.audioAssetId = annotation.audioAssetId || '';
+  state.audioUrl = annotation.audioUrl || '';
+  state.audioDuration = Number(annotation.audioDuration) || 0;
 };
 
 const bootstrap = async () => {
@@ -335,7 +350,7 @@ const timeRange = () => {
 const commentaryEditor = () => `
   <div class="commentary-editor">
     <div class="commentary-head"><span>Your annotation</span><div class="mode-switch" role="group" aria-label="Commentary type">${button(`${icon('text')} Text`, 'commentary-mode', state.commentaryMode === 'text' ? 'mode-button is-active' : 'mode-button', 'data-mode="text"')}${button(`${icon('mic')} Audio`, 'commentary-mode', state.commentaryMode === 'audio' ? 'mode-button is-active' : 'mode-button', 'data-mode="audio"')}</div></div>
-    ${state.commentaryMode === 'text' ? `<textarea data-action="commentary" placeholder="What stayed with you? Add the context the original clip is missing...">${escapeHTML(state.commentary)}</textarea><div class="editor-foot"><span>${state.commentary.length}/280</span><span>Visible on the public page</span></div>` : `<div class="audio-recorder ${state.isRecording ? 'is-recording' : ''}"><button class="record-button" data-action="toggle-record" aria-label="${state.isRecording ? 'Stop recording' : 'Start recording'}">${icon(state.isRecording ? 'pause' : 'mic')}</button><div><strong>${state.isRecording ? 'Recording your take…' : state.recordedAudio ? 'Audio note ready' : 'Record a 90-second take'}</strong><span>${state.isRecording ? 'Tap to stop' : state.recordedAudio ? 'You can replace it before publishing' : 'Say the thing you want to remember'}</span></div><span class="audio-duration">${state.recordedAudio ? '0:18' : '0:00'}</span></div>`}
+    ${state.commentaryMode === 'text' ? `<textarea data-action="commentary" placeholder="What stayed with you? Add the context the original clip is missing...">${escapeHTML(state.commentary)}</textarea><div class="editor-foot"><span>${state.commentary.length}/280</span><span>Visible on the public page</span></div>` : `<div class="audio-recorder ${state.isRecording ? 'is-recording' : ''} ${state.isUploadingAudio ? 'is-uploading' : ''}"><button class="record-button" data-action="toggle-record" aria-label="${state.isRecording ? 'Stop recording' : 'Start recording'}" ${state.isUploadingAudio ? 'disabled' : ''}>${icon(state.isRecording ? 'pause' : 'mic')}</button><div><strong>${state.isRecording ? 'Recording your take…' : state.isUploadingAudio ? 'Uploading your take…' : state.recordedAudio ? 'Audio note ready' : 'Record a 90-second take'}</strong><span>${state.isRecording ? 'Tap to stop · max 1:30' : state.recordedAudio ? 'You can replace it before publishing' : 'Say the thing you want to remember'}</span></div><span class="audio-duration">${formatTime(state.isRecording ? state.recordingSeconds : state.audioDuration)}</span></div>`}
   </div>`;
 
 const sidebar = () => `
@@ -388,7 +403,7 @@ const publishedView = () => {
   const hasNote = Boolean((state.publishedAnnotation?.commentary || state.commentary).trim()) || state.recordedAudio;
   return `
     <div class="view-head published-head"><div><span class="eyebrow">Your public page</span><h2>${state.published ? 'The moment, with your margin note.' : 'Your first annotation is waiting.'}</h2><p>${state.published ? 'A permanent link back to the source, with the context only you could add.' : 'Capture something from the page you are on, then publish it here.'}</p></div>${state.published ? `<button class="ghost-button" data-action="set-view" data-view="capture">${icon('back')} Capture another</button>` : ''}</div>
-    ${state.published ? `<div class="annotation-layout"><article class="annotation-page"><div class="annotation-page-bar"><span class="source-pill">${icon(state.sourceType)} ${publishedSource.label}</span><span>Published just now</span></div><div class="annotation-hero ${state.sourceType}">${state.sourceType === 'video' ? `<div class="annotation-video-bg"><div class="video-silhouette small"></div></div><button class="annotation-play" data-action="toggle-preview">${icon('play')}</button><span class="annotation-clip-time">${formatTime(state.clipStart)} — ${formatTime(state.clipEnd)}</span>` : state.sourceType === 'article' ? `<div class="annotation-article-text"><span class="quote-mark">“</span><p>${escapeHTML(publishedSource.excerpt || 'The most valuable part of a link is often the part that doesn’t fit in the answer.')}</p><span>Highlighted passage</span></div>` : `<div class="annotation-audio"><div class="podcast-orbit small"><span></span><span></span><span></span></div>${icon('play')}<div class="mini-wave large">${Array.from({ length: 34 }, (_, i) => `<i style="height:${16 + ((i * 19) % 58)}%"></i>`).join('')}</div></div>`}</div><div class="annotation-body"><div class="annotation-byline"><div class="feed-avatar avatar-0">TB</div><div><strong>Tom Ballard</strong><span>@tcballard · just now</span></div><button class="icon-button" aria-label="More options">${icon('more')}</button></div><h3>${escapeHTML(publishedSource.title)}</h3>${hasNote ? `<p class="annotation-copy">${state.publishedAnnotation?.commentary ? escapeHTML(state.publishedAnnotation.commentary) : state.commentary ? escapeHTML(state.commentary) : 'An audio annotation attached to this moment.'}</p>` : '<p class="annotation-copy empty-copy">No commentary added.</p>'}<div class="source-citation"><span>${icon('link')} Source</span><a href="${escapeHTML(publishedSource.url)}" target="_blank" rel="noreferrer">${escapeHTML(publishedSource.host)} ${icon('external')}</a></div></div><div class="annotation-actions"><button data-action="toggle-like" class="feed-action ${state.liked ? 'is-liked' : ''}">${icon('heart')} ${state.liked ? 'Liked' : 'Like'}</button><button class="feed-action" data-action="focus-comment">${icon('message')} ${publishedComments.length} comments</button><button class="feed-action" data-action="share">${icon('link')} Copy link</button></div><div class="annotation-comments">${publishedComments.length ? publishedComments.map((comment) => `<div class="commenter-avatar">TB</div><p><strong>@${escapeHTML(comment.authorId === 'local-tom' ? 'tcballard' : comment.authorId)}</strong> ${escapeHTML(comment.body)}</p>`).join('') : '<p class="empty-copy">No comments yet. Add the first considered response.</p>'}</div><form class="comment-row annotation-comment-row" data-action="comment-form"><input aria-label="Add a comment" placeholder="Add a considered comment…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" /><button aria-label="Post comment">${icon('arrow')}</button></form></article><aside class="annotation-aside"><div class="claim-card"><span class="eyebrow">Source & rights</span><h3>Something wrong with this annotation?</h3><p>Every page keeps the source visible. If this clip misuses your work, file a claim and we’ll review it.</p><button class="claim-button" data-action="toggle-claim">File a claim ${icon('arrow')}</button></div><div class="share-card"><span class="eyebrow">Share this page</span><div class="share-url"><strong>${escapeHTML(publicLabel)}</strong><button data-action="copy-link" aria-label="Copy page link">${icon('link')}</button></div><p>It opens with the clip, the source, and the note.</p></div></aside></div>` : `<div class="empty-published"><div class="empty-symbol">a<span>.</span></div><h3>Nothing published yet.</h3><p>Start with the page you are already reading. The sidebar will do the rest.</p><button class="dark-button" data-action="set-view" data-view="capture">Open capture desk ${icon('arrow')}</button></div>`}
+    ${state.published ? `<div class="annotation-layout"><article class="annotation-page"><div class="annotation-page-bar"><span class="source-pill">${icon(state.sourceType)} ${publishedSource.label}</span><span>Published just now</span></div><div class="annotation-hero ${state.sourceType}">${state.sourceType === 'video' ? `<div class="annotation-video-bg"><div class="video-silhouette small"></div></div><button class="annotation-play" data-action="toggle-preview">${icon('play')}</button><span class="annotation-clip-time">${formatTime(state.clipStart)} — ${formatTime(state.clipEnd)}</span>` : state.sourceType === 'article' ? `<div class="annotation-article-text"><span class="quote-mark">“</span><p>${escapeHTML(publishedSource.excerpt || 'The most valuable part of a link is often the part that doesn’t fit in the answer.')}</p><span>Highlighted passage</span></div>` : `<div class="annotation-audio"><div class="podcast-orbit small"><span></span><span></span><span></span></div>${state.publishedAnnotation?.audioUrl || state.audioUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(state.publishedAnnotation?.audioUrl || state.audioUrl)}"></audio>` : icon('play')}<div class="mini-wave large">${Array.from({ length: 34 }, (_, i) => `<i style="height:${16 + ((i * 19) % 58)}%"></i>`).join('')}</div></div>`}</div><div class="annotation-body"><div class="annotation-byline"><div class="feed-avatar avatar-0">TB</div><div><strong>Tom Ballard</strong><span>@tcballard · just now</span></div><button class="icon-button" aria-label="More options">${icon('more')}</button></div><h3>${escapeHTML(publishedSource.title)}</h3>${hasNote ? `<p class="annotation-copy">${state.publishedAnnotation?.commentary ? escapeHTML(state.publishedAnnotation.commentary) : state.commentary ? escapeHTML(state.commentary) : 'An audio annotation attached to this moment.'}</p>` : '<p class="annotation-copy empty-copy">No commentary added.</p>'}<div class="source-citation"><span>${icon('link')} Source</span><a href="${escapeHTML(publishedSource.url)}" target="_blank" rel="noreferrer">${escapeHTML(publishedSource.host)} ${icon('external')}</a></div></div><div class="annotation-actions"><button data-action="toggle-like" class="feed-action ${state.liked ? 'is-liked' : ''}">${icon('heart')} ${state.liked ? 'Liked' : 'Like'}</button><button class="feed-action" data-action="focus-comment">${icon('message')} ${publishedComments.length} comments</button><button class="feed-action" data-action="share">${icon('link')} Copy link</button></div><div class="annotation-comments">${publishedComments.length ? publishedComments.map((comment) => `<div class="commenter-avatar">TB</div><p><strong>@${escapeHTML(comment.authorId === 'local-tom' ? 'tcballard' : comment.authorId)}</strong> ${escapeHTML(comment.body)}</p>`).join('') : '<p class="empty-copy">No comments yet. Add the first considered response.</p>'}</div><form class="comment-row annotation-comment-row" data-action="comment-form"><input aria-label="Add a comment" placeholder="Add a considered comment…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" /><button aria-label="Post comment">${icon('arrow')}</button></form></article><aside class="annotation-aside"><div class="claim-card"><span class="eyebrow">Source & rights</span><h3>Something wrong with this annotation?</h3><p>Every page keeps the source visible. If this clip misuses your work, file a claim and we’ll review it.</p><button class="claim-button" data-action="toggle-claim">File a claim ${icon('arrow')}</button></div><div class="share-card"><span class="eyebrow">Share this page</span><div class="share-url"><strong>${escapeHTML(publicLabel)}</strong><button data-action="copy-link" aria-label="Copy page link">${icon('link')}</button></div><p>It opens with the clip, the source, and the note.</p></div></aside></div>` : `<div class="empty-published"><div class="empty-symbol">a<span>.</span></div><h3>Nothing published yet.</h3><p>Start with the page you are already reading. The sidebar will do the rest.</p><button class="dark-button" data-action="set-view" data-view="capture">Open capture desk ${icon('arrow')}</button></div>`}
     ${state.claimOpen ? claimModal() : ''}`;
 };
 
@@ -405,6 +420,65 @@ const ensureClipBounds = () => {
   state.clipEnd = Math.max(0, Math.min(90, Number(state.clipEnd) || 0));
   if (state.clipEnd < state.clipStart) [state.clipStart, state.clipEnd] = [state.clipEnd, state.clipStart];
 };
+
+const stopAudioRecording = () => {
+  if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+  state.isRecording = false;
+  clearInterval(recordingTimer);
+  mediaRecorder.stop();
+  render();
+};
+
+const startAudioRecording = async () => {
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { notify('Audio recording is not supported in this browser.'); return; }
+  if (state.serverStatus !== 'online') { notify('Backend unavailable — audio cannot be uploaded yet.'); return; }
+  try {
+    recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(recordingStream);
+    recordingChunks = [];
+    recordingStartedAt = Date.now();
+    state.recordedAudio = false;
+    state.audioAssetId = '';
+    state.audioUrl = '';
+    state.audioDuration = 0;
+    state.recordingSeconds = 0;
+    state.isRecording = true;
+    mediaRecorder.addEventListener('dataavailable', (event) => { if (event.data.size) recordingChunks.push(event.data); });
+    mediaRecorder.addEventListener('stop', async () => {
+      recordingStream?.getTracks().forEach((track) => track.stop());
+      const blob = new Blob(recordingChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+      state.audioDuration = Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000));
+      state.isUploadingAudio = true;
+      render();
+      try {
+        const { media } = await api.uploadAudio(blob);
+        state.audioAssetId = media.id;
+        state.audioUrl = media.url;
+        state.recordedAudio = true;
+        state.isUploadingAudio = false;
+        persist();
+        notify('Audio note uploaded. It is ready to publish.');
+      } catch (error) {
+        state.isUploadingAudio = false;
+        state.recordedAudio = false;
+        render();
+        notify(error.message || 'Audio upload failed.');
+      }
+    }, { once: true });
+    mediaRecorder.start(1000);
+    recordingTimer = setInterval(() => {
+      state.recordingSeconds = Math.min(90, Math.round((Date.now() - recordingStartedAt) / 1000));
+      if (state.recordingSeconds >= 90) stopAudioRecording();
+      else render();
+    }, 1000);
+    render();
+  } catch (error) {
+    recordingStream?.getTracks().forEach((track) => track.stop());
+    notify(error.message || 'Microphone permission is required to record.');
+  }
+};
+
+const toggleAudioRecording = () => state.isRecording ? stopAudioRecording() : startAudioRecording();
 
 const refreshFeed = async () => {
   if (state.serverStatus !== 'online') return;
@@ -450,8 +524,8 @@ const publishAnnotation = async () => {
     return;
   }
   if (state.sourceType !== 'article' && state.clipEnd - state.clipStart > 90) { notify('Keep the clip under 90 seconds.'); return; }
-  if (state.commentaryMode === 'audio') { notify('Audio publishing is coming with the media worker. Use a text note for this pass.'); return; }
-  if (!state.commentary.trim()) { notify('Add a note before publishing.'); return; }
+  if (state.commentaryMode === 'text' && !state.commentary.trim()) { notify('Add a note before publishing.'); return; }
+  if (state.commentaryMode === 'audio' && !state.audioAssetId) { notify('Finish uploading the audio note before publishing.'); return; }
   if (state.serverStatus !== 'online') { notify('Backend unavailable — this draft has not been published.'); return; }
 
   const currentSource = source();
@@ -467,7 +541,9 @@ const publishAnnotation = async () => {
       clipStart: state.clipStart,
       clipEnd: state.clipEnd,
       commentary: state.commentary,
-      commentaryMode: 'text',
+      commentaryMode: state.commentaryMode,
+      audioAssetId: state.audioAssetId || undefined,
+      audioDuration: state.audioDuration || undefined,
     });
     hydrateAnnotation(annotation);
     state.activeView = 'published';
@@ -537,13 +613,8 @@ app.addEventListener('click', (event) => {
   if (action === 'source-type') { setSource(target.dataset.type); return; }
   if (action === 'toggle-source-input') { state.showSourceInput = !state.showSourceInput; render(); return; }
   if (action === 'load-source') { loadSource(); return; }
-  if (action === 'commentary-mode') { state.commentaryMode = target.dataset.mode; state.isRecording = false; persist(); render(); return; }
-  if (action === 'toggle-record') {
-    state.isRecording = !state.isRecording;
-    if (!state.isRecording) state.recordedAudio = true;
-    render();
-    return;
-  }
+  if (action === 'commentary-mode') { if (state.isRecording) stopAudioRecording(); state.commentaryMode = target.dataset.mode; persist(); render(); return; }
+  if (action === 'toggle-record') { toggleAudioRecording(); return; }
   if (action === 'publish') { publishAnnotation(); return; }
   if (action === 'toggle-like') { state.liked = !state.liked; render(); return; }
   if (action === 'toggle-follow') { state.following = !state.following; render(); return; }

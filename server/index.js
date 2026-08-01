@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { readStore, updateStore } from './store.js';
+import { mediaDirectory, writeIncomingMedia } from './media-store.js';
 import { resolveSource } from './source-resolver.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 
@@ -35,6 +36,7 @@ const slugify = (value) => String(value).toLowerCase().normalize('NFKD').replace
 const withComments = (annotation, store) => ({
   ...annotation,
   url: `${publicOrigin}/a/${annotation.slug}`,
+  audioUrl: annotation.audioAssetId ? `${publicOrigin}/media/${annotation.audioAssetId}` : null,
   comments: store.comments.filter((comment) => comment.annotationId === annotation.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
   claims: undefined,
 });
@@ -48,6 +50,14 @@ const handleApi = async (request, response, pathname) => {
     return send(response, 200, { source: await resolveSource(payload.url) });
   }
 
+  if (request.method === 'POST' && pathname === '/api/media/audio') {
+    const mimeType = String(request.headers['content-type'] || '').split(';')[0].toLowerCase();
+    if (!mimeType.startsWith('audio/')) return send(response, 415, { error: 'Audio uploads must use an audio content type.' });
+    const media = await writeIncomingMedia(request, mimeType);
+    await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, createdAt: media.createdAt }] }));
+    return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, url: `${publicOrigin}/media/${media.id}` } });
+  }
+
   if (request.method === 'GET' && pathname === '/api/feed') {
     const store = await readStore();
     return send(response, 200, { annotations: store.annotations.filter((item) => item.status === 'published').sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((item) => withComments(item, store)) });
@@ -57,6 +67,10 @@ const handleApi = async (request, response, pathname) => {
     const payload = await readJson(request);
     const { errors, normalized } = validateAnnotation(payload);
     if (errors.length) return send(response, 422, { errors });
+    if (normalized.commentaryMode === 'audio') {
+      const store = await readStore();
+      if (!(store.media || []).some((item) => item.id === normalized.audioAssetId && item.mimeType.startsWith('audio/'))) return send(response, 422, { errors: ['The uploaded audio asset could not be found.'] });
+    }
     const now = new Date().toISOString();
     const id = randomUUID();
     const baseSlug = slugify(normalized.sourceTitle);
@@ -109,6 +123,22 @@ const handleApi = async (request, response, pathname) => {
 
 const contentType = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
+const serveMedia = async (response, id) => {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return notFound(response);
+  const store = await readStore();
+  const media = (store.media || []).find((item) => item.id === id);
+  if (!media) return notFound(response);
+  const candidate = path.resolve(mediaDirectory, media.fileName);
+  if (!candidate.startsWith(path.resolve(mediaDirectory))) return notFound(response);
+  try {
+    const info = await stat(candidate);
+    response.writeHead(200, { 'content-type': media.mimeType, 'content-length': info.size, 'cache-control': 'public, max-age=31536000, immutable', 'accept-ranges': 'bytes' });
+    return createReadStream(candidate).pipe(response);
+  } catch {
+    return notFound(response);
+  }
+};
+
 const serveStatic = async (request, response, pathname) => {
   const relative = pathname === '/' ? 'dist/index.html' : pathname.replace(/^\//, '');
   const candidate = path.resolve(projectRoot, relative.startsWith('dist/') ? relative : `dist/${relative}`);
@@ -130,6 +160,7 @@ const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || '/', publicOrigin);
   try {
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) return send(response, 204, '');
+    if (request.method === 'GET' && url.pathname.startsWith('/media/')) return serveMedia(response, url.pathname.slice('/media/'.length));
     if (url.pathname.startsWith('/api/')) {
       const result = await handleApi(request, response, url.pathname);
       if (result !== null) return;
@@ -138,7 +169,7 @@ const server = http.createServer(async (request, response) => {
     return notFound(response);
   } catch (error) {
     console.error(error);
-    return send(response, error.message === 'Request body is too large.' ? 413 : 400, { error: error.message || 'Request failed.' });
+    return send(response, error.message === 'Request body is too large.' || error.message === 'Media payload is too large.' ? 413 : 400, { error: error.message || 'Request failed.' });
   }
 });
 

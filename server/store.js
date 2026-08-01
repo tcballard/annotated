@@ -7,6 +7,7 @@ const emptyStore = {
   annotations: [],
   comments: [],
   claims: [],
+  media: [],
   users: [{ id: 'local-tom', handle: 'tcballard', displayName: 'Tom Ballard' }],
 };
 
