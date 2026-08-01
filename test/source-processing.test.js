@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { classifySource, parseSourceUrl, resolveSource } from '../server/source-resolver.js';
 import { resolveInput } from '../server/media-worker.js';
+import { matchesFeedQuery, normalizeFeedQuery } from '../server/feed.js';
 
 test('source classification covers the three brief source categories', () => {
   assert.equal(classifySource('https://www.youtube.com/watch?v=abc'), 'video');
@@ -35,4 +36,14 @@ test('article resolution is bounded and preserves the page canonical URL', async
 test('direct media worker inputs remain SSRF-safe', async () => {
   assert.equal(await resolveInput({ sourceUrl: 'https://cdn.example/audio.mp3', sourceType: 'podcast' }), 'https://cdn.example/audio.mp3');
   await assert.rejects(() => resolveInput({ sourceUrl: 'http://127.0.0.1/audio.mp3', sourceType: 'podcast' }), /not allowed/);
+});
+
+test('feed search matches source and author context with a bounded query', () => {
+  const annotation = { sourceTitle: 'A useful essay', sourceHost: 'news.example', sourceExcerpt: 'Context travels with the moment.', commentary: 'Keep the source attached.', authorId: 'u1' };
+  const users = [{ id: 'u1', handle: 'reader', displayName: 'A. Reader' }];
+  assert.equal(matchesFeedQuery(annotation, users, '  CONTEXT  '), true);
+  assert.equal(matchesFeedQuery(annotation, users, 'reader'), true);
+  assert.equal(matchesFeedQuery(annotation, users, 'unrelated'), false);
+  assert.equal(normalizeFeedQuery('  one   two '), 'one two');
+  assert.equal(normalizeFeedQuery('x'.repeat(100)).length, 80);
 });

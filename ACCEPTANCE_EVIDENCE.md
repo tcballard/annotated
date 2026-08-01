@@ -8,12 +8,12 @@ production gates are complete.
 
 ## Clean-checkout validation
 
-The following checks passed on `agent/brief-10-source-errors`:
+The following checks passed on `agent/brief-11-feed-search`:
 
 ```text
 npm ci
 npm run build
-npm test                         # 26 passing tests
+npm test                         # 27 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -47,6 +47,9 @@ The local browser run exercised the user-facing flows below:
   `That source host is not allowed`. The form stayed open and rendered an ARIA
   `alert` with the resolver error while keeping the existing preview visible.
   The valid source was restored afterward.
+- Discover search opened a labeled search form, returned matching server-backed
+  annotations for `Rights smoke`, and showed a recoverable empty state for
+  `unmatched phrase` with a clear-search action.
 
 ## Deliberately unverified external gates
 

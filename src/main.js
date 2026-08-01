@@ -132,6 +132,8 @@ const initialState = {
   feedAnnotations: [],
   feedFollowing: false,
   feedCursor: null,
+  feedQuery: '',
+  showFeedSearch: false,
   user: null,
   authProviders: {},
   authRequired: false,
@@ -440,9 +442,14 @@ const feedItems = [
   { type: 'Podcast', label: 'Podcast', initials: 'JS', author: 'Jamie Singh', handle: '@jamiesingh', time: '3h', host: 'overcast.fm', duration: '1:02', title: 'A useful definition of attention.', commentary: 'Not concentration. More like the willingness to let something change your mind.', likes: 29, comments: 4 },
 ];
 
-const feedView = () => `
-  <div class="view-head feed-head"><div><span class="eyebrow">Public feed</span><h2>What people kept.</h2><p>A stream of moments with enough context to be worth opening.</p></div><div class="feed-controls"><button class="filter-button ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true">Following</button><button class="filter-button ${state.feedFollowing ? '' : 'is-active'}" data-action="feed-filter" data-following="false">For you</button><button class="search-button" data-action="search" aria-label="Search feed">${icon('search')}</button></div></div>
-  <div class="feed-layout"><main class="feed-list">${(state.feedAnnotations.length ? state.feedAnnotations.map(annotationToFeedItem) : feedItems).map(feedCard).join('')}${state.feedCursor ? '<button class="ghost-button" data-action="feed-more">Load more</button>' : ''}</main><aside class="feed-aside"><div class="aside-card profile-card"><div class="profile-top"><div class="profile-avatar">TB</div><span class="profile-stamp">LIVE</span></div><h3>Tom Ballard</h3><p>Collecting the moments that deserve a second look.</p><div class="profile-metrics"><span><strong>${state.feedAnnotations.length || (state.published ? '1' : '0')}</strong> annotations</span><span><strong>24</strong> following</span></div><button class="dark-button" data-action="set-view" data-view="published">View your page ${icon('arrow')}</button></div><div class="aside-card rule-card"><span class="eyebrow">The annotated rule</span><h3>A clip without its source is just a rumour.</h3><div class="rule-line"></div><p>Every public page points back to the original. Context travels with the moment.</p></div></aside></div>`;
+const feedView = () => {
+  const visibleItems = state.feedAnnotations.length ? state.feedAnnotations.map(annotationToFeedItem) : (state.feedQuery || state.feedFollowing ? [] : feedItems);
+  const emptyMessage = state.feedQuery ? `No annotations match “${escapeHTML(state.feedQuery)}”.` : 'No annotations from followed users yet.';
+  return `
+  <div class="view-head feed-head"><div><span class="eyebrow">Public feed</span><h2>What people kept.</h2><p>A stream of moments with enough context to be worth opening.</p></div><div class="feed-controls"><button class="filter-button ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true">Following</button><button class="filter-button ${state.feedFollowing ? '' : 'is-active'}" data-action="feed-filter" data-following="false">For you</button><button class="search-button" data-action="search" aria-label="Search feed" aria-expanded="${state.showFeedSearch}">${icon('search')}</button></div></div>
+  ${state.showFeedSearch ? `<form class="feed-search-row" data-action="feed-search-form"><label for="feed-search">Search annotations</label><div><input id="feed-search" data-action="feed-search" value="${escapeHTML(state.feedQuery)}" placeholder="Try a source, author, or idea" maxlength="80" /><button class="dark-button" type="submit">Search ${icon('arrow')}</button>${state.feedQuery ? '<button class="ghost-button" type="button" data-action="clear-feed-search">Clear</button>' : ''}</div></form>` : ''}
+  <div class="feed-layout"><main class="feed-list">${visibleItems.length ? visibleItems.map(feedCard).join('') : `<div class="feed-empty"><span class="eyebrow">Nothing found</span><h3>${emptyMessage}</h3><p>Try a different source, author, or phrase.</p>${state.feedQuery ? '<button class="ghost-button" data-action="clear-feed-search">Clear search</button>' : ''}</div>`}${state.feedCursor ? '<button class="ghost-button" data-action="feed-more">Load more</button>' : ''}</main><aside class="feed-aside"><div class="aside-card profile-card"><div class="profile-top"><div class="profile-avatar">TB</div><span class="profile-stamp">LIVE</span></div><h3>Tom Ballard</h3><p>Collecting the moments that deserve a second look.</p><div class="profile-metrics"><span><strong>${state.feedAnnotations.length || (state.published ? '1' : '0')}</strong> annotations</span><span><strong>24</strong> following</span></div><button class="dark-button" data-action="set-view" data-view="published">View your page ${icon('arrow')}</button></div><div class="aside-card rule-card"><span class="eyebrow">The annotated rule</span><h3>A clip without its source is just a rumour.</h3><div class="rule-line"></div><p>Every public page points back to the original. Context travels with the moment.</p></div></aside></div>`;
+};
 
 const annotationHero = () => {
   const clipUrl = state.publishedAnnotation?.clipUrl || state.clipUrl;
@@ -580,6 +587,7 @@ const loadFeed = async ({ append = false } = {}) => {
   try {
     const params = new URLSearchParams({ limit: '20' });
     if (state.feedFollowing) params.set('following', 'true');
+    if (state.feedQuery.trim()) params.set('q', state.feedQuery.trim());
     if (append && state.feedCursor) params.set('cursor', state.feedCursor);
     const result = await api.feed(params.toString());
     state.feedAnnotations = append ? [...state.feedAnnotations, ...(result.annotations || [])] : (result.annotations || []);
@@ -741,6 +749,8 @@ app.addEventListener('click', (event) => {
   if (action === 'retry-audio') { retryStagedAudio(); return; }
   if (action === 'publish') { publishAnnotation(); return; }
   if (action === 'feed-filter') { state.feedFollowing = target.dataset.following === 'true'; state.feedCursor = null; loadFeed().then(render); return; }
+  if (action === 'search') { state.showFeedSearch = !state.showFeedSearch; render(); if (state.showFeedSearch) document.querySelector('#feed-search')?.focus(); return; }
+  if (action === 'clear-feed-search') { state.feedQuery = ''; state.feedCursor = null; loadFeed().then(() => { render(); document.querySelector('#feed-search')?.focus(); }); return; }
   if (action === 'feed-more') { loadFeed({ append: true }).then(render); return; }
   if (action === 'toggle-like') {
     const slug = target.dataset.slug;
@@ -785,7 +795,6 @@ app.addEventListener('click', (event) => {
   if (action === 'sidebar-help') { notify('Annotated keeps a source link on every public page.'); return; }
   if (action === 'toggle-preview') { notify('Preview playback is represented in this prototype.'); return; }
   if (action === 'play-feed') { notify('Clip playback is represented in this prototype.'); return; }
-  if (action === 'search') { notify('Feed search is ready for the backend connection.'); return; }
 });
 
 app.addEventListener('input', (event) => {
@@ -812,6 +821,12 @@ app.addEventListener('submit', (event) => {
   if (event.target.dataset.action === 'comment-form') {
     event.preventDefault();
     submitComment();
+  }
+  if (event.target.dataset.action === 'feed-search-form') {
+    event.preventDefault();
+    state.feedQuery = event.target.querySelector('[data-action="feed-search"]')?.value || '';
+    state.feedCursor = null;
+    loadFeed().then(() => { render(); document.querySelector('#feed-search')?.focus(); });
   }
 });
 
