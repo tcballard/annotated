@@ -7,6 +7,13 @@ test('production image builds before pruning dev dependencies and runs non-root'
   assert.match(dockerfile, /RUN npm ci\n/);
   assert.match(dockerfile, /RUN npm run build && npm prune --omit=dev/);
   assert.match(dockerfile, /USER annotated/);
+  assert.match(dockerfile, /ARG YTDLP_VERSION=2026\.06\.09/);
+  assert.match(dockerfile, /YTDLP_SHA256_AMD64=[0-9a-f]{64}/);
+  assert.match(dockerfile, /YTDLP_SHA256_ARM64=[0-9a-f]{64}/);
+  assert.match(dockerfile, /releases\/download\/\$\{YTDLP_VERSION\}\/\$\{asset\}/);
+  assert.match(dockerfile, /sha256sum --check --strict/);
+  assert.match(dockerfile, /\/usr\/local\/bin\/yt-dlp --version/);
+  assert.match(dockerfile, /ENV YTDLP_BIN=\/usr\/local\/bin\/yt-dlp/);
 });
 
 test('docker build context excludes local state and secrets', async () => {

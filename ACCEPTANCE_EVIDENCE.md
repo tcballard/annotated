@@ -117,8 +117,12 @@ The local browser run exercised the user-facing flows below:
 - Moderation tests cover active-claim deduplication and restricted terminal
   reopening; new claims and status changes append audit records in the store.
 - Deployment tests verify Vite builds before production pruning, the container
-  runs as an unprivileged user, and local state/secrets are excluded from its
-  build context.
+  runs as an unprivileged user, local state/secrets are excluded from its build
+  context, and the Dockerfile pins the official yt-dlp 2026.06.09 amd64/arm64
+  assets with SHA-256 verification before probing the executable. The two
+  official release assets were independently downloaded and matched the
+  committed checksums. Docker daemon execution was unavailable in this
+  environment, so the image build remains an external gate.
 
 ## Deliberately unverified external gates
 
