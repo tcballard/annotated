@@ -1,5 +1,6 @@
 import './styles.css';
 import { api } from './api.js';
+import { deleteMediaDraft, readMediaDraft, stageMediaDraft } from './media-draft-store.js';
 
 const app = document.querySelector('#app');
 
@@ -109,6 +110,8 @@ const initialState = {
   audioAssetId: '',
   audioUrl: '',
   audioDuration: 0,
+  audioDraftId: '',
+  isUploadingAudio: false,
   recordingSeconds: 0,
   clipUrl: '',
   mediaStatus: 'not-applicable',
@@ -131,12 +134,22 @@ const initialState = {
   isPublishing: false,
 };
 
+const draftStorageKey = 'annotated-draft-v1';
+const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'commentary', 'commentaryMode', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId'];
+
 const saved = (() => {
-  try { return JSON.parse(localStorage.getItem('annotated-demo') || '{}'); } catch { return {}; }
+  try {
+    const raw = localStorage.getItem(draftStorageKey) || localStorage.getItem('annotated-demo');
+    const parsed = raw ? JSON.parse(raw) : {};
+    return Object.fromEntries(draftFields.filter((field) => field in parsed).map((field) => [field, parsed[field]]));
+  } catch { return {}; }
 })();
 
 const state = { ...initialState, ...saved };
-if (!state.publishedSlug) state.published = false;
+state.published = false;
+state.publishedSlug = '';
+state.publishedAnnotation = null;
+state.recordedAudio = Boolean(state.audioAssetId);
 let toastTimer;
 let mediaRecorder;
 let recordingStream;
@@ -147,22 +160,27 @@ let mediaPollTimer;
 
 const persist = () => {
   try {
-    localStorage.setItem('annotated-demo', JSON.stringify({
-      activeView: state.activeView,
+    localStorage.setItem(draftStorageKey, JSON.stringify({
+      version: 1,
       sourceType: state.sourceType,
       sourceUrl: state.sourceUrl,
       clipStart: state.clipStart,
       clipEnd: state.clipEnd,
       commentary: state.commentary,
       commentaryMode: state.commentaryMode,
-      recordedAudio: state.recordedAudio,
       audioAssetId: state.audioAssetId,
       audioUrl: state.audioUrl,
       audioDuration: state.audioDuration,
-      published: state.published,
-      publishedSlug: state.publishedSlug,
+      audioDraftId: state.audioDraftId,
       customSource: state.customSource,
     }));
+  } catch { /* private mode or blocked storage; the app remains usable */ }
+};
+
+const clearDraft = () => {
+  try {
+    localStorage.removeItem(draftStorageKey);
+    localStorage.removeItem('annotated-demo');
   } catch { /* private mode or blocked storage; the app remains usable */ }
 };
 
@@ -234,6 +252,7 @@ const hydrateAnnotation = (annotation) => {
   state.audioAssetId = annotation.audioAssetId || '';
   state.audioUrl = annotation.audioUrl || '';
   state.audioDuration = Number(annotation.audioDuration) || 0;
+  state.audioDraftId = '';
   state.clipUrl = annotation.clipUrl || '';
   state.mediaStatus = annotation.mediaStatus || 'not-applicable';
 };
@@ -258,6 +277,7 @@ const bootstrap = async () => {
     state.serverStatus = 'offline';
     state.serverError = error.message;
   }
+  await resumeStagedAudio();
   render();
 };
 
@@ -360,7 +380,7 @@ const timeRange = () => {
 const commentaryEditor = () => `
   <div class="commentary-editor">
     <div class="commentary-head"><span>Your annotation</span><div class="mode-switch" role="group" aria-label="Commentary type">${button(`${icon('text')} Text`, 'commentary-mode', state.commentaryMode === 'text' ? 'mode-button is-active' : 'mode-button', 'data-mode="text"')}${button(`${icon('mic')} Audio`, 'commentary-mode', state.commentaryMode === 'audio' ? 'mode-button is-active' : 'mode-button', 'data-mode="audio"')}</div></div>
-    ${state.commentaryMode === 'text' ? `<textarea data-action="commentary" placeholder="What stayed with you? Add the context the original clip is missing...">${escapeHTML(state.commentary)}</textarea><div class="editor-foot"><span>${state.commentary.length}/280</span><span>Visible on the public page</span></div>` : `<div class="audio-recorder ${state.isRecording ? 'is-recording' : ''} ${state.isUploadingAudio ? 'is-uploading' : ''}"><button class="record-button" data-action="toggle-record" aria-label="${state.isRecording ? 'Stop recording' : 'Start recording'}" ${state.isUploadingAudio ? 'disabled' : ''}>${icon(state.isRecording ? 'pause' : 'mic')}</button><div><strong>${state.isRecording ? 'Recording your take…' : state.isUploadingAudio ? 'Uploading your take…' : state.recordedAudio ? 'Audio note ready' : 'Record a 90-second take'}</strong><span>${state.isRecording ? 'Tap to stop · max 1:30' : state.recordedAudio ? 'You can replace it before publishing' : 'Say the thing you want to remember'}</span></div><span class="audio-duration">${formatTime(state.isRecording ? state.recordingSeconds : state.audioDuration)}</span></div>`}
+    ${state.commentaryMode === 'text' ? `<textarea data-action="commentary" placeholder="What stayed with you? Add the context the original clip is missing...">${escapeHTML(state.commentary)}</textarea><div class="editor-foot"><span>${state.commentary.length}/280</span><span>Visible on the public page</span></div>` : `<div class="audio-recorder ${state.isRecording ? 'is-recording' : ''} ${state.isUploadingAudio ? 'is-uploading' : ''}"><button class="record-button" data-action="toggle-record" aria-label="${state.isRecording ? 'Stop recording' : 'Start recording'}" ${state.isUploadingAudio ? 'disabled' : ''}>${icon(state.isRecording ? 'pause' : 'mic')}</button><div><strong>${state.isRecording ? 'Recording your take…' : state.isUploadingAudio ? 'Uploading your take…' : state.recordedAudio ? 'Audio note ready' : state.audioDraftId ? 'Audio note saved locally' : 'Record a 90-second take'}</strong><span>${state.isRecording ? 'Tap to stop · max 1:30' : state.isUploadingAudio ? 'The browser is sending your note' : state.recordedAudio ? 'You can replace it before publishing' : state.audioDraftId ? 'It will retry when the backend is available' : 'Say the thing you want to remember'}</span></div><span class="audio-duration">${formatTime(state.isRecording ? state.recordingSeconds : state.audioDuration)}</span>${state.audioDraftId && !state.recordedAudio && !state.isUploadingAudio ? `<button class="audio-retry" data-action="retry-audio">Retry upload</button>` : ''}</div>`}
   </div>`;
 
 const sidebar = () => `
@@ -450,10 +470,53 @@ const stopAudioRecording = () => {
   render();
 };
 
+const uploadAudioBlob = async (blob, stagedId = '') => {
+  state.isUploadingAudio = true;
+  render();
+  try {
+    if (state.serverStatus !== 'online') throw new Error('Backend unavailable.');
+    const { media } = await api.uploadAudio(blob);
+    if (stagedId) await deleteMediaDraft(stagedId).catch(() => {});
+    state.audioDraftId = '';
+    state.audioAssetId = media.id;
+    state.audioUrl = media.url;
+    state.recordedAudio = true;
+    state.isUploadingAudio = false;
+    persist();
+    notify('Audio note uploaded. It is ready to publish.');
+  } catch (error) {
+    state.isUploadingAudio = false;
+    state.recordedAudio = false;
+    state.audioDraftId = stagedId;
+    persist();
+    render();
+    notify(stagedId ? 'Audio note saved locally. It will retry when the backend is available.' : error.message || 'Audio upload failed.');
+  }
+};
+
+const retryStagedAudio = async () => {
+  if (!state.audioDraftId) return;
+  if (state.serverStatus !== 'online') { notify('Backend unavailable — the local audio draft is safe.'); return; }
+  const staged = await readMediaDraft(state.audioDraftId).catch(() => null);
+  if (!staged?.blob) {
+    state.audioDraftId = '';
+    persist();
+    notify('The local audio draft is no longer available.');
+    return;
+  }
+  await uploadAudioBlob(staged.blob, state.audioDraftId);
+};
+
+const resumeStagedAudio = async () => {
+  if (!state.audioDraftId || state.audioAssetId || state.serverStatus !== 'online') return;
+  await retryStagedAudio();
+};
+
 const startAudioRecording = async () => {
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { notify('Audio recording is not supported in this browser.'); return; }
-  if (state.serverStatus !== 'online') { notify('Backend unavailable — audio cannot be uploaded yet.'); return; }
   try {
+    if (state.audioDraftId) await deleteMediaDraft(state.audioDraftId).catch(() => {});
+    state.audioDraftId = '';
     recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(recordingStream);
     recordingChunks = [];
@@ -469,22 +532,9 @@ const startAudioRecording = async () => {
       recordingStream?.getTracks().forEach((track) => track.stop());
       const blob = new Blob(recordingChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
       state.audioDuration = Math.max(1, Math.round((Date.now() - recordingStartedAt) / 1000));
-      state.isUploadingAudio = true;
-      render();
-      try {
-        const { media } = await api.uploadAudio(blob);
-        state.audioAssetId = media.id;
-        state.audioUrl = media.url;
-        state.recordedAudio = true;
-        state.isUploadingAudio = false;
-        persist();
-        notify('Audio note uploaded. It is ready to publish.');
-      } catch (error) {
-        state.isUploadingAudio = false;
-        state.recordedAudio = false;
-        render();
-        notify(error.message || 'Audio upload failed.');
-      }
+      state.audioDraftId = await stageMediaDraft(blob, { kind: 'audio', duration: state.audioDuration }).catch(() => '');
+      persist();
+      await uploadAudioBlob(blob, state.audioDraftId);
     }, { once: true });
     mediaRecorder.start(1000);
     recordingTimer = setInterval(() => {
@@ -587,7 +637,9 @@ const publishAnnotation = async () => {
     state.isPublishing = false;
     watchMediaProcessing();
     await refreshFeed();
-    persist();
+    if (state.audioDraftId) await deleteMediaDraft(state.audioDraftId).catch(() => {});
+    state.audioDraftId = '';
+    clearDraft();
     notify('Published with a permanent source link.');
   } catch (error) {
     state.isPublishing = false;
@@ -653,6 +705,7 @@ app.addEventListener('click', (event) => {
   if (action === 'load-source') { loadSource(); return; }
   if (action === 'commentary-mode') { if (state.isRecording) stopAudioRecording(); state.commentaryMode = target.dataset.mode; persist(); render(); return; }
   if (action === 'toggle-record') { toggleAudioRecording(); return; }
+  if (action === 'retry-audio') { retryStagedAudio(); return; }
   if (action === 'publish') { publishAnnotation(); return; }
   if (action === 'toggle-like') { state.liked = !state.liked; render(); return; }
   if (action === 'toggle-follow') { state.following = !state.following; render(); return; }

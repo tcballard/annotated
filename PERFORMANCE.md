@@ -20,6 +20,8 @@ Annotated should be fast at the point of capture and resilient when media work i
 
 The local worker uses `ffmpeg` for direct media URLs and accepts `YTDLP_BIN` for an optional provider adapter. Provider extraction failures are stored as a visible `failed` media state rather than being presented as playable media.
 
+The browser capture path stages recorded audio in IndexedDB before upload. This keeps media out of extension key/value storage and lets a failed upload retry without re-recording; the server still owns the durable asset after acknowledgement.
+
 ## Migration order
 
 1. Keep the current API paths and validation semantics stable.

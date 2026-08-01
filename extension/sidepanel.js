@@ -1,3 +1,5 @@
+import { extensionStorage } from './storage.js';
+
 const API_ORIGIN = 'http://localhost:8787';
 const start = document.querySelector('#start');
 const end = document.querySelector('#end');
@@ -17,6 +19,8 @@ const selectionText = document.querySelector('#selectionText');
 let currentTab = { url: '', title: 'Current browser tab', host: '', sourceType: 'article' };
 let selectedText = '';
 let commentaryMode = 'text';
+let draftSaveTimer;
+let draftReady = false;
 
 const format = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
 
@@ -43,6 +47,24 @@ const apiRequest = async (path, options = {}) => {
   return body;
 };
 
+const draftPayload = () => ({
+  sourceUrl: currentTab.url,
+  sourceType: currentTab.sourceType,
+  sourceTitle: currentTab.title,
+  sourceHost: currentTab.host,
+  sourceExcerpt: selectedText,
+  clipStart: currentTab.sourceType === 'article' ? 0 : Number(start.value),
+  clipEnd: currentTab.sourceType === 'article' ? 0 : Number(end.value),
+  commentary: note.value.trim().slice(0, 280),
+  commentaryMode,
+});
+
+const saveDraft = () => {
+  if (!draftReady) return;
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(() => extensionStorage.saveDraft(draftPayload()).catch(() => {}), 250);
+};
+
 function syncRange() {
   let from = Math.max(0, Math.min(90, Number(start.value)));
   let to = Math.max(0, Math.min(90, Number(end.value)));
@@ -52,9 +74,10 @@ function syncRange() {
   clipLength.textContent = format(to - from);
   trackFill.style.left = `${from / 90 * 100}%`;
   trackFill.style.width = `${(to - from) / 90 * 100}%`;
+  saveDraft();
 }
 
-function syncNote() { noteCount.textContent = `${note.value.length}/280`; }
+function syncNote() { noteCount.textContent = `${note.value.length}/280`; saveDraft(); }
 
 async function readSelection(tabId) {
   try {
@@ -76,7 +99,23 @@ async function loadCurrentTab() {
     selectedText = tab.id ? await readSelection(tab.id) : '';
     selectionCard.hidden = !selectedText;
     selectionText.textContent = selectedText;
+    const draft = await extensionStorage.getDraft().catch(() => null);
+    if (draft?.sourceUrl === currentTab.url) {
+      selectedText = draft.sourceExcerpt || selectedText;
+      selectionCard.hidden = !selectedText;
+      selectionText.textContent = selectedText;
+      start.value = startNumber.value = draft.clipStart;
+      end.value = endNumber.value = draft.clipEnd;
+      note.value = draft.commentary;
+      commentaryMode = draft.commentaryMode;
+      note.placeholder = commentaryMode === 'audio' ? 'Audio publishing is coming with the media worker.' : 'What stayed with you? Add the context the original clip is missing…';
+      document.querySelectorAll('[data-mode]').forEach((button) => button.classList.toggle('active', button.dataset.mode === commentaryMode));
+      syncRange();
+      syncNote();
+    }
+    draftReady = true;
   } catch {
+    draftReady = true;
     showError('The active tab is restricted; paste its URL into the web capture desk.');
   }
 }
@@ -100,6 +139,7 @@ document.querySelectorAll('[data-mode]').forEach((mode) => mode.addEventListener
   commentaryMode = mode.dataset.mode;
   document.querySelectorAll('[data-mode]').forEach((button) => button.classList.toggle('active', button === mode));
   note.placeholder = commentaryMode === 'audio' ? 'Audio publishing is coming with the media worker.' : 'What stayed with you? Add the context the original clip is missing…';
+  saveDraft();
 }));
 
 document.querySelector('#publish').addEventListener('click', async () => {
@@ -127,7 +167,8 @@ document.querySelector('#publish').addEventListener('click', async () => {
     successLink.href = annotation.url;
     successLink.textContent = `Open ${annotation.url.replace(/^https?:\/\//, '')} →`;
     successLink.hidden = false;
-    try { await chrome.storage.local.set({ annotatedDraft: payload, annotatedAnnotation: annotation }); } catch { /* storage is optional */ }
+    await extensionStorage.clearDraft().catch(() => {});
+    await extensionStorage.savePublished(annotation).catch(() => {});
   } catch (publishError) {
     showError(publishError.message || 'Annotation could not be published.');
   }
