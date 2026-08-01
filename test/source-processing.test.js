@@ -33,6 +33,32 @@ test('article resolution is bounded and preserves the page canonical URL', async
   }
 });
 
+test('source resolution follows a bounded safe redirect and rejects private redirect targets', async () => {
+  const originalFetch = globalThis.fetch;
+  const html = '<html><head><title>Redirected article</title></head><body><article><p>This redirected article has enough content to exercise the bounded resolver path safely.</p></article></body></html>';
+  let calls = [];
+  globalThis.fetch = async (url) => {
+    calls.push(url);
+    if (calls.length === 1) return { ok: false, status: 302, headers: { get: () => '/story-final' } };
+    return { ok: true, status: 200, arrayBuffer: async () => Buffer.from(html) };
+  };
+  try {
+    const source = await resolveSource('https://news.example/story-start');
+    assert.equal(source.title, 'Redirected article');
+    assert.deepEqual(calls, ['https://news.example/story-start', 'https://news.example/story-final']);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  globalThis.fetch = async () => ({ ok: false, status: 302, headers: { get: () => 'http://127.0.0.1/private' } });
+  try {
+    const source = await resolveSource('https://news.example/private-redirect');
+    assert.match(source.error, /not allowed/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('direct media worker inputs remain SSRF-safe', async () => {
   assert.equal(await resolveInput({ sourceUrl: 'https://cdn.example/audio.mp3', sourceType: 'podcast' }), 'https://cdn.example/audio.mp3');
   await assert.rejects(() => resolveInput({ sourceUrl: 'http://127.0.0.1/audio.mp3', sourceType: 'podcast' }), /not allowed/);

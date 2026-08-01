@@ -13,7 +13,7 @@ The following checks passed on `agent/brief-15-extension-lifecycle`:
 ```text
 npm ci
 npm run build
-npm test                         # 33 passing tests
+npm test                         # 34 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -65,6 +65,8 @@ The local browser run exercised the user-facing flows below:
 - Extension storage tests prove draft/pending payloads remain metadata-only,
   the pending queue cap remains five captures, deployed API origins require
   HTTPS, and expired session tokens are discarded before use.
+- Source-processing tests prove redirects are bounded and each redirect target
+  is revalidated against the private-host SSRF policy.
 
 ## Deliberately unverified external gates
 
