@@ -14,7 +14,7 @@ tip (`agent/brief-32-reproducible-ci`):
 ```text
 npm ci
 npm run build
-npm test                         # 57 passing tests
+npm test                         # 57 passing, one explicit service-integration skip without local services
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -135,6 +135,11 @@ The local browser run exercised the user-facing flows below:
   provider binary in each image. Both the push and pull-request runs for PR32
   passed on 2026-08-01 (for example,
   [run 30721572499](https://github.com/tcballard/annotated/actions/runs/30721572499)).
+- PR33’s hosted Node job ran all 58 tests with zero skips, including the real
+  PostgreSQL migration/repository test and the S3-compatible object lifecycle
+  test against an ephemeral MinIO service. The push and pull-request checks
+  passed on 2026-08-01 ([push run 30722800219](https://github.com/tcballard/annotated/actions/runs/30722800219),
+  [pull-request run 30722802311](https://github.com/tcballard/annotated/actions/runs/30722802311)).
 
 ## Deliberately unverified external gates
 
