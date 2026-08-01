@@ -21,7 +21,7 @@ Then open the local Vite URL. The Vite dev server proxies `/api` to `http://loca
 - Published annotation page with source citation and visible “File a claim” flow
 - Public discovery feed with follow, like, comment, and share interactions
 - Responsive desktop/mobile layouts with reduced-motion support
-- Server-backed local persistence for annotations, comments, and claims in `data/store.json`
+- Server-backed local persistence for annotations, comments, and claims in `data/store.json` during development
 - Source URL resolver with URL validation, source classification, metadata extraction, and SSRF-safe host checks
 - Public annotation slugs and source citations
 - Streamed audio asset storage with playable public audio-note URLs
@@ -30,3 +30,5 @@ Then open the local Vite URL. The Vite dev server proxies `/api` to `http://loca
 - Bounded extension drafts in `chrome.storage.local` and browser-local audio staging in IndexedDB; media is never stored in extension key/value storage
 
 OAuth, durable object storage, social graph persistence, moderation operations, and production hosting are being added as separate product slices. Direct-media source clips now run through the FFmpeg worker; YouTube/podcast provider extraction requires an installed `yt-dlp` adapter and remains explicit when unavailable. To try the extension, start `npm run dev:server`, open `chrome://extensions`, enable Developer mode, choose “Load unpacked”, and select the `extension/` folder. See [STORAGE.md](STORAGE.md) for the storage boundary and [PERFORMANCE.md](PERFORMANCE.md) for the Rust/media-worker migration plan.
+
+For a production-shaped run, copy `.env.example`, set `ANNOTATED_STORAGE=postgres` and `ANNOTATED_ASSET_STORAGE=s3`, provide `DATABASE_URL` and the S3 credentials, run `npm run db:migrate`, and then start the server. Production refuses to start without both durable-store configurations; local file storage remains an explicit development adapter.

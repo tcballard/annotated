@@ -1,10 +1,12 @@
-import { createWriteStream } from 'node:fs';
-import { mkdir, unlink } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdir, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { dataDirectory } from './store.js';
+import { getObjectStore, objectStorageMode } from './object-store.js';
 
 const mediaDirectory = path.join(dataDirectory, 'media');
+const mediaWorkDirectory = path.join(dataDirectory, 'media-work');
 const maxMediaBytes = 25 * 1024 * 1024;
 
 const extensionForMime = (mimeType) => {
@@ -17,42 +19,25 @@ const extensionForMime = (mimeType) => {
 export async function writeIncomingMedia(request, mimeType) {
   const contentLength = Number(request.headers['content-length'] || 0);
   if (contentLength > maxMediaBytes) throw new Error('Media payload is too large.');
-  await mkdir(mediaDirectory, { recursive: true });
   const id = randomUUID();
-  const fileName = `${id}.${extensionForMime(mimeType)}`;
-  const filePath = path.join(mediaDirectory, fileName);
-  const output = createWriteStream(filePath, { flags: 'wx' });
-
-  return new Promise((resolve, reject) => {
-    let bytes = 0;
-    let settled = false;
-    const finish = async (error) => {
-      if (settled) return;
-      settled = true;
-      if (error) {
-        output.destroy();
-        await unlink(filePath).catch(() => {});
-        reject(error);
-        return;
-      }
-      resolve({ id, fileName, filePath, mimeType, bytes, createdAt: new Date().toISOString() });
-    };
-
-    request.on('data', (chunk) => {
-      bytes += chunk.length;
-      if (bytes > maxMediaBytes) {
-        request.pause();
-        void finish(new Error('Media payload is too large.'));
-        return;
-      }
-      if (!output.write(chunk)) request.pause();
-    });
-    output.on('drain', () => request.resume());
-    request.on('end', () => output.end(() => { void finish(); }));
-    request.on('aborted', () => { void finish(new Error('Media upload was aborted.')); });
-    request.on('error', (error) => { void finish(error); });
-    output.on('error', (error) => { void finish(error); });
-  });
+  const extension = extensionForMime(mimeType);
+  const key = `audio/${id}.${extension}`;
+  const store = getObjectStore();
+  const result = await store.putStream(request, { id, key, mimeType, maxBytes: maxMediaBytes });
+  return { id, key, fileName: result.fileName || key, mimeType, bytes: result.bytes, createdAt: new Date().toISOString() };
 }
 
-export { maxMediaBytes, mediaDirectory };
+export async function storeMediaFile(filePath, { id, key, mimeType }) {
+  const store = getObjectStore();
+  return store.putFile(filePath, { id, key, mimeType });
+}
+
+export async function removeMediaFile(filePath) {
+  await unlink(filePath).catch(() => {});
+}
+
+export async function serveStoredMedia(response, media) {
+  return getObjectStore().serve(response, media);
+}
+
+export { maxMediaBytes, mediaDirectory, mediaWorkDirectory, objectStorageMode };

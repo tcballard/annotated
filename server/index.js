@@ -4,8 +4,9 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { readStore, updateStore } from './store.js';
-import { mediaDirectory, writeIncomingMedia } from './media-store.js';
+import { closeStore, readStore, storageDescription, updateStore } from './store.js';
+import { serveStoredMedia, writeIncomingMedia } from './media-store.js';
+import { getObjectStore } from './object-store.js';
 import { enqueueMediaJob, recoverMediaJobs } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
@@ -44,7 +45,7 @@ const withComments = (annotation, store) => ({
 });
 
 const handleApi = async (request, response, pathname) => {
-  if (request.method === 'GET' && pathname === '/api/health') return send(response, 200, { status: 'ok', version: '0.2.0', persistence: 'file' });
+  if (request.method === 'GET' && pathname === '/api/health') return send(response, 200, { status: 'ok', version: '0.2.0', persistence: storageDescription() });
   if (request.method === 'GET' && pathname === '/api/me') return send(response, 200, { user: (await readStore()).users[0] });
 
   if (request.method === 'POST' && pathname === '/api/sources/resolve') {
@@ -56,7 +57,7 @@ const handleApi = async (request, response, pathname) => {
     const mimeType = String(request.headers['content-type'] || '').split(';')[0].toLowerCase();
     if (!mimeType.startsWith('audio/')) return send(response, 415, { error: 'Audio uploads must use an audio content type.' });
     const media = await writeIncomingMedia(request, mimeType);
-    await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, createdAt: media.createdAt }] }));
+    await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, createdAt: media.createdAt }] }));
     return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, url: `${publicOrigin}/media/${media.id}` } });
   }
 
@@ -132,15 +133,7 @@ const serveMedia = async (response, id) => {
   const store = await readStore();
   const media = (store.media || []).find((item) => item.id === id);
   if (!media) return notFound(response);
-  const candidate = path.resolve(mediaDirectory, media.fileName);
-  if (!candidate.startsWith(path.resolve(mediaDirectory))) return notFound(response);
-  try {
-    const info = await stat(candidate);
-    response.writeHead(200, { 'content-type': media.mimeType, 'content-length': info.size, 'cache-control': 'public, max-age=31536000, immutable', 'accept-ranges': 'bytes' });
-    return createReadStream(candidate).pipe(response);
-  } catch {
-    return notFound(response);
-  }
+  return serveStoredMedia(response, media);
 };
 
 const serveStatic = async (request, response, pathname) => {
@@ -178,6 +171,14 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
+  getObjectStore();
   console.log(`annotated server listening on http://localhost:${port}`);
   recoverMediaJobs().catch((error) => console.error('media recovery failed', error));
 });
+
+const shutdown = async () => {
+  await closeStore().catch((error) => console.error('store shutdown failed', error));
+  server.close(() => process.exit(0));
+};
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);

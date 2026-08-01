@@ -7,10 +7,17 @@
     "dev": "vite",
     "dev:server": "node server/index.js",
     "build": "vite build",
+    "test": "node --test",
+    "db:migrate": "node scripts/migrate.js",
     "preview": "vite preview",
     "start": "NODE_ENV=production node server/index.js"
   },
   "devDependencies": {
     "vite": "^7.0.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1101.0",
+    "@aws-sdk/s3-request-presigner": "^3.1101.0",
+    "pg": "^8.22.0"
   }
 }
