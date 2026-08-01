@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { closeStore, readStore, storageDescription, updateStore } from './store.js';
 import { serveStoredMedia, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
-import { enqueueMediaJob, recoverMediaJobs } from './media-worker.js';
+import { cancelMediaJob, enqueueMediaJob, recoverMediaJobs } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, providerStatus, startOAuth } from './auth.js';
@@ -106,6 +106,14 @@ const handleApi = async (request, response, pathname) => {
   if (request.method === 'GET' && pathname === '/api/feed') {
     const store = await readStore();
     return send(response, 200, { annotations: store.annotations.filter((item) => item.status === 'published').sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((item) => withComments(item, store)) });
+  }
+
+  const cancelJobMatch = pathname.match(/^\/api\/media\/jobs\/([0-9a-f-]+)\/cancel$/i);
+  if (cancelJobMatch && request.method === 'POST') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
+    const cancelled = await cancelMediaJob(cancelJobMatch[1], actor?.id || 'local-tom');
+    return cancelled ? send(response, 200, { status: 'cancelled' }) : send(response, 404, { error: 'Media job not found or cannot be cancelled.' });
   }
 
   if (request.method === 'POST' && pathname === '/api/annotations') {
