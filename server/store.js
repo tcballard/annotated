@@ -16,12 +16,18 @@ const emptyStore = {
   mediaJobs: [],
   sessions: [],
   extensionTickets: [],
-  users: [{ id: 'local-tom', handle: 'tcballard', displayName: 'Tom Ballard' }],
+  moderationAudit: [],
+  users: [{ id: 'local-tom', handle: 'tcballard', displayName: 'Tom Ballard', role: 'owner' }],
 };
 
 let writeQueue = Promise.resolve();
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
+const normalizeStore = (value) => {
+  const merged = { ...clone(emptyStore), ...value };
+  merged.users = (merged.users || []).map((user) => user.id === 'local-tom' ? { role: 'owner', ...user } : user);
+  return merged;
+};
 
 const storageMode = process.env.ANNOTATED_STORAGE || (process.env.NODE_ENV === 'production' ? 'postgres' : 'file');
 
@@ -47,7 +53,7 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
   const read = async () => {
     await ensureSchema();
     const result = await pool.query('SELECT state FROM annotated_state WHERE id = 1');
-    return result.rows[0] ? { ...clone(emptyStore), ...result.rows[0].state } : clone(emptyStore);
+    return result.rows[0] ? normalizeStore(result.rows[0].state) : clone(emptyStore);
   };
   const update = async (mutator) => {
     await ensureSchema();
@@ -56,7 +62,7 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock($1)', [746132]);
       const result = await client.query('SELECT state FROM annotated_state WHERE id = 1 FOR UPDATE');
-      const current = result.rows[0] ? { ...clone(emptyStore), ...result.rows[0].state } : clone(emptyStore);
+      const current = result.rows[0] ? normalizeStore(result.rows[0].state) : clone(emptyStore);
       const next = await mutator(current);
       await client.query(`
         INSERT INTO annotated_state (id, state, updated_at) VALUES (1, $1::jsonb, now())
@@ -79,7 +85,7 @@ const fileStore = {
   read: async () => {
     try {
       const value = JSON.parse(await readFile(storePath, 'utf8'));
-      return { ...clone(emptyStore), ...value };
+      return normalizeStore(value);
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
       await mkdir(dataDirectory, { recursive: true });
