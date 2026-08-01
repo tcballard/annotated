@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { validateAnnotation } from '../server/validation.js';
+import { canUseAudioAsset } from '../server/media-access.js';
 
 const mediaAnnotation = (overrides = {}) => ({
   sourceUrl: 'https://www.youtube.com/watch?v=example',
@@ -32,4 +33,11 @@ test('rejects private and non-http source URLs', () => {
 test('requires a server-owned audio asset for audio commentary', () => {
   const result = validateAnnotation(mediaAnnotation({ commentaryMode: 'audio', commentary: '' }));
   assert.ok(result.errors.includes('An uploaded audio asset is required.'));
+});
+
+test('audio assets can only be attached by their owner', () => {
+  const media = { id: 'audio-1', mimeType: 'audio/webm', ownerId: 'user-1' };
+  assert.equal(canUseAudioAsset(media, { id: 'user-1' }), true);
+  assert.equal(canUseAudioAsset(media, { id: 'user-2' }), false);
+  assert.equal(canUseAudioAsset({ ...media, mimeType: 'video/mp4' }, { id: 'user-1' }), false);
 });
