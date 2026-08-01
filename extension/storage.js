@@ -19,6 +19,9 @@ const compactDraft = (draft = {}) => ({
   clipEnd: boundedNumber(draft.clipEnd),
   commentary: boundedString(draft.commentary, 280),
   commentaryMode: draft.commentaryMode === 'audio' ? 'audio' : 'text',
+  audioAssetId: boundedString(draft.audioAssetId, 80),
+  audioDuration: boundedNumber(draft.audioDuration),
+  audioDraftId: boundedString(draft.audioDraftId, 80),
 });
 
 const compactPublished = (annotation = {}) => ({
@@ -31,7 +34,7 @@ const compactPublished = (annotation = {}) => ({
 
 const compactPending = (capture = {}) => ({
   id: boundedString(capture.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`, 80),
-  payload: { ...compactDraft(capture.payload || {}), commentaryMode: 'text' },
+  payload: compactDraft(capture.payload || {}),
   queuedAt: boundedString(capture.queuedAt || new Date().toISOString(), 40),
   attempts: Math.max(0, Number(capture.attempts) || 0),
 });

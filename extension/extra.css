@@ -3,3 +3,12 @@
 .selection-card p { max-height: 58px; overflow: auto; margin: 7px 0 0; color: #315e44; font-family: Georgia, serif; font-size: 13px; line-height: 1.3; }
 .panel-error { margin: 14px 0 0; padding: 10px; border: 1px solid #d7a18e; background: #fff0ea; color: #8a3d2a; font-family: var(--mono); font-size: 9px; line-height: 1.4; }
 .success a { display: block; margin-top: 7px; color: #315e44; font-family: var(--mono); font-size: 9px; text-decoration: underline; }
+.audio-composer { display: flex; align-items: center; gap: 9px; min-height: 66px; margin-top: 11px; padding: 10px; border: 1px solid #b9d6c2; background: var(--mint); }
+.audio-record { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border: 1px solid var(--ink); border-radius: 50%; background: var(--orange); color: var(--ink); font-size: 13px; }
+.audio-record.is-recording { background: #e83c2f; color: white; animation: pulse 1.2s ease-in-out infinite; }
+.audio-composer strong,.audio-composer small { display: block; }
+.audio-composer strong { font-size: 10px; }
+.audio-composer small { margin-top: 3px; color: #3e5b49; font-family: var(--mono); font-size: 8px; line-height: 1.25; }
+.audio-duration { margin-left: auto; color: #3e5b49; font-family: var(--mono); font-size: 9px; }
+.audio-retry { padding: 4px 6px; border: 1px solid #3e5b49; background: transparent; color: #315e44; font-family: var(--mono); font-size: 8px; text-transform: uppercase; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(232,60,47,.15); } }

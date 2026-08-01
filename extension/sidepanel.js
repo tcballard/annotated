@@ -1,5 +1,7 @@
 import { extensionStorage } from './storage.js';
 import { apiOrigin, authHeaders, signIn } from './config.js';
+import { clampAudioDuration, MAX_AUDIO_SECONDS, preferredAudioMimeType } from './audio.js';
+import { deleteAudioDraft, readAudioDraft, stageAudioDraft } from './media-draft-store.js';
 
 const start = document.querySelector('#start');
 const end = document.querySelector('#end');
@@ -9,6 +11,12 @@ const clipLength = document.querySelector('#clipLength');
 const trackFill = document.querySelector('#trackFill');
 const note = document.querySelector('#note');
 const noteCount = document.querySelector('#noteCount');
+const audioComposer = document.querySelector('#audioComposer');
+const audioRecord = document.querySelector('#audioRecord');
+const audioStatus = document.querySelector('#audioStatus');
+const audioHint = document.querySelector('#audioHint');
+const audioDuration = document.querySelector('#audioDuration');
+const audioRetry = document.querySelector('#audioRetry');
 const success = document.querySelector('#success');
 const successLink = document.querySelector('#successLink');
 const error = document.querySelector('#error');
@@ -22,6 +30,15 @@ let selectedText = '';
 let commentaryMode = 'text';
 let draftSaveTimer;
 let draftReady = false;
+let audioAssetId = '';
+let audioDurationSeconds = 0;
+let audioDraftId = '';
+let mediaRecorder;
+let recordingStream;
+let recordingChunks = [];
+let recordingStartedAt = 0;
+let recordingTimer;
+let audioUploadInFlight = false;
 
 const format = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
 
@@ -39,6 +56,25 @@ const showError = (message) => {
   error.textContent = message;
   error.hidden = false;
   success.hidden = true;
+};
+
+const setAudioStatus = (status, hint = '') => {
+  audioStatus.textContent = status;
+  audioHint.textContent = hint;
+  audioDuration.textContent = format(audioDurationSeconds);
+  audioRetry.hidden = !audioDraftId || Boolean(audioAssetId) || audioUploadInFlight || Boolean(mediaRecorder?.state === 'recording');
+  audioRecord.disabled = audioUploadInFlight;
+  audioRecord.classList.toggle('is-recording', mediaRecorder?.state === 'recording');
+  audioRecord.setAttribute('aria-label', mediaRecorder?.state === 'recording' ? 'Stop recording' : 'Start recording');
+  audioRecord.textContent = mediaRecorder?.state === 'recording' ? '■' : '●';
+};
+
+const syncComposer = () => {
+  const audio = commentaryMode === 'audio';
+  note.hidden = audio;
+  noteCount.parentElement.hidden = audio;
+  audioComposer.hidden = !audio;
+  if (audio) setAudioStatus(audioAssetId ? 'Audio note ready' : audioDraftId ? 'Audio note saved locally' : 'Record a 90-second take', audioAssetId ? 'Ready to publish with this annotation.' : 'Audio is staged locally before upload.');
 };
 
 const apiRequest = async (path, options = {}) => {
@@ -59,6 +95,112 @@ const apiRequest = async (path, options = {}) => {
   return body;
 };
 
+const uploadAudioRequest = async (blob) => {
+  let response;
+  try {
+    response = await fetch(`${await apiOrigin()}/api/media/audio`, {
+      method: 'POST',
+      credentials: 'omit',
+      headers: { 'content-type': blob.type || 'audio/webm', ...(await authHeaders()) },
+      body: blob,
+    });
+  } catch (requestError) {
+    requestError.retryable = true;
+    throw requestError;
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const requestError = new Error(body.errors?.join(' ') || body.error || `Audio upload failed (${response.status}).`);
+    requestError.status = response.status;
+    requestError.retryable = response.status >= 500 || response.status === 429;
+    throw requestError;
+  }
+  return body;
+};
+
+const uploadStagedAudio = async () => {
+  if (audioAssetId || !audioDraftId || audioUploadInFlight) return audioAssetId;
+  const staged = await readAudioDraft(audioDraftId).catch(() => null);
+  if (!staged?.blob) throw new Error('The local audio note is no longer available.');
+  audioUploadInFlight = true;
+  syncComposer();
+  setAudioStatus('Uploading your take…', 'The browser is sending the staged audio.');
+  try {
+    const { media } = await uploadAudioRequest(staged.blob);
+    audioAssetId = media.id;
+    audioDurationSeconds = clampAudioDuration(staged.duration || audioDurationSeconds);
+    await deleteAudioDraft(audioDraftId).catch(() => {});
+    audioDraftId = '';
+    saveDraft();
+    setAudioStatus('Audio note ready', 'Ready to publish with this annotation.');
+    return audioAssetId;
+  } catch (uploadError) {
+    setAudioStatus('Audio note saved locally', uploadError.retryable ? 'Retry when the backend is available.' : uploadError.message);
+    throw uploadError;
+  } finally {
+    audioUploadInFlight = false;
+    syncComposer();
+  }
+};
+
+const stopAudioRecording = () => {
+  if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+  clearInterval(recordingTimer);
+  mediaRecorder.stop();
+};
+
+const startAudioRecording = async () => {
+  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+    showError('Audio recording is not supported in this browser.');
+    return;
+  }
+  if (audioDraftId) await deleteAudioDraft(audioDraftId).catch(() => {});
+  audioDraftId = '';
+  audioAssetId = '';
+  audioDurationSeconds = 0;
+  recordingChunks = [];
+  try {
+    recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mimeType = preferredAudioMimeType();
+    mediaRecorder = new MediaRecorder(recordingStream, mimeType ? { mimeType } : undefined);
+    recordingStartedAt = Date.now();
+    mediaRecorder.addEventListener('dataavailable', (event) => { if (event.data.size) recordingChunks.push(event.data); });
+    mediaRecorder.addEventListener('stop', async () => {
+      recordingStream?.getTracks().forEach((track) => track.stop());
+      recordingStream = null;
+      audioDurationSeconds = clampAudioDuration((Date.now() - recordingStartedAt) / 1000);
+      const mimeType = mediaRecorder.mimeType || 'audio/webm';
+      const blob = new Blob(recordingChunks, { type: mimeType });
+      recordingChunks = [];
+      mediaRecorder = null;
+      try {
+        audioDraftId = await stageAudioDraft(blob, { duration: audioDurationSeconds });
+        saveDraft();
+        setAudioStatus('Audio note saved locally', 'Uploading the staged take…');
+        await uploadStagedAudio();
+      } catch (uploadError) {
+        showError(uploadError.retryable ? 'Audio note saved locally. It will retry when the backend is available.' : uploadError.message || 'Audio upload failed.');
+      }
+      syncComposer();
+    });
+    mediaRecorder.start(250);
+    setAudioStatus('Recording your take…', `Tap stop · max ${format(MAX_AUDIO_SECONDS)}`);
+    recordingTimer = setInterval(() => {
+      audioDurationSeconds = clampAudioDuration((Date.now() - recordingStartedAt) / 1000);
+      setAudioStatus('Recording your take…', `Tap stop · max ${format(MAX_AUDIO_SECONDS)}`);
+      if (audioDurationSeconds >= MAX_AUDIO_SECONDS) stopAudioRecording();
+    }, 250);
+  } catch (recordingError) {
+    recordingStream?.getTracks().forEach((track) => track.stop());
+    recordingStream = null;
+    mediaRecorder = null;
+    showError(recordingError.message || 'Microphone permission is required to record.');
+    syncComposer();
+  }
+};
+
+const toggleAudioRecording = () => mediaRecorder?.state === 'recording' ? stopAudioRecording() : startAudioRecording();
+
 const draftPayload = () => ({
   sourceUrl: currentTab.url,
   sourceType: currentTab.sourceType,
@@ -69,6 +211,9 @@ const draftPayload = () => ({
   clipEnd: currentTab.sourceType === 'article' ? 0 : Number(end.value),
   commentary: note.value.trim().slice(0, 280),
   commentaryMode,
+  audioAssetId,
+  audioDuration: audioDurationSeconds,
+  audioDraftId,
 });
 
 const saveDraft = () => {
@@ -120,15 +265,20 @@ async function loadCurrentTab() {
       end.value = endNumber.value = draft.clipEnd;
       note.value = draft.commentary;
       commentaryMode = draft.commentaryMode;
-      note.placeholder = commentaryMode === 'audio' ? 'Audio publishing is coming with the media worker.' : 'What stayed with you? Add the context the original clip is missing…';
+      audioAssetId = draft.audioAssetId || '';
+      audioDurationSeconds = Number(draft.audioDuration) > 0 ? clampAudioDuration(draft.audioDuration) : 0;
+      audioDraftId = draft.audioDraftId || '';
+      note.placeholder = 'What stayed with you? Add the context the original clip is missing…';
       document.querySelectorAll('[data-mode]').forEach((button) => button.classList.toggle('active', button.dataset.mode === commentaryMode));
       syncRange();
       syncNote();
     }
     draftReady = true;
+    syncComposer();
   } catch {
     draftReady = true;
     showError('The active tab is restricted; paste its URL into the web capture desk.');
+    syncComposer();
   }
 }
 
@@ -163,16 +313,31 @@ endNumber.addEventListener('change', () => { end.value = endNumber.value; syncRa
 note.addEventListener('input', syncNote);
 
 document.querySelectorAll('[data-mode]').forEach((mode) => mode.addEventListener('click', () => {
+  if (mode.dataset.mode !== 'audio' && mediaRecorder?.state === 'recording') stopAudioRecording();
   commentaryMode = mode.dataset.mode;
   document.querySelectorAll('[data-mode]').forEach((button) => button.classList.toggle('active', button === mode));
-  note.placeholder = commentaryMode === 'audio' ? 'Audio publishing is coming with the media worker.' : 'What stayed with you? Add the context the original clip is missing…';
+  note.placeholder = 'What stayed with you? Add the context the original clip is missing…';
+  syncComposer();
   saveDraft();
 }));
 
+audioRecord.addEventListener('click', toggleAudioRecording);
+audioRetry.addEventListener('click', async () => {
+  try { await uploadStagedAudio(); } catch (uploadError) { showError(uploadError.message || 'Audio upload failed.'); }
+});
+
 document.querySelector('#publish').addEventListener('click', async () => {
   error.hidden = true;
-  if (!note.value.trim()) { note.focus(); showError('Add a text annotation before publishing.'); return; }
-  if (commentaryMode === 'audio') { showError('Audio publishing is coming with the media worker. Use Text for this pass.'); return; }
+  if (commentaryMode === 'text' && !note.value.trim()) { note.focus(); showError('Add a text annotation before publishing.'); return; }
+  if (commentaryMode === 'audio' && !audioAssetId) {
+    if (audioDraftId) {
+      try { await uploadStagedAudio(); } catch (uploadError) {
+        showError(uploadError.retryable ? 'Audio note saved locally. It will retry when the backend is available.' : uploadError.message || 'Finish uploading the audio note before publishing.');
+        return;
+      }
+    }
+    if (!audioAssetId) { showError('Record and finish uploading the audio note before publishing.'); return; }
+  }
   let protocol = '';
   try { protocol = new URL(currentTab.url).protocol; } catch { /* invalid source */ }
   if (!['http:', 'https:'].includes(protocol)) { showError('This tab does not expose a publishable http(s) source URL.'); return; }
@@ -184,8 +349,10 @@ document.querySelector('#publish').addEventListener('click', async () => {
     sourceExcerpt: selectedText,
     clipStart: currentTab.sourceType === 'article' ? 0 : Number(start.value),
     clipEnd: currentTab.sourceType === 'article' ? 0 : Number(end.value),
-    commentary: note.value.trim().slice(0, 280),
-    commentaryMode: 'text',
+    commentary: commentaryMode === 'text' ? note.value.trim().slice(0, 280) : '',
+    commentaryMode,
+    audioAssetId: commentaryMode === 'audio' ? audioAssetId : undefined,
+    audioDuration: commentaryMode === 'audio' ? audioDurationSeconds : undefined,
   };
   try {
     const { annotation } = await apiRequest('/api/annotations', { method: 'POST', body: JSON.stringify(payload) });
@@ -196,9 +363,11 @@ document.querySelector('#publish').addEventListener('click', async () => {
     successLink.hidden = false;
     await extensionStorage.clearDraft().catch(() => {});
     await extensionStorage.savePublished(annotation).catch(() => {});
+    if (audioDraftId) await deleteAudioDraft(audioDraftId).catch(() => {});
+    audioDraftId = '';
   } catch (publishError) {
     if (publishError.retryable) {
-      await extensionStorage.queueCapture(payload).catch(() => {});
+      await extensionStorage.queueCapture({ ...payload, audioDraftId }).catch(() => {});
       showError('Backend unavailable. This capture is queued locally and will retry when the service worker reconnects.');
     } else showError(publishError.message || 'Annotation could not be published.');
   }
@@ -206,5 +375,6 @@ document.querySelector('#publish').addEventListener('click', async () => {
 
 syncRange();
 syncNote();
+syncComposer();
 loadCurrentTab();
 checkBackend();
