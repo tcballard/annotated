@@ -273,9 +273,9 @@ The local browser run exercised the user-facing flows below:
   API acceptance test covers profile lookup and the annotation list. Its
   hosted push and pull-request workflows both passed Node plus linux/amd64 and
   linux/arm64 production-image smoke jobs on 2026-08-02 ([push run
-  30744938335](https://github.com/tcballard/annotated/actions/runs/30744938335),
+  30745156997](https://github.com/tcballard/annotated/actions/runs/30745156997),
   [pull-request run
-  30744941600](https://github.com/tcballard/annotated/actions/runs/30744941600)).
+  30745158643](https://github.com/tcballard/annotated/actions/runs/30745158643)).
 
 ## Deliberately unverified external gates
 
