@@ -245,8 +245,11 @@ The local browser run exercised the user-facing flows below:
   checks their PNG signatures/dimensions. `npm run generate:extension-icons`
   regenerates the files with Node built-ins only; the runtime-only package now
   includes the icon files (16 archive entries including the `icons/` directory).
-  Screenshots and promo artwork remain external store
-  gates. Hosted checks are recorded on PR43 after its final evidence commit.
+  Screenshots and promo artwork remain external store gates. PR43's hosted push
+  and pull-request workflows both passed Node plus linux/amd64 and linux/arm64
+  production-image smoke jobs on 2026-08-02
+  ([push run 30743106711](https://github.com/tcballard/annotated/actions/runs/30743106711),
+  [pull-request run 30743109841](https://github.com/tcballard/annotated/actions/runs/30743109841)).
 
 ## Deliberately unverified external gates
 
