@@ -296,6 +296,17 @@ The local browser run exercised the user-facing flows below:
   30746493180](https://github.com/tcballard/annotated/actions/runs/30746493180),
   [pull-request run
   30746502118](https://github.com/tcballard/annotated/actions/runs/30746502118)).
+- PR49 makes Google the first explicitly enabled production OAuth provider and
+  keeps X as a provider-neutral sibling enabled with `OAUTH_PROVIDERS=google,x`.
+  Provider-scoped startup validation, availability reporting, PKCE setup, and
+  profile adapters are covered by the full local suite: 75 tests, 74 passing,
+  with one explicit PostgreSQL/S3 service-integration skip. The build, all
+  JavaScript syntax checks, and diff check also pass. Its hosted push and
+  pull-request workflows both passed Node plus linux/amd64 and linux/arm64
+  production-image smoke jobs on 2026-08-02 ([push run
+  30747195804](https://github.com/tcballard/annotated/actions/runs/30747195804),
+  [pull-request run
+  30747199116](https://github.com/tcballard/annotated/actions/runs/30747199116)).
 
 ## Deliberately unverified external gates
 
