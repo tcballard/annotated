@@ -213,9 +213,13 @@ The local browser run exercised the user-facing flows below:
   artwork/enclosure URLs, and canonical show link while preserving the existing
   source contract and worker handoff. `node --test test/source-processing.test.js`
   passed 12 tests, including RSS and Atom fixtures, entity decoding, enclosure
-  links, source classification, redirect limits, and SSRF checks. Full build,
-  syntax, and hosted checks are recorded on PR40 after the final documentation
-  commit.
+  links, source classification, redirect limits, and SSRF checks. The full local
+  suite passed 65 tests with one explicit production-service integration skip;
+  the Vite build, runtime-only extension package, JavaScript syntax checks, and
+  `git diff --check` also passed. PR40's hosted push and pull-request workflows
+  both passed Node plus linux/amd64 and linux/arm64 production-image smoke jobs
+  on 2026-08-02 ([push run 30740952993](https://github.com/tcballard/annotated/actions/runs/30740952993),
+  [pull-request run 30740968625](https://github.com/tcballard/annotated/actions/runs/30740968625)).
 
 ## Deliberately unverified external gates
 
