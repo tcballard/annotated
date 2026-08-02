@@ -1,6 +1,6 @@
 # Acceptance evidence
 
-Last run: 2026-08-01
+Last run: 2026-08-02
 
 This record supplements [`BRIEF_ACCEPTANCE.md`](./BRIEF_ACCEPTANCE.md). It is
 evidence from the current stacked branch, not a claim that the external
@@ -9,12 +9,12 @@ production gates are complete.
 ## Clean-checkout validation
 
 The following checks passed from a fresh clone of the final acceptance stack
-tip (`agent/brief-33-production-services`):
+tip (`agent/brief-34-production-smoke`):
 
 ```text
 npm ci
 npm run build
-npm test                         # 57 passing, one explicit service-integration skip without local services
+npm test                         # 58 passing, one explicit service-integration skip without local services
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -27,10 +27,10 @@ verified `/api/health`, `/api/ready`, restricted-origin rejection, provider
 configuration reporting, the development identity boundary, idempotent
 annotation publishing, public annotation reload, feed loading, comments,
 active-claim deduplication, reporter claim status, and owner moderation
-transitions. It passed as part of the 57-test local run. The Docker daemon was not
-available in this environment, so the production image itself remains an
-external gate; the Dockerfile build order, non-root user, and context boundary
-are covered by static tests.
+transitions. It passed as part of the 59-test local run. The Docker daemon was not
+available in this environment, so the production image was validated through
+the hosted smoke workflow recorded below; the Dockerfile build order, non-root
+user, and context boundary are also covered by static tests.
 
 ## Browser acceptance run
 
@@ -140,6 +140,15 @@ The local browser run exercised the user-facing flows below:
   test against an ephemeral MinIO service. The push and pull-request checks
   passed on 2026-08-01 ([push run 30722800219](https://github.com/tcballard/annotated/actions/runs/30722800219),
   [pull-request run 30722802311](https://github.com/tcballard/annotated/actions/runs/30722802311)).
+- PR34 fixed the production container bind address: the app now accepts a
+  configurable `HOST`, and the image defaults to `0.0.0.0` while local
+  development remains loopback-bound. Its hosted push and pull-request runs
+  build both `linux/amd64` and `linux/arm64` images, start PostgreSQL 16 and
+  MinIO on an isolated network, run migrations inside the built image, start
+  the production app with the pinned provider runtime, and verify `/api/ready`
+  over that network reports `ready`, `persistence: postgres`, and a ready media
+  runtime. Both runs passed on 2026-08-02 ([push run 30735263263](https://github.com/tcballard/annotated/actions/runs/30735263263),
+  [pull-request run 30735425820](https://github.com/tcballard/annotated/actions/runs/30735425820)).
 
 ## Deliberately unverified external gates
 
@@ -159,4 +168,6 @@ evidence are available:
 - Chrome Web Store icon/screenshots, a public privacy-policy URL, and a
   monitored publisher contact address.
 - Multi-user production feed, follow, comment, claims, and moderation evidence.
-- Production observability, deployment, security, and readiness checks.
+- Public deployment, production observability, durable-service backups and
+  recovery, and live external traffic remain unverified. PR34 now covers the
+  image-to-service networking and readiness boundary in hosted CI.
