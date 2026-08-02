@@ -231,6 +231,12 @@ The local browser run exercised the user-facing flows below:
   linux/arm64 production-image smoke jobs on 2026-08-02
   ([push run 30741507755](https://github.com/tcballard/annotated/actions/runs/30741507755),
   [pull-request run 30741523491](https://github.com/tcballard/annotated/actions/runs/30741523491)).
+- PR42 closes the RSS/Atom enclosure handoff: extensionless or signed podcast
+  media URLs marked by the resolver now pass through the worker's existing
+  public-URL/DNS safety checks and go directly to FFmpeg, while non-enclosure
+  podcast sources retain the `yt-dlp` fallback. Source-processing tests cover a
+  signed-style `?episode=1` enclosure and the existing SSRF boundaries. Hosted
+  checks are recorded on PR42 after its final evidence commit.
 
 ## Deliberately unverified external gates
 
