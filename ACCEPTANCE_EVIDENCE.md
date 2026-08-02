@@ -240,6 +240,13 @@ The local browser run exercised the user-facing flows below:
   linux/arm64 production-image smoke jobs on 2026-08-02
   ([push run 30742462533](https://github.com/tcballard/annotated/actions/runs/30742462533),
   [pull-request run 30742479386](https://github.com/tcballard/annotated/actions/runs/30742479386)).
+- PR43 adds a deterministic extension icon source and real PNG variants at 16,
+  48, and 128 pixels, wires them into both the manifest and toolbar action, and
+  checks their PNG signatures/dimensions. `npm run generate:extension-icons`
+  regenerates the files with Node built-ins only; the runtime-only package now
+  includes the icon files (16 archive entries including the `icons/` directory).
+  Screenshots and promo artwork remain external store
+  gates. Hosted checks are recorded on PR43 after its final evidence commit.
 
 ## Deliberately unverified external gates
 
@@ -257,7 +264,7 @@ evidence are available:
   offline queue recovery, and service-worker/sidebar lifecycle checks. PR39's
   queue and auth recovery are covered by executable tests, but the managed
   Chrome environment still refused an unpacked install for live docked proof.
-- Chrome Web Store icon/screenshots, a public privacy-policy URL, and a
+- Chrome Web Store screenshots/promo art, a public privacy-policy URL, and a
   monitored publisher contact address.
 - Multi-user production feed, follow, comment, claims, and moderation evidence.
 - Public deployment, production observability, durable-service backups and

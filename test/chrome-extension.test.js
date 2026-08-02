@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url';
 const projectRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const extensionRoot = path.join(projectRoot, 'extension');
 const read = (file) => readFile(path.join(extensionRoot, file), 'utf8');
+const pngDimensions = async (file) => {
+  const bytes = await readFile(path.join(extensionRoot, file));
+  assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+};
 
 test('Manifest V3 extension has a reachable side-panel trigger and local files', async () => {
   const manifest = JSON.parse(await read('manifest.json'));
@@ -22,6 +27,10 @@ test('Manifest V3 extension has a reachable side-panel trigger and local files',
   await access(path.join(extensionRoot, manifest.background.service_worker));
   await access(path.join(extensionRoot, manifest.side_panel.default_path));
   await access(path.join(extensionRoot, manifest.options_ui.page));
+  for (const [size, file] of Object.entries(manifest.icons)) {
+    assert.deepEqual(await pngDimensions(file), { width: Number(size), height: Number(size) });
+    assert.deepEqual(await pngDimensions(manifest.action.default_icon[size]), { width: Number(size), height: Number(size) });
+  }
 
   const background = await read('background.js');
   assert.match(background, /openPanelOnActionClick/);
@@ -80,4 +89,13 @@ test('Chrome Web Store record covers every manifest permission and the privacy g
   for (const permission of [...manifest.permissions, ...manifest.host_permissions]) assert.ok(listing.includes(permission), `Missing permission justification for ${permission}`);
   assert.match(listing, /Privacy Policy URL/);
   assert.match(listing, /not ready|TBD|external gate/i);
+});
+
+test('extension icon source and generator preserve the authored brand mark', async () => {
+  const source = await readFile(new URL('../scripts/extension-icon-source.svg', import.meta.url), 'utf8');
+  const generator = await readFile(new URL('../scripts/generate-extension-icons.mjs', import.meta.url), 'utf8');
+  assert.match(source, /#fa6336/);
+  assert.match(source, /#111515/);
+  assert.match(generator, /supersample = 4/);
+  assert.match(generator, /icon-\$\{size\}\.png/);
 });
