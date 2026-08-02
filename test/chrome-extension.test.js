@@ -27,6 +27,8 @@ test('Manifest V3 extension has a reachable side-panel trigger and local files',
   assert.match(background, /openPanelOnActionClick/);
   assert.match(background, /chrome\.action\.onClicked/);
   assert.match(background, /chrome\.alarms\.onAlarm/);
+  assert.match(background, /chrome\.runtime\.onMessage/);
+  assert.match(background, /annotatedRetryLock/);
   assert.match(background, /runBackgroundTask/);
 });
 
@@ -54,6 +56,9 @@ test('side panel keeps hidden states hidden and uses a coherent icon language', 
   assert.match(html, /data-mode="text"[^>]*aria-pressed="true"/);
   assert.match(html, /data-mode="audio"[^>]*aria-pressed="false"/);
   assert.match(html, /id="audioStatus"[^>]*role="status"/);
+  assert.match(html, /id="queueStatus"[^>]*role="status"/);
+  assert.match(runtime, /RETRY_PENDING/);
+  assert.match(runtime, /authRequired/);
   assert.match(html, /class="record-icon"/);
   assert.match(html, /class="stop-icon"/);
   assert.match(html, /id="publish"[^>]*>\s*<span>Publish annotation<\/span>\s*<svg/);

@@ -8,8 +8,9 @@ production gates are complete.
 
 ## Clean-checkout validation
 
-The following checks passed from a fresh clone of the final acceptance stack
-tip (`agent/brief-37-identity-evidence`):
+The baseline acceptance checks passed from a fresh clone of the prior stack tip
+(`agent/brief-37-identity-evidence`); the PR39 extension checks below were then
+rerun from `agent/brief-39-capture-reliability`:
 
 ```text
 npm ci
@@ -182,6 +183,27 @@ The local browser run exercised the user-facing flows below:
   and pull-request checks also passed both Node and linux/amd64 + linux/arm64
   production-image jobs on 2026-08-02 ([push run 30738159687](https://github.com/tcballard/annotated/actions/runs/30738159687),
   [pull-request run 30738170634](https://github.com/tcballard/annotated/actions/runs/30738170634)).
+- PR39 hardens the extension delivery boundary. A bounded `clientRequestId` now
+  deduplicates local queue entries, a 401 clears the stale session while keeping
+  the capture in a visible `needs-auth` state, blocked captures are retained for
+  an explicit retry, and a session-backed retry lock prevents overlapping alarm,
+  startup, and manual runs. The service worker retries on install, browser
+  startup, alarms, and an authenticated side-panel request; the side panel
+  listens for queue changes and exposes queued, sign-in, blocked, and retry-now
+  states. The auth handoff rejects callbacks whose origin or path is not the
+  extension's own Chromium redirect. `npm run build`,
+  `npm run package:extension`, `node --check extension/*.js`, `git diff --check`,
+  and the full local suite passed with 63 tests and one explicit PostgreSQL/S3
+  integration skip. The runtime-only package contains 12 extension files and
+  no repository or dependency content. The managed Chrome environment refused
+  command-line unpacked-extension loading and the DevTools MCP default profile
+  was not attachable, so docked side-panel, microphone, offline replay, and
+  service-worker lifecycle proof remain external gates rather than being
+  overstated. A separate isolated Chrome render probe with a controlled local
+  queue state verified the `needs-auth` card at 360px and 600px widths, with
+  labeled controls and no page errors; artifacts were saved at
+  `/private/tmp/annotated-pr39-queue-narrow.png` and
+  `/private/tmp/annotated-pr39-queue-desktop.png`.
 
 ## Deliberately unverified external gates
 
@@ -196,8 +218,9 @@ evidence are available:
   a generated file proven to be no longer than 90 seconds and video proven to
   be 240p.
 - Docked installed-Chrome side-panel acceptance, extension microphone capture,
-  offline queue recovery, and service-worker/sidebar lifecycle checks beyond the
-  isolated MCP page/action evidence above.
+  offline queue recovery, and service-worker/sidebar lifecycle checks. PR39's
+  queue and auth recovery are covered by executable tests, but the managed
+  Chrome environment still refused an unpacked install for live docked proof.
 - Chrome Web Store icon/screenshots, a public privacy-policy URL, and a
   monitored publisher contact address.
 - Multi-user production feed, follow, comment, claims, and moderation evidence.

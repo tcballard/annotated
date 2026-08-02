@@ -1,11 +1,12 @@
 const DRAFT_KEY = 'annotatedDraft';
 const LAST_PUBLISHED_KEY = 'annotatedLastPublished';
 const CONFIG_KEY = 'annotatedConfig';
-const PENDING_KEY = 'annotatedPendingCaptures';
+export const PENDING_KEY = 'annotatedPendingCaptures';
 const SESSION_KEY = 'annotatedSession';
 const DEFAULT_API_ORIGIN = 'http://localhost:8787';
 export const MAX_PENDING_CAPTURES = 5;
 export const MAX_PENDING_ATTEMPTS = 8;
+export const PENDING_STATUSES = new Set(['queued', 'needs-auth', 'blocked']);
 
 const sourceTypes = new Set(['video', 'article', 'podcast']);
 
@@ -49,7 +50,7 @@ export const compactPending = (capture = {}) => ({
   payload: compactDraft(capture.payload || {}),
   queuedAt: boundedString(capture.queuedAt || new Date().toISOString(), 40),
   attempts: Math.max(0, Number(capture.attempts) || 0),
-  status: capture.status === 'blocked' ? 'blocked' : 'queued',
+  status: PENDING_STATUSES.has(capture.status) ? capture.status : 'queued',
   lastError: boundedString(capture.lastError, 240),
   lastAttemptAt: boundedString(capture.lastAttemptAt, 40),
 });
@@ -110,9 +111,15 @@ export const extensionStorage = {
   async queueCapture(payload) {
     const result = await chrome.storage.local.get(PENDING_KEY);
     const current = Array.isArray(result[PENDING_KEY]) ? result[PENDING_KEY].map(compactPending) : [];
-    const next = [...current, compactPending({ payload })].slice(-MAX_PENDING_CAPTURES);
+    const normalizedPayload = compactDraft(payload);
+    const duplicate = normalizedPayload.clientRequestId
+      ? current.find((capture) => capture.payload.clientRequestId === normalizedPayload.clientRequestId)
+      : null;
+    const next = duplicate
+      ? current.map((capture) => capture.id === duplicate.id ? compactPending({ ...capture, payload: { ...capture.payload, ...normalizedPayload } }) : capture)
+      : [...current, compactPending({ payload: normalizedPayload })].slice(-MAX_PENDING_CAPTURES);
     await chrome.storage.local.set({ [PENDING_KEY]: next });
-    return next[next.length - 1].id;
+    return duplicate?.id || next[next.length - 1].id;
   },
 
   async getPendingCaptures() {
@@ -143,7 +150,7 @@ export const extensionStorage = {
     const next = (result[PENDING_KEY] || []).map((item) => item.id === capture.id ? compactPending({
       ...item,
       attempts,
-      status: error?.retryable === false || attempts >= MAX_PENDING_ATTEMPTS ? 'blocked' : 'queued',
+      status: error?.authRequired ? 'needs-auth' : error?.retryable === false || attempts >= MAX_PENDING_ATTEMPTS ? 'blocked' : 'queued',
       lastError: error?.message || error || item.lastError,
       lastAttemptAt: new Date().toISOString(),
     }) : compactPending(item));

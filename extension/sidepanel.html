@@ -53,6 +53,11 @@
       </section>
       <button class="publish" id="publish" type="button"><span>Publish annotation</span><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12h15M13 6l6 6-6 6" /></svg></button>
       <p class="privacy"><i aria-hidden="true"></i> Nothing is published until you choose to publish.</p>
+      <div class="queue-status" id="queueStatus" role="status" aria-live="polite" hidden>
+        <span class="queue-dot" aria-hidden="true"></span>
+        <div><strong id="queueStatusTitle">Capture waiting to retry</strong><small id="queueStatusDetail"></small></div>
+        <button id="queueRetry" type="button">Retry now</button>
+      </div>
       <p class="panel-error" id="error" role="alert" hidden></p>
       <div class="success" id="success" role="status" aria-live="polite" hidden><span class="success-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 12 4 4 8-9" /></svg></span><div><strong>Ready to share.</strong><small>Saved to the annotated backend.</small><a id="successLink" target="_blank" rel="noreferrer" hidden>Open public page <span aria-hidden="true">→</span></a></div></div>
     </main>

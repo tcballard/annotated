@@ -10,7 +10,7 @@ Store or deployed-browser readiness.
 | --- | --- | --- | --- |
 | Side panel | Read the current tab, select a media range, add text or audio context, and publish | `extension/sidepanel.html`, `sidepanel.js`, `sidepanel.css` | initial, source loaded, selected text, text/audio mode, recording, staged/uploading, offline, queued, error, success |
 | Extension action | Open the side panel beside the active tab | `extension/background.js` | opened, unavailable tab, service-worker error logged |
-| Service worker | Retry bounded metadata captures and audio uploads after suspension or network loss | `extension/background.js` | scheduled, retrying, blocked, completed; state is persisted rather than held in worker variables |
+| Service worker | Retry bounded metadata captures and audio uploads after suspension or network loss | `extension/background.js` | scheduled, retrying, needs sign-in, blocked, completed; state is persisted rather than held in worker variables |
 | Options page | Set and validate the API origin | `extension/options.html`, `options.js`, `storage.js` | loading, saved, invalid origin, loopback development fallback |
 | IndexedDB staging | Keep recorded audio recoverable while upload is delayed | `extension/media-draft-store.js` | staged, read, deleted after upload, unavailable/corrupt draft |
 
@@ -24,8 +24,9 @@ part of the capture flow.
   restricted browser page produces a recoverable message that points to the web capture desk.
 - `sidePanel` and `action` open the panel from the browser chrome. `alarms` schedules retry
   work so the service worker does not depend on timers or in-memory state.
-- `storage.local` contains bounded draft metadata only. Audio `Blob` data lives in IndexedDB
-  until the server accepts it; published media is server-side.
+- `storage.local` contains bounded draft and retry metadata only. Audio `Blob` data lives in
+  IndexedDB until the server accepts it; published media is server-side. A stale 401 session
+  moves a capture to an explicit `needs-auth` state instead of deleting it.
 - `identity` is used only for configured OAuth handoff. No provider credential is shipped in
   the extension.
 - `http://*/*` is retained for loopback development and `https://*/*` for deployed source
