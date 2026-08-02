@@ -254,8 +254,11 @@ The local browser run exercised the user-facing flows below:
   descriptions, excerpts, media URLs, and canonical links, so real publisher
   metadata does not leak `&amp;` or quoted entities into public annotations.
   The fixture suite covers title, description, excerpt, and query-string
-  canonical decoding; hosted checks are recorded on PR44 after its final
-  evidence commit.
+  canonical decoding. PR44's hosted push and pull-request workflows both
+  passed Node plus linux/amd64 and linux/arm64 production-image smoke jobs on
+  2026-08-02
+  ([push run 30743790449](https://github.com/tcballard/annotated/actions/runs/30743790449),
+  [pull-request run 30743793770](https://github.com/tcballard/annotated/actions/runs/30743793770)).
 
 ## Deliberately unverified external gates
 
