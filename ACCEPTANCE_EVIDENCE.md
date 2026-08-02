@@ -9,7 +9,7 @@ production gates are complete.
 ## Clean-checkout validation
 
 The following checks passed from a fresh clone of the final acceptance stack
-tip (`agent/brief-34-production-smoke`):
+tip (`agent/brief-35-production-coverage`):
 
 ```text
 npm ci
@@ -149,6 +149,12 @@ The local browser run exercised the user-facing flows below:
   over that network reports `ready`, `persistence: postgres`, and a ready media
   runtime. Both runs passed on 2026-08-02 ([push run 30735263263](https://github.com/tcballard/annotated/actions/runs/30735263263),
   [pull-request run 30735425820](https://github.com/tcballard/annotated/actions/runs/30735425820)).
+- PR35’s hosted Node job ran all 59 tests with zero skips. The real PostgreSQL
+  and MinIO integration now round-trips one uniquely keyed record for every
+  persisted product collection, checks the backing `annotated_records` rows,
+  and exercises the reconstruction path that previously duplicated the default
+  owner record. Both runs passed on 2026-08-02 ([push run 30735871840](https://github.com/tcballard/annotated/actions/runs/30735871840),
+  [pull-request run 30735872999](https://github.com/tcballard/annotated/actions/runs/30735872999)).
 
 ## Deliberately unverified external gates
 

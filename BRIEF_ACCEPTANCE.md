@@ -31,7 +31,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 
 ## Production readiness gates
 
-- [ ] PostgreSQL is the production metadata repository; migrations and integration tests cover annotations, users, comments, claims, follows, likes, and media jobs. PR33 now runs the migration ledger and transactional repository against real PostgreSQL in hosted CI; deployed database durability and recovery remain external.
+- [ ] PostgreSQL is the production metadata repository; migrations and integration tests cover annotations, users, comments, claims, follows, likes, and media jobs. PR33 runs the migration ledger and transactional repository against real PostgreSQL, and PR35’s hosted integration round-trips every persisted product collection through the entity-record table; deployed database durability and recovery remain external.
 - [ ] Published media uses configured S3/R2-compatible object storage and a delivery URL; local files remain development-only. PR33 now exercises a real S3-compatible bucket, signed URL, upload, and deletion in hosted CI; a durable production bucket/CDN remains external.
 - [ ] Google and X OAuth, secure sessions, ownership, logout, expiry, and extension authentication are real and tested.
 - [ ] Extension API origin, offline queueing, retry states, and service-worker/side-panel recovery are production-configurable and browser-tested.
