@@ -127,6 +127,13 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.equal(feed.response.status, 200);
   assert.equal(feed.payload.annotations.length, 1);
 
+  const profile = await request(baseUrl, '/api/profiles/tcballard');
+  assert.equal(profile.response.status, 200);
+  assert.equal(profile.payload.profile.handle, 'tcballard');
+  assert.equal(profile.payload.profile.annotationCount, 1);
+  assert.equal(profile.payload.profile.annotations.length, 1);
+  assert.equal('email' in profile.payload.profile, false);
+
   const comment = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}/comments`, { method: 'POST', body: { body: 'The retry boundary is covered.' } });
   assert.equal(comment.response.status, 201);
   assert.equal(comment.payload.annotation.comments.length, 1);

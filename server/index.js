@@ -51,16 +51,23 @@ const readJson = async (request) => {
 };
 
 const slugify = (value) => String(value).toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'annotation';
+const publicUser = (user) => user ? {
+  id: user.id,
+  handle: user.handle,
+  displayName: user.displayName,
+  avatarUrl: user.avatarUrl || null,
+  bio: user.bio || '',
+} : null;
 
 const withComments = (annotation, store, viewerId = '') => ({
   ...annotation,
   url: `${publicOrigin}/a/${annotation.slug}`,
   audioUrl: annotation.audioAssetId ? `${publicOrigin}/media/${annotation.audioAssetId}` : null,
   clipUrl: annotation.mediaAssetId ? `${publicOrigin}/media/${annotation.mediaAssetId}` : null,
-  author: (store.users || []).find((user) => user.id === annotation.authorId) || { id: annotation.authorId, handle: annotation.authorId, displayName: annotation.authorId },
+  author: publicUser((store.users || []).find((user) => user.id === annotation.authorId)) || { id: annotation.authorId, handle: annotation.authorId, displayName: annotation.authorId },
   likes: (store.likes || []).filter((like) => like.annotationId === annotation.id).length,
   likedByMe: Boolean(viewerId && (store.likes || []).some((like) => like.annotationId === annotation.id && like.userId === viewerId)),
-  comments: store.comments.filter((comment) => comment.annotationId === annotation.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((comment) => ({ ...comment, author: (store.users || []).find((user) => user.id === comment.authorId) || { id: comment.authorId, handle: comment.authorId } })),
+  comments: (store.comments || []).filter((comment) => comment.annotationId === annotation.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((comment) => ({ ...comment, author: publicUser((store.users || []).find((user) => user.id === comment.authorId)) || { id: comment.authorId, handle: comment.authorId } })),
   claims: undefined,
 });
 
@@ -147,7 +154,22 @@ const handleApi = async (request, response, pathname) => {
     const profile = (store.users || []).find((user) => user.handle === decodeURIComponent(profileMatch[1]) || user.id === decodeURIComponent(profileMatch[1]));
     if (!profile) return notFound(response);
     const viewer = await currentUser(request);
-    return send(response, 200, { profile: { ...profile, followers: (store.follows || []).filter((follow) => follow.followingId === profile.id).length, following: (store.follows || []).filter((follow) => follow.followerId === profile.id).length, isFollowing: Boolean(viewer && (store.follows || []).some((follow) => follow.followerId === viewer.id && follow.followingId === profile.id)) } });
+    const annotationCount = store.annotations.filter((annotation) => annotation.authorId === profile.id && annotation.status === 'published').length;
+    const annotations = store.annotations
+      .filter((annotation) => annotation.authorId === profile.id && annotation.status === 'published')
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, 20)
+      .map((annotation) => withComments(annotation, store, viewer?.id));
+    return send(response, 200, {
+      profile: {
+        ...publicUser(profile),
+        followers: (store.follows || []).filter((follow) => follow.followingId === profile.id).length,
+        following: (store.follows || []).filter((follow) => follow.followerId === profile.id).length,
+        isFollowing: Boolean(viewer && (store.follows || []).some((follow) => follow.followerId === viewer.id && follow.followingId === profile.id)),
+        annotationCount,
+        annotations,
+      },
+    });
   }
 
   const followMatch = pathname.match(/^\/api\/users\/([^/]+)\/(follow|unfollow)$/);
