@@ -93,7 +93,7 @@ const retryQueuedCaptures = async () => {
     authActions.hidden = false;
     return;
   }
-  await Promise.all(captures.map((capture) => extensionStorage.retryPendingCapture(capture.id)));
+  for (const capture of captures) await extensionStorage.retryPendingCapture(capture.id);
   await chrome.runtime.sendMessage({ type: 'RETRY_PENDING' }).catch(() => {});
   await refreshQueueStatus();
 };
