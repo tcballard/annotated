@@ -226,7 +226,11 @@ The local browser run exercised the user-facing flows below:
   requests, and contact routing. Vite copies it into `dist/privacy.html`, the
   deployment test checks its disclosures and the Web Store record links the
   intended `/privacy.html` path. Public deployment and URL verification remain
-  external; no stable URL or publisher email is claimed by this PR.
+  external; no stable URL or publisher email is claimed by this PR. PR41's
+  hosted push and pull-request workflows both passed Node plus linux/amd64 and
+  linux/arm64 production-image smoke jobs on 2026-08-02
+  ([push run 30741507755](https://github.com/tcballard/annotated/actions/runs/30741507755),
+  [pull-request run 30741523491](https://github.com/tcballard/annotated/actions/runs/30741523491)).
 
 ## Deliberately unverified external gates
 
