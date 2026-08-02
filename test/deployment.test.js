@@ -7,6 +7,7 @@ test('production image builds before pruning dev dependencies and runs non-root'
   assert.match(dockerfile, /RUN npm ci\n/);
   assert.match(dockerfile, /RUN npm run build && npm prune --omit=dev/);
   assert.match(dockerfile, /USER annotated/);
+  assert.match(dockerfile, /ENV HOST=0\.0\.0\.0/);
   assert.match(dockerfile, /ARG YTDLP_VERSION=2026\.06\.09/);
   assert.match(dockerfile, /YTDLP_SHA256_AMD64=[0-9a-f]{64}/);
   assert.match(dockerfile, /YTDLP_SHA256_ARM64=[0-9a-f]{64}/);
@@ -21,4 +22,10 @@ test('docker build context excludes local state and secrets', async () => {
   assert.match(ignore, /^data$/m);
   assert.match(ignore, /^\.env$/m);
   assert.match(ignore, /^node_modules$/m);
+});
+
+test('production server bind host is configurable for container networking', async () => {
+  const server = await readFile(new URL('../server/index.js', import.meta.url), 'utf8');
+  assert.match(server, /const host = process\.env\.HOST \|\| '127\.0\.0\.1'/);
+  assert.match(server, /server\.listen\(port, host,/);
 });
