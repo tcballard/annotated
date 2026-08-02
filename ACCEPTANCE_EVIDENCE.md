@@ -270,8 +270,12 @@ The local browser run exercised the user-facing flows below:
 - PR46 adds the public `/u/:handle` profile route, bounded server-backed
   annotation lists, follow state, and a public-user projection that excludes
   provider IDs, email addresses, and other private identity fields. The local
-  API acceptance test covers profile lookup and the annotation list; hosted
-  checks are recorded on PR46 after its final evidence commit.
+  API acceptance test covers profile lookup and the annotation list. Its
+  hosted push and pull-request workflows both passed Node plus linux/amd64 and
+  linux/arm64 production-image smoke jobs on 2026-08-02 ([push run
+  30744938335](https://github.com/tcballard/annotated/actions/runs/30744938335),
+  [pull-request run
+  30744941600](https://github.com/tcballard/annotated/actions/runs/30744941600)).
 
 ## Deliberately unverified external gates
 
