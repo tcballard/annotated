@@ -235,8 +235,11 @@ The local browser run exercised the user-facing flows below:
   media URLs marked by the resolver now pass through the worker's existing
   public-URL/DNS safety checks and go directly to FFmpeg, while non-enclosure
   podcast sources retain the `yt-dlp` fallback. Source-processing tests cover a
-  signed-style `?episode=1` enclosure and the existing SSRF boundaries. Hosted
-  checks are recorded on PR42 after its final evidence commit.
+  signed-style `?episode=1` enclosure and the existing SSRF boundaries. PR42's
+  hosted push and pull-request workflows both passed Node plus linux/amd64 and
+  linux/arm64 production-image smoke jobs on 2026-08-02
+  ([push run 30742462533](https://github.com/tcballard/annotated/actions/runs/30742462533),
+  [pull-request run 30742479386](https://github.com/tcballard/annotated/actions/runs/30742479386)).
 
 ## Deliberately unverified external gates
 
