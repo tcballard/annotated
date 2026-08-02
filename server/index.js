@@ -11,7 +11,7 @@ import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs } 
 import { resolveSource } from './source-resolver.js';
 import { matchesFeedQuery, normalizeFeedQuery } from './feed.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
-import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, providerStatus, startOAuth } from './auth.js';
+import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, parseCookies, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, rateLimit, requestId, securityHeaders } from './hardening.js';
 import { canUseAudioAsset } from './media-access.js';
 import { metricsSnapshot, recordRequest } from './observability.js';
@@ -40,6 +40,21 @@ const unauthorized = (response) => send(response, 401, { error: 'Sign in is requ
 const forbidden = (response) => send(response, 403, { error: 'You do not have permission for this action.' });
 const mutationAllowed = (request, actor, name, limit = 60) => rateLimit(`${request.socket?.remoteAddress || 'unknown'}:${actor?.id || 'anonymous'}:${name}`, { limit }).allowed;
 const isModerator = (user) => Boolean(user && (['owner', 'admin', 'moderator'].includes(user.role) || String(process.env.MODERATOR_USER_IDS || '').split(',').map((value) => value.trim()).includes(user.id)));
+const oauthErrorRedirect = (request) => {
+  const fallback = `${process.env.APP_ORIGIN || publicOrigin}/?auth=error`;
+  const returnTo = parseCookies(request.headers.cookie).annotated_oauth_return;
+  if (!returnTo) return fallback;
+  try {
+    const target = new URL(returnTo);
+    const appOrigin = new URL(process.env.APP_ORIGIN || publicOrigin).origin;
+    const extension = target.protocol === 'https:' && target.hostname.endsWith('.chromiumapp.org');
+    if (target.origin !== appOrigin && !extension) return fallback;
+    target.searchParams.set('auth', 'error');
+    return target.toString();
+  } catch {
+    return fallback;
+  }
+};
 
 const readJson = async (request) => {
   let body = '';
@@ -102,7 +117,7 @@ const handleApi = async (request, response, pathname) => {
       return redirect(response, result.redirectTo || `${process.env.APP_ORIGIN || publicOrigin}/?auth=success`, { 'set-cookie': [result.cookie, ...result.clearCookies] });
     } catch (error) {
       console.error('OAuth callback failed:', error.message);
-      return redirect(response, `${process.env.APP_ORIGIN || publicOrigin}/?auth=error`);
+      return redirect(response, oauthErrorRedirect(request));
     }
   }
 

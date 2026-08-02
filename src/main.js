@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { deleteMediaDraft, readMediaDraft, stageMediaDraft } from './media-draft-store.js';
 import { mediaPresentation } from './media-presentation.js';
 import { publicAnnotationUrl } from './share-links.js';
+import { authNoticeFromSearch, enabledProviders, oauthStartUrl, providerLabel } from './auth-ui.js';
 
 const app = document.querySelector('#app');
 
@@ -146,6 +147,8 @@ const initialState = {
   user: null,
   authProviders: {},
   authRequired: false,
+  authNotice: '',
+  authPrompt: '',
   serverStatus: 'checking',
   serverError: '',
   sourceError: '',
@@ -213,6 +216,40 @@ const notify = (message) => {
     state.toast = '';
     render();
   }, 2800);
+};
+
+const authLinks = (className = 'auth-link') => enabledProviders(state.authProviders).map((provider) => `<a class="${className}" href="${escapeHTML(oauthStartUrl(provider))}">${providerLabel(provider)}</a>`).join('');
+
+const authStateView = () => {
+  const noticeCopy = {
+    success: 'Signed in. Your identity is connected to this workspace.',
+    error: 'Sign-in did not complete. Nothing was published or changed.',
+    cancelled: 'Sign-in was cancelled. Your draft is still here.',
+  }[state.authNotice];
+  const notice = noticeCopy ? `<div class="auth-notice ${state.authNotice === 'success' ? 'is-success' : 'is-error'}" role="status"><span>${escapeHTML(noticeCopy)}</span><button class="auth-notice-dismiss" data-action="dismiss-auth" aria-label="Dismiss sign-in message">${icon('close')}</button></div>` : '';
+  const promptLinks = authLinks('auth-prompt-link') || '<span class="auth-prompt-unavailable">No sign-in provider is available.</span>';
+  const prompt = state.authPrompt && !state.user ? `<div class="auth-prompt" role="alert"><div><span class="eyebrow">Sign-in required</span><strong>${escapeHTML(state.authPrompt)}</strong><span>Your draft and current page will be kept while you sign in.</span></div><div class="auth-prompt-actions">${promptLinks}<button class="auth-prompt-dismiss" data-action="dismiss-auth">Not now</button></div></div>` : '';
+  return `${notice}${prompt}`;
+};
+
+const requestSignIn = (action) => {
+  if (!state.authRequired || state.user) return false;
+  state.authNotice = '';
+  state.authPrompt = `Sign in to ${action}.`;
+  render();
+  return true;
+};
+
+const recoverAuthError = (error, message = 'Your session has expired. Sign in again to continue.') => {
+  if (error?.status !== 401) return false;
+  state.user = null;
+  state.isPublishing = false;
+  state.isUploadingAudio = false;
+  state.authRequired = true;
+  state.authNotice = '';
+  state.authPrompt = message;
+  render();
+  return true;
 };
 
 const setSource = (type) => {
@@ -286,6 +323,12 @@ const hydrateAnnotation = (annotation) => {
 };
 
 const bootstrap = async () => {
+  state.authNotice = authNoticeFromSearch(window.location.search);
+  if (state.authNotice) {
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('auth');
+    window.history.replaceState({}, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+  }
   const routeMatch = window.location.pathname.match(/^\/a\/([^/]+)/);
   const profileMatch = window.location.pathname.match(/^\/u\/([^/]+)/);
   if (routeMatch) {
@@ -330,7 +373,7 @@ const sourceTypeButton = (type) => {
 
 const authControls = () => state.user
   ? `<span class="auth-user">${escapeHTML(state.user.displayName || state.user.handle || 'Signed in')}</span><button class="avatar" data-action="logout" aria-label="Sign out">${escapeHTML((state.user.displayName || state.user.handle || 'A').slice(0, 2).toUpperCase())}</button>`
-  : `<span class="auth-label">${state.authRequired ? 'Sign in' : 'Local account'}</span>${state.authProviders.google ? '<a class="auth-link" href="/api/auth/google/start">Google</a>' : ''}${state.authProviders.x ? '<a class="auth-link" href="/api/auth/x/start">X</a>' : ''}`;
+  : `<span class="auth-label">${state.authRequired ? 'Sign in' : 'Local account'}</span>${authLinks()}`;
 
 const appHeader = () => `
   <header class="app-header">
@@ -534,7 +577,7 @@ const claimModal = () => `<div class="modal-backdrop" data-action="toggle-claim"
 const toast = () => state.toast ? `<div class="toast" role="status"><span class="toast-icon">${icon('check')}</span>${escapeHTML(state.toast)}</div>` : '';
 
 const render = () => {
-  app.innerHTML = `${appHeader()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : state.activeView === 'profile' ? profileView() : publishedView()}</main></div>${toast()}`;
+  app.innerHTML = `${appHeader()}${authStateView()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : state.activeView === 'profile' ? profileView() : publishedView()}</main></div>${toast()}`;
 };
 
 const ensureClipBounds = () => {
@@ -733,6 +776,7 @@ const publishAnnotation = async () => {
     render();
     return;
   }
+  if (requestSignIn('publish this annotation')) return;
   if (state.sourceType !== 'article' && state.clipEnd - state.clipStart > 90) { notify('Keep the clip under 90 seconds.'); return; }
   if (state.commentaryMode === 'text' && !state.commentary.trim()) { notify('Add a note before publishing.'); return; }
   if (state.commentaryMode === 'audio' && !state.audioAssetId) { notify('Finish uploading the audio note before publishing.'); return; }
@@ -769,6 +813,7 @@ const publishAnnotation = async () => {
     clearDraft();
     notify('Published with a permanent source link.');
   } catch (error) {
+    if (recoverAuthError(error, 'Sign in to publish this annotation.')) return;
     state.isPublishing = false;
     render();
     notify(error.message || 'Annotation could not be published.');
@@ -790,6 +835,7 @@ const submitComment = async () => {
   const body = state.commentDraft.trim();
   if (!body) { notify('Write something before posting.'); return; }
   if (state.publishedSlug) {
+    if (requestSignIn('post a comment')) return;
     if (state.serverStatus !== 'online') { notify('Backend unavailable — comment not posted.'); return; }
     try {
       const { annotation } = await api.addComment(state.publishedSlug, body);
@@ -797,6 +843,7 @@ const submitComment = async () => {
       state.commentDraft = '';
       notify('Comment added to the conversation.');
     } catch (error) {
+      if (recoverAuthError(error, 'Sign in to post a comment.')) return;
       notify(error.message || 'Comment could not be posted.');
     }
     return;
@@ -810,12 +857,14 @@ const submitClaim = async () => {
   const reason = state.claimReason.trim();
   if (!reason) { notify('Tell us what should be reviewed.'); return; }
   if (!state.publishedSlug || state.serverStatus !== 'online') { notify('Backend unavailable — claim not submitted.'); return; }
+  if (requestSignIn('file a claim')) return;
   try {
     await api.fileClaim(state.publishedSlug, reason);
     state.claimReason = '';
     state.claimOpen = false;
     notify('Claim received. We’ll review the source.');
   } catch (error) {
+    if (recoverAuthError(error, 'Sign in to file a claim.')) return;
     notify(error.message || 'Claim could not be submitted.');
   }
 };
@@ -826,6 +875,7 @@ app.addEventListener('click', (event) => {
   const action = target.dataset.action;
 
   if (target.dataset.stopClick === 'true') return;
+  if (action === 'dismiss-auth') { state.authNotice = ''; state.authPrompt = ''; render(); return; }
   if (action === 'set-view') {
     if (target.dataset.view === 'moderation' && !canModerate()) { notify('Moderation access is required.'); return; }
     state.activeView = target.dataset.view;
@@ -867,6 +917,7 @@ app.addEventListener('click', (event) => {
   if (action === 'toggle-like') {
     const slug = target.dataset.slug;
     if (slug && state.serverStatus === 'online') {
+      if (requestSignIn('save a like')) return;
       const existing = state.publishedSlug === slug ? state.publishedAnnotation : state.feedAnnotations.find((item) => item.slug === slug);
       const liked = Boolean(existing?.likedByMe || state.liked);
       (async () => {
@@ -877,7 +928,9 @@ app.addEventListener('click', (event) => {
           if (item) { item.likedByMe = result.annotation.likedByMe; item.likes = result.annotation.likes; }
           state.liked = result.annotation.likedByMe;
           render();
-        } catch (error) { notify(error.message || 'Like could not be saved.'); }
+        } catch (error) {
+          if (!recoverAuthError(error, 'Sign in to save a like.')) notify(error.message || 'Like could not be saved.');
+        }
       })();
     } else { state.liked = !state.liked; render(); }
     return;
@@ -885,6 +938,7 @@ app.addEventListener('click', (event) => {
   if (action === 'toggle-follow') {
     const userId = target.dataset.userId;
     if (userId && state.serverStatus === 'online') {
+      if (requestSignIn('follow this member')) return;
       const following = Boolean(state.followingIds[userId]);
       (async () => {
         try {
@@ -896,7 +950,9 @@ app.addEventListener('click', (event) => {
             state.profileData.followers = Math.max(0, Number(state.profileData.followers || 0) + (result.following ? 1 : -1));
           }
           render();
-        } catch (error) { notify(error.message || 'Follow could not be saved.'); }
+        } catch (error) {
+          if (!recoverAuthError(error, 'Sign in to follow this member.')) notify(error.message || 'Follow could not be saved.');
+        }
       })();
     } else { state.following = !state.following; render(); }
     return;

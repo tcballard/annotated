@@ -157,3 +157,46 @@ test('OAuth callback exchanges provider identity and consumes an extension ticke
     await rm(dataDirectory, { recursive: true, force: true });
   }
 });
+
+test('web OAuth returns to the requesting app page without issuing an extension ticket', async () => {
+  const dataDirectory = await mkdtemp(path.join(tmpdir(), 'annotated-web-auth-'));
+  const script = `
+    const { finishOAuth, parseCookies, startOAuth } = await import('./server/auth.js');
+    const request = { headers: {}, socket: { remoteAddress: 'web-oauth-test' } };
+    const started = await startOAuth(request, 'google', 'https://annotated.example.com/u/reader?view=feed');
+    const cookieHeader = started.cookies.join('; ');
+    const cookies = parseCookies(cookieHeader);
+    globalThis.fetch = async (url) => {
+      if (url.startsWith('https://oauth2.googleapis.com/token')) return { ok: true, json: async () => ({ access_token: 'provider-access-token' }) };
+      return { ok: true, json: async () => ({ sub: 'google-user-2', email: 'reader@example.com', name: 'Reader' }) };
+    };
+    const callback = new URL('https://annotated.example.com/api/auth/google/callback');
+    callback.searchParams.set('code', 'oauth-code');
+    callback.searchParams.set('state', cookies.annotated_oauth_state);
+    const finished = await finishOAuth({ headers: { cookie: cookieHeader } }, 'google', callback);
+    console.log(JSON.stringify({ redirectTo: finished.redirectTo, hasTicket: finished.redirectTo.includes('ticket=') }));
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NODE_ENV: 'development',
+      ANNOTATED_STORAGE: 'file',
+      ANNOTATED_DATA_DIR: dataDirectory,
+      PUBLIC_ORIGIN: 'http://localhost:8787',
+      APP_ORIGIN: 'https://annotated.example.com',
+      GOOGLE_CLIENT_ID: 'google-client',
+      GOOGLE_CLIENT_SECRET: 'google-secret',
+      OAUTH_PROVIDERS: 'google',
+    },
+    encoding: 'utf8',
+    maxBuffer: 1_000_000,
+  });
+  try {
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const output = JSON.parse(result.stdout.trim());
+    assert.deepEqual(output, { redirectTo: 'https://annotated.example.com/u/reader?view=feed&auth=success', hasTicket: false });
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
