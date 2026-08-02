@@ -2,9 +2,10 @@
 
 > Last Updated: 2026-08-02
 >
-> Status: pre-submission draft. This document is the source of truth for a
-> future Chrome Web Store submission; the unchecked external gates are not
-> represented as shipped features.
+> Status: v0.1.0 pre-submission draft. It has not been submitted, reviewed, or
+> published. This document is the source of truth for a future Chrome Web Store
+> submission; the unchecked external gates are not represented as shipped
+> features.
 
 ## Store Listing
 
@@ -46,7 +47,7 @@ PERMISSIONS
 SUPPORT
 Report a problem or request a feature at https://github.com/tcballard/annotated/issues.
 
-Version 0.1.0 — initial pre-submission release.
+Version 0.1.0 — initial capture and source-backed publishing workflow.
 
 **Category**
 

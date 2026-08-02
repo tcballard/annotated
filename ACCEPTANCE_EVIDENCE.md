@@ -320,6 +320,15 @@ The local browser run exercised the user-facing flows below:
   30748473132](https://github.com/tcballard/annotated/actions/runs/30748473132),
   [pull-request run
   30748478973](https://github.com/tcballard/annotated/actions/runs/30748478973)).
+- The v0.1.0 cleanup makes the release boundary explicit without claiming a
+  release: package, lockfile, and extension manifest versions agree; `/api/health`
+  reads the package version; the CI package check derives its archive path from
+  the manifest; and the README, release record, and store record all state that
+  the build is a draft, not a deployed or submitted product. The local suite
+  passed 79 tests with one explicit PostgreSQL/S3 service-integration skip;
+  build, runtime-only extension package, JavaScript syntax, README link audit,
+  and diff checks also passed. This is metadata and documentation evidence, not
+  authority to tag, deploy, submit, or merge the stack.
 
 ## Deliberately unverified external gates
 

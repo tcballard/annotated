@@ -82,8 +82,10 @@ jobs:
       - name: Check extension package contents
         shell: bash
         run: |
-          test "$(unzip -Z1 annotated-extension-v0.1.0.zip | wc -l | tr -d ' ')" = 16
-          if unzip -Z1 annotated-extension-v0.1.0.zip | grep -E '(^|/)(\.env|data/|node_modules/|dist/)'; then
+          package_version="$(node -p 'require("./extension/manifest.json").version')"
+          package_path="annotated-extension-v${package_version}.zip"
+          test "$(unzip -Z1 "$package_path" | wc -l | tr -d ' ')" = 16
+          if unzip -Z1 "$package_path" | grep -E '(^|/)(\.env|data/|node_modules/|dist/)'; then
             echo "runtime extension package contains development files" >&2
             exit 1
           fi
