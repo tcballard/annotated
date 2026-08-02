@@ -29,3 +29,11 @@ test('production server bind host is configurable for container networking', asy
   assert.match(server, /const host = process\.env\.HOST \|\| '127\.0\.0\.1'/);
   assert.match(server, /server\.listen\(port, host,/);
 });
+
+test('deployment documents persisted media-worker leases', async () => {
+  const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
+  const env = await readFile(new URL('../.env.example', import.meta.url), 'utf8');
+  assert.match(deployment, /worker leases live in the configured repository/);
+  assert.match(deployment, /managed queue when independent worker scaling is required/);
+  assert.match(env, /MEDIA_WORKER_LEASE_MS=600000/);
+});

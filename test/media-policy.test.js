@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildFfmpegArgs, checkMediaRuntime, shouldAbortMediaJob, validateMediaProbe } from '../server/media-worker.js';
+import { buildFfmpegArgs, checkMediaRuntime, mediaJobLeaseExpired, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe } from '../server/media-worker.js';
 
 test('video transcodes are capped at 90 seconds and 240p', () => {
   const args = buildFfmpegArgs({ sourceType: 'video', clipStart: 5, clipEnd: 200 }, 'input.mp4', 'output.mp4');
@@ -46,6 +46,23 @@ test('cancelled media jobs abort before a late worker completion can publish', (
   assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'cancelled' }] }, new Set()), true);
   assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'processing' }] }, new Set(['job-1'])), true);
   assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'processing' }] }, new Set()), false);
+});
+
+test('media jobs use a persistent lease for restart recovery and multi-worker claims', () => {
+  const now = Date.parse('2026-08-02T00:00:00.000Z');
+  const activeLease = { id: 'job-lease', status: 'processing', workerId: 'worker-a', leaseUntil: new Date(now + 60_000).toISOString() };
+  const expiredLease = { ...activeLease, leaseUntil: new Date(now - 1).toISOString() };
+  assert.equal(mediaJobLeaseExpired(activeLease, now), false);
+  assert.equal(mediaJobLeaseExpired(expiredLease, now), true);
+  assert.equal(shouldClaimMediaJob({ id: 'queued', status: 'queued' }, 'worker-b', now), true);
+  assert.equal(shouldClaimMediaJob(activeLease, 'worker-b', now), false);
+  assert.equal(shouldClaimMediaJob(activeLease, 'worker-a', now), true);
+  assert.equal(shouldClaimMediaJob(expiredLease, 'worker-b', now), true);
+  assert.equal(shouldClaimMediaJob({ id: 'done', status: 'ready' }, 'worker-b', now), false);
+  assert.equal(shouldRecoverMediaJob({ id: 'queued', status: 'queued' }, now), true);
+  assert.equal(shouldRecoverMediaJob(activeLease, now), false);
+  assert.equal(shouldRecoverMediaJob(expiredLease, now), true);
+  assert.equal(shouldRecoverMediaJob({ id: 'legacy', status: 'processing' }, now), true);
 });
 
 test('media output inspection enforces duration, audio, and video height boundaries', () => {
