@@ -290,8 +290,12 @@ The local browser run exercised the user-facing flows below:
   metric. Empty, following, and search states now explain what is missing and
   point to a real capture/profile action; anonymous and signed-in feed rails
   use only the identity available from the backend. The local build, full
-  suite, syntax checks, and diff check pass; hosted checks will be recorded
-  after PR48's first verification round.
+  suite, syntax checks, and diff check pass. Its hosted push and pull-request
+  workflows both passed Node plus linux/amd64 and linux/arm64 production-image
+  smoke jobs on 2026-08-02 ([push run
+  30746493180](https://github.com/tcballard/annotated/actions/runs/30746493180),
+  [pull-request run
+  30746502118](https://github.com/tcballard/annotated/actions/runs/30746502118)).
 
 ## Deliberately unverified external gates
 
