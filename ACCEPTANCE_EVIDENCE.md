@@ -203,7 +203,10 @@ The local browser run exercised the user-facing flows below:
   queue state verified the `needs-auth` card at 360px and 600px widths, with
   labeled controls and no page errors; artifacts were saved at
   `/private/tmp/annotated-pr39-queue-narrow.png` and
-  `/private/tmp/annotated-pr39-queue-desktop.png`.
+  `/private/tmp/annotated-pr39-queue-desktop.png`. PR39's hosted push and
+  pull-request checks passed Node plus linux/amd64 and linux/arm64 production
+  image jobs on 2026-08-02 ([push run 30740346231](https://github.com/tcballard/annotated/actions/runs/30740346231),
+  [pull-request run 30740347784](https://github.com/tcballard/annotated/actions/runs/30740347784)).
 
 ## Deliberately unverified external gates
 
