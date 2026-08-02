@@ -47,3 +47,37 @@ The migration runner applies every ordered SQL file once and records the version
 The local adapter remains the default for `npm run dev:server`, tests, and offline UI work. Do not claim production readiness from a file-backed run.
 
 Production operations should call `/api/ready` after migrations and object-store credentials are loaded. A 200 response proves the latest migration is recorded, the configured repository can query, and the object store can answer a bucket health check; it does not replace a live provider, backup, or browser acceptance run.
+
+## Cloudflare R2 staging profile
+
+The chosen staging media store is a **private** Cloudflare R2 bucket. It uses
+the existing S3-compatible adapter; browser uploads still travel to Annotated's
+API, so the browser never receives R2 credentials and no bucket CORS policy is
+needed for uploads.
+
+Use a bucket such as `annotated-staging-media`, scoped Object Read & Write API
+credentials for that bucket only, and these deployment-secret values:
+
+```dotenv
+ANNOTATED_ASSET_STORAGE=s3
+S3_BUCKET=annotated-staging-media
+S3_REGION=auto
+S3_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
+S3_FORCE_PATH_STYLE=false
+S3_ACCESS_KEY_ID=<r2-access-key-id>
+S3_SECRET_ACCESS_KEY=<r2-secret-access-key>
+S3_URL_TTL_SECONDS=900
+```
+
+Keep `S3_PUBLIC_BASE_URL` unset, leave the R2 `r2.dev` public-development URL
+disabled, and do not attach a public bucket domain for staging. A request to
+`/media/:id` redirects to a short-lived signed R2 S3 URL instead. This keeps
+media private at rest while allowing public annotation pages to play the asset.
+The application refuses an R2 endpoint that is not HTTPS or is configured with
+a region other than `auto`.
+
+Create the bucket and its token in Cloudflare only after the deployment secret
+manager is ready. Keep the secret out of `.env` files that may be committed,
+the extension, and browser storage. Run `/api/ready` after deployment; it
+performs an authenticated bucket health check before the staging service is
+considered ready.
