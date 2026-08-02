@@ -60,12 +60,12 @@ Railway-provided variable references to these service variables:
 
 ```dotenv
 ANNOTATED_ASSET_STORAGE=s3
-S3_BUCKET=${{Media.BUCKET}}
-S3_REGION=${{Media.REGION}}
-S3_ENDPOINT=${{Media.ENDPOINT}}
+S3_BUCKET=${{media.BUCKET}}
+S3_REGION=${{media.REGION}}
+S3_ENDPOINT=${{media.ENDPOINT}}
 S3_FORCE_PATH_STYLE=false
-S3_ACCESS_KEY_ID=${{Media.ACCESS_KEY_ID}}
-S3_SECRET_ACCESS_KEY=${{Media.SECRET_ACCESS_KEY}}
+S3_ACCESS_KEY_ID=${{media.ACCESS_KEY_ID}}
+S3_SECRET_ACCESS_KEY=${{media.SECRET_ACCESS_KEY}}
 S3_URL_TTL_SECONDS=900
 ```
 

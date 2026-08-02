@@ -43,7 +43,7 @@ test('deployment documents the private Railway Buckets POC profile', async () =>
   const storage = await readFile(new URL('../STORAGE.md', import.meta.url), 'utf8');
   const env = await readFile(new URL('../.env.example', import.meta.url), 'utf8');
   assert.match(deployment, /## Railway POC staging/);
-  assert.match(deployment, /S3_REGION=\$\{\{Media\.REGION\}\}/);
+  assert.match(deployment, /S3_REGION=\$\{\{media\.REGION\}\}/);
   assert.match(deployment, /storage\.railway\.app/);
   assert.match(deployment, /S3_PUBLIC_BASE_URL.*unset/);
   assert.match(storage, /## Railway Buckets POC profile/);
