@@ -10,46 +10,48 @@ Before starting a production container:
 4. Start the container (the image binds `HOST=0.0.0.0`) and require `/api/ready` to return 200 before routing traffic; readiness now verifies the latest migration, performs a database health query, checks the S3-compatible bucket, and probes `ffmpeg`, `ffprobe`, and the configured `YTDLP_BIN` provider extractor. A missing or non-executable media runtime returns 503 instead of allowing provider jobs to fail after deployment. Forward structured `http_request` logs and `/api/health` telemetry to the deployment's log/metrics sink.
 5. Verify a real OAuth callback, source resolution, media upload, feed write, and claim review in the deployed environment.
 
-## Cloudflare R2 staging
+## Railway POC staging
 
-Use Cloudflare R2 as the private object store for
-`staging.annotated.tcballard.dev`. The app already speaks the S3-compatible
-API, so no Cloudflare SDK or extension credential is required.
+Use one Railway project for the POC: an Annotated app service, Railway
+PostgreSQL, and a private Railway Storage Bucket named `media`. Railway Buckets
+are S3-compatible, so the app needs no provider-specific SDK or extension
+credential.
 
-1. Create one staging bucket (recommended name: `annotated-staging-media`).
-   Select the jurisdiction deliberately if data residency matters; the API
-   endpoint is still configured with `S3_REGION=auto`.
-2. Create an **Object Read & Write** R2 API token scoped to that bucket only.
-   Copy its access-key ID and secret directly into the staging host's secret
-   manager. The secret is shown once and must never enter Git, the extension,
-   browser storage, or an application log.
-3. Configure the host with:
+1. Create the project in the closest suitable region (Amsterdam is the default
+   POC choice for this UK staging environment), add PostgreSQL, then create the
+   `media` bucket in the same environment. The bucket region cannot be changed
+   later.
+2. Map Railway's PostgreSQL and Bucket variable references into the app service:
 
    ```dotenv
+   NODE_ENV=production
+   ANNOTATED_STORAGE=postgres
+   DATABASE_URL=${{Postgres.DATABASE_URL}}
    ANNOTATED_ASSET_STORAGE=s3
-   S3_BUCKET=annotated-staging-media
-   S3_REGION=auto
-   S3_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
+   S3_BUCKET=${{Media.BUCKET}}
+   S3_REGION=${{Media.REGION}}
+   S3_ENDPOINT=${{Media.ENDPOINT}}
    S3_FORCE_PATH_STYLE=false
-   S3_ACCESS_KEY_ID=<r2-access-key-id>
-   S3_SECRET_ACCESS_KEY=<r2-secret-access-key>
+   S3_ACCESS_KEY_ID=${{Media.ACCESS_KEY_ID}}
+   S3_SECRET_ACCESS_KEY=${{Media.SECRET_ACCESS_KEY}}
    S3_URL_TTL_SECONDS=900
    ```
 
-4. Leave `S3_PUBLIC_BASE_URL` unset and leave the bucket's `r2.dev` public
-   development URL disabled. Annotated's `/media/:id` endpoint issues a
-   short-lived signed S3 API URL, so staging does not need a public bucket,
-   browser-to-R2 CORS, or a CDN hostname. Do not point a CNAME at `r2.dev`.
-5. Run migrations from the release artifact, deploy, and require
-   `https://staging.annotated.tcballard.dev/api/ready` to return `200` before
-   trying the media acceptance flow. It confirms the R2 bucket can be reached
-   with the deployed credentials.
+3. Leave `S3_PUBLIC_BASE_URL` unset. Railway Buckets are private, and
+   Annotated's `/media/:id` endpoint issues a short-lived signed S3 URL; staging
+   does not need a public bucket, browser-to-bucket CORS, or a CDN hostname.
+4. Generate Railway's temporary HTTPS domain first and use it consistently for
+   `PUBLIC_ORIGIN`, `APP_ORIGIN`, `CORS_ORIGIN`, and the Google callback. Add
+   `staging.annotated.tcballard.dev` later at the current DNS provider once the
+   POC works; no Cloudflare zone transfer is required.
+5. Set the real Google OAuth credentials before production startup, run
+   migrations from the release artifact, deploy, and require `/api/ready` to
+   return 200 before trying the media acceptance flow. It confirms PostgreSQL,
+   the private bucket, and the media runtime are usable with deployed settings.
 
-R2's normal `https://<account-id>.r2.cloudflarestorage.com` endpoint and
-`auto` region are required by Cloudflare's S3 API. The server validates those
-two R2-specific settings at startup. A public asset domain can be considered
-later only with a deliberate public-read/cache policy; it is not part of this
-private staging profile.
+Railway Buckets use virtual-hosted URLs at `https://storage.railway.app` with
+the `auto` region. The generic adapter still validates a Cloudflare R2 endpoint
+if one is configured later, but R2 is not part of this POC deployment.
 
 Every push and pull request runs `.github/workflows/ci.yml`: a clean Node install,
 build, test, syntax, diff, and extension-package check, followed by production
