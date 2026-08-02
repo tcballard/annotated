@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { authIsRequired, parseCookies, providerStatus, startOAuth } from '../server/auth.js';
@@ -60,5 +63,51 @@ test('extension OAuth return URLs are constrained to Chromium app redirects', as
     await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://example.chromiumapp.org.evil.example/callback'), /return URL is not allowed/);
   } finally {
     restoreEnv(saved);
+  }
+});
+
+test('OAuth callback exchanges provider identity and consumes an extension ticket', async () => {
+  const dataDirectory = await mkdtemp(path.join(tmpdir(), 'annotated-auth-'));
+  const script = `
+    const { exchangeExtensionTicket, finishOAuth, parseCookies, startOAuth } = await import('./server/auth.js');
+    const request = { headers: {}, socket: { remoteAddress: 'oauth-test' } };
+    const started = await startOAuth(request, 'google', 'https://example.chromiumapp.org/annotated-auth');
+    const cookieHeader = started.cookies.join('; ');
+    const cookies = parseCookies(cookieHeader);
+    globalThis.fetch = async (url) => {
+      if (url.startsWith('https://oauth2.googleapis.com/token')) return { ok: true, json: async () => ({ access_token: 'provider-access-token' }) };
+      return { ok: true, json: async () => ({ sub: 'google-user-1', email: 'reader@example.com', name: 'Reader' }) };
+    };
+    const callback = new URL('http://localhost:8787/api/auth/google/callback');
+    callback.searchParams.set('code', 'oauth-code');
+    callback.searchParams.set('state', cookies.annotated_oauth_state);
+    const finished = await finishOAuth({ headers: { cookie: cookieHeader } }, 'google', callback);
+    const ticket = new URL(finished.redirectTo).searchParams.get('ticket');
+    const exchanged = await exchangeExtensionTicket(ticket);
+    let replayError = '';
+    try { await exchangeExtensionTicket(ticket); } catch (error) { replayError = error.message; }
+    console.log(JSON.stringify({ provider: finished.user.provider, handle: finished.user.handle, sessionCookie: finished.cookie.includes('annotated_session='), clearedCookies: finished.clearCookies.length, exchangedUser: exchanged.user.id === finished.user.id, replayError }));
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NODE_ENV: 'development',
+      ANNOTATED_STORAGE: 'file',
+      ANNOTATED_DATA_DIR: dataDirectory,
+      PUBLIC_ORIGIN: 'http://localhost:8787',
+      APP_ORIGIN: 'https://annotated.example.com',
+      GOOGLE_CLIENT_ID: 'google-client',
+      GOOGLE_CLIENT_SECRET: 'google-secret',
+    },
+    encoding: 'utf8',
+    maxBuffer: 1_000_000,
+  });
+  try {
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const output = JSON.parse(result.stdout.trim());
+    assert.deepEqual(output, { provider: 'google', handle: 'reader', sessionCookie: true, clearedCookies: 3, exchangedUser: true, replayError: 'Extension auth ticket is invalid or expired.' });
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
   }
 });
