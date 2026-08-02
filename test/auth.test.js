@@ -25,6 +25,7 @@ test('OAuth start creates a PKCE challenge and short-lived state cookies', async
   const saved = envSnapshot();
   process.env.GOOGLE_CLIENT_ID = 'google-client';
   process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
+  process.env.OAUTH_PROVIDERS = 'google';
   try {
     const result = await startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google');
     assert.match(result.location, /^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth\?/);
@@ -48,14 +49,58 @@ test('production authentication fails fast when either required provider is abse
   assert.match(`${result.stderr}${result.stdout}`, /Production authentication requires/);
 });
 
+test('Google is the production default and X is an opt-in sibling provider', () => {
+  const saved = envSnapshot();
+  process.env.OAUTH_PROVIDERS = 'google';
+  process.env.GOOGLE_CLIENT_ID = 'google-client';
+  process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
+  delete process.env.X_CLIENT_ID;
+  delete process.env.X_CLIENT_SECRET;
+  try {
+    assert.deepEqual(providerStatus(), { google: true, x: false });
+    const result = spawnSync(process.execPath, ['-e', "import('./server/auth.js').then((auth) => auth.assertAuthConfiguration())"], {
+      cwd: process.cwd(),
+      env: { ...process.env, NODE_ENV: 'production', ANNOTATED_STORAGE: 'file', AUTH_REQUIRED: 'true', APP_ORIGIN: 'https://annotated.example.com' },
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  } finally {
+    restoreEnv(saved);
+  }
+});
+
+test('enabling X requires both X credentials without changing the Google adapter', () => {
+  const saved = envSnapshot();
+  process.env.OAUTH_PROVIDERS = 'google,x';
+  process.env.GOOGLE_CLIENT_ID = 'google-client';
+  process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
+  process.env.X_CLIENT_ID = 'x-client';
+  delete process.env.X_CLIENT_SECRET;
+  const result = spawnSync(process.execPath, ['-e', "import('./server/auth.js').then((auth) => auth.assertAuthConfiguration())"], {
+    cwd: process.cwd(),
+    env: { ...process.env, NODE_ENV: 'production', ANNOTATED_STORAGE: 'file', AUTH_REQUIRED: 'true', APP_ORIGIN: 'https://annotated.example.com' },
+    encoding: 'utf8',
+  });
+  restoreEnv(saved);
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stderr}${result.stdout}`, /X_CLIENT_SECRET/);
+});
+
 test('unconfigured providers fail instead of emitting fake OAuth URLs', async () => {
-  await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'x'), /OAuth is not configured/);
+  const saved = envSnapshot();
+  process.env.OAUTH_PROVIDERS = 'google,x';
+  try {
+    await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'x'), /OAuth is not configured/);
+  } finally {
+    restoreEnv(saved);
+  }
 });
 
 test('extension OAuth return URLs are constrained to Chromium app redirects', async () => {
   const saved = envSnapshot();
   process.env.GOOGLE_CLIENT_ID = 'google-client';
   process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
+  process.env.OAUTH_PROVIDERS = 'google';
   try {
     const result = await startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://example.chromiumapp.org/annotated-auth');
     assert.equal(result.cookies.length, 3);
@@ -99,6 +144,7 @@ test('OAuth callback exchanges provider identity and consumes an extension ticke
       APP_ORIGIN: 'https://annotated.example.com',
       GOOGLE_CLIENT_ID: 'google-client',
       GOOGLE_CLIENT_SECRET: 'google-secret',
+      OAUTH_PROVIDERS: 'google',
     },
     encoding: 'utf8',
     maxBuffer: 1_000_000,
