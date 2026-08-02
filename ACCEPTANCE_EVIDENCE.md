@@ -178,7 +178,10 @@ The local browser run exercised the user-facing flows below:
   A browser probe found no unlabeled controls, and reduced-motion emulation
   reduced the publish transition to `0.01ms` while preserving the static state.
   This is local rendered evidence; it does not replace docked extension,
-  microphone, offline, or deployed production acceptance.
+  microphone, offline, or deployed production acceptance. PR38’s hosted push
+  and pull-request checks also passed both Node and linux/amd64 + linux/arm64
+  production-image jobs on 2026-08-02 ([push run 30738159687](https://github.com/tcballard/annotated/actions/runs/30738159687),
+  [pull-request run 30738170634](https://github.com/tcballard/annotated/actions/runs/30738170634)).
 
 ## Deliberately unverified external gates
 
