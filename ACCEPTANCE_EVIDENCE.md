@@ -220,6 +220,13 @@ The local browser run exercised the user-facing flows below:
   both passed Node plus linux/amd64 and linux/arm64 production-image smoke jobs
   on 2026-08-02 ([push run 30740952993](https://github.com/tcballard/annotated/actions/runs/30740952993),
   [pull-request run 30740968625](https://github.com/tcballard/annotated/actions/runs/30740968625)).
+- PR41 adds `public/privacy.html`, a plain-language policy covering the extension
+  data boundary, browser-local draft/audio staging, identity providers,
+  configured backend/object storage, public publishing, retention, deletion
+  requests, and contact routing. Vite copies it into `dist/privacy.html`, the
+  deployment test checks its disclosures and the Web Store record links the
+  intended `/privacy.html` path. Public deployment and URL verification remain
+  external; no stable URL or publisher email is claimed by this PR.
 
 ## Deliberately unverified external gates
 
