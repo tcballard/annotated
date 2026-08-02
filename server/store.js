@@ -64,7 +64,7 @@ const recordCollections = Object.keys(emptyStore);
 const recordId = (collection, value, index) => String(value?.id || value?.tokenHash || `${collection}-${index}`);
 
 const stateFromRecords = (rows) => {
-  const state = clone(emptyStore);
+  const state = Object.fromEntries(recordCollections.map((collection) => [collection, []]));
   for (const row of rows) {
     if (!recordCollections.includes(row.collection)) continue;
     state[row.collection].push(row.payload);
