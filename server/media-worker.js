@@ -13,6 +13,7 @@ const maxAttempts = Math.max(1, Number(process.env.MEDIA_WORKER_MAX_ATTEMPTS || 
 const retryDelayMs = Math.max(100, Number(process.env.MEDIA_WORKER_RETRY_DELAY_MS || 1500));
 const workerId = process.env.MEDIA_WORKER_ID || randomUUID();
 const leaseMs = Math.max(30_000, Number(process.env.MEDIA_WORKER_LEASE_MS || 600_000));
+const processTimeoutMs = Math.max(10_000, Number(process.env.MEDIA_WORKER_PROCESS_TIMEOUT_MS || 300_000));
 const queue = [];
 const activeProcesses = new Map();
 const cancelledJobs = new Set();
@@ -49,22 +50,54 @@ export const validateMediaProbe = (sourceType, probe) => {
   return { duration, streams };
 };
 
-const run = (command, args, { maxOutput = 64_000, jobId = '' } = {}) => new Promise((resolve, reject) => {
+const run = (command, args, { maxOutput = 64_000, jobId = '', timeoutMs = processTimeoutMs } = {}) => new Promise((resolve, reject) => {
   const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   if (jobId) activeProcesses.set(jobId, child);
   let stdout = '';
   let stderr = '';
-  const cleanup = () => { if (jobId && activeProcesses.get(jobId) === child) activeProcesses.delete(jobId); };
+  let settled = false;
+  let timedOut = false;
+  let timeoutHandle;
+  let killHandle;
+  const cleanup = () => {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+    if (killHandle) clearTimeout(killHandle);
+    if (jobId && activeProcesses.get(jobId) === child) activeProcesses.delete(jobId);
+  };
+  const resolveOnce = (value) => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    resolve(value);
+  };
+  const rejectOnce = (error) => {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    reject(error);
+  };
   child.stdout.on('data', (chunk) => { stdout = `${stdout}${chunk}`.slice(-maxOutput); });
   child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-maxOutput); });
-  child.on('error', (error) => { cleanup(); reject(error); });
+  child.on('error', (error) => { rejectOnce(error); });
   child.on('close', (code, signal) => {
-    cleanup();
-    if (jobId && cancelledJobs.has(jobId)) return reject(new Error('Media processing cancelled by the owner.'));
-    if (code === 0) return resolve({ stdout, stderr });
-    reject(new Error(stderr.trim() || `${command} exited with ${signal ? `signal ${signal}` : `code ${code}`}.`));
+    if (timedOut) return rejectOnce(new Error(`Media command timed out after ${timeoutMs}ms.`));
+    if (jobId && cancelledJobs.has(jobId)) return rejectOnce(new Error('Media processing cancelled by the owner.'));
+    if (code === 0) return resolveOnce({ stdout, stderr });
+    rejectOnce(new Error(stderr.trim() || `${command} exited with ${signal ? `signal ${signal}` : `code ${code}`}.`));
   });
+  const timeout = Number(timeoutMs);
+  if (Number.isFinite(timeout) && timeout > 0) {
+    timeoutHandle = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+      killHandle = setTimeout(() => {
+        if (child.exitCode === null) child.kill('SIGKILL');
+      }, 2_000);
+    }, timeout);
+  }
 });
+
+export { run as runMediaCommand };
 
 export const checkMediaRuntime = async ({ runCommand = run, includeProvider = process.env.NODE_ENV === 'production' } = {}) => {
   const checks = [
