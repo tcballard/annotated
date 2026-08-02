@@ -286,6 +286,12 @@ The local browser run exercised the user-facing flows below:
   30745677620](https://github.com/tcballard/annotated/actions/runs/30745677620),
   [pull-request run
   30745739976](https://github.com/tcballard/annotated/actions/runs/30745739976)).
+- PR48 removes fabricated fallback feed posts and the hard-coded following
+  metric. Empty, following, and search states now explain what is missing and
+  point to a real capture/profile action; anonymous and signed-in feed rails
+  use only the identity available from the backend. The local build, full
+  suite, syntax checks, and diff check pass; hosted checks will be recorded
+  after PR48's first verification round.
 
 ## Deliberately unverified external gates
 
