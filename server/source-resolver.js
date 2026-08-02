@@ -8,6 +8,22 @@ const AUDIO_EXTENSIONS = /\.(?:mp3|m4a|wav|ogg|aac|flac)(?:$|\?)/i;
 const maxSourceBytes = 2 * 1024 * 1024;
 export const maxSourceRedirects = 3;
 
+const decodeHtmlEntities = (value) => String(value || '')
+  .replace(/&#x([0-9a-f]+);/gi, (_, code) => {
+    const point = Number.parseInt(code, 16);
+    return Number.isFinite(point) && point <= 0x10ffff ? String.fromCodePoint(point) : '';
+  })
+  .replace(/&#(\d+);/g, (_, code) => {
+    const point = Number.parseInt(code, 10);
+    return Number.isFinite(point) && point <= 0x10ffff ? String.fromCodePoint(point) : '';
+  })
+  .replace(/&nbsp;/gi, ' ')
+  .replace(/&quot;/gi, '"')
+  .replace(/&#39;|&apos;/gi, "'")
+  .replace(/&lt;/gi, '<')
+  .replace(/&gt;/gi, '>')
+  .replace(/&amp;/gi, '&');
+
 export function parseSourceUrl(value) {
   let url;
   try { url = new URL(value); } catch { throw new Error('Enter a valid source URL.'); }
@@ -28,26 +44,26 @@ const meta = (html, name, attribute = 'property') => {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const pattern = new RegExp(`<meta[^>]+${attribute}=["']${escaped}["'][^>]+content=["']([^"']*)["'][^>]*>`, 'i');
   const reversePattern = new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+${attribute}=["']${escaped}["'][^>]*>`, 'i');
-  return (html.match(pattern) || html.match(reversePattern))?.[1]?.trim() || null;
+  const value = (html.match(pattern) || html.match(reversePattern))?.[1];
+  return value ? decodeHtmlEntities(value.trim()) : null;
 };
 
-const titleFromHTML = (html) => html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.replace(/\s+/g, ' ').trim() || null;
+const titleFromHTML = (html) => {
+  const value = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+  return value ? decodeHtmlEntities(value.replace(/\s+/g, ' ').trim()) : null;
+};
 
 const canonicalFromHTML = (html, pageUrl) => {
   const raw = html.match(/<link[^>]+rel=["'][^"']*canonical[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>/i)?.[1]
     || html.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["'][^"']*canonical[^"']*["'][^>]*>/i)?.[1];
   if (!raw) return null;
-  try { const resolved = new URL(raw, pageUrl); parseSourceUrl(resolved.toString()); return resolved.toString(); } catch { return null; }
+  try { const resolved = new URL(decodeHtmlEntities(raw), pageUrl); parseSourceUrl(resolved.toString()); return resolved.toString(); } catch { return null; }
 };
 
-const stripMarkup = (value) => value
+const stripMarkup = (value) => decodeHtmlEntities(value
   .replace(/<script[\s\S]*?<\/script>/gi, '')
   .replace(/<style[\s\S]*?<\/style>/gi, '')
-  .replace(/<[^>]+>/g, ' ')
-  .replace(/&nbsp;/gi, ' ')
-  .replace(/&amp;/gi, '&')
-  .replace(/&quot;/gi, '"')
-  .replace(/&#39;/gi, "'")
+  .replace(/<[^>]+>/g, ' '))
   .replace(/\s+/g, ' ')
   .trim();
 
@@ -155,7 +171,7 @@ const mediaUrlFromHTML = (html, pageUrl) => {
   ].filter(Boolean);
   for (const candidate of candidates) {
     try {
-      const resolved = new URL(candidate, pageUrl).toString();
+      const resolved = new URL(decodeHtmlEntities(candidate), pageUrl).toString();
       parseSourceUrl(resolved);
       return resolved;
     } catch { /* ignore unusable embedded media URLs */ }

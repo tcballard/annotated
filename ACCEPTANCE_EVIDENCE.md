@@ -250,6 +250,12 @@ The local browser run exercised the user-facing flows below:
   production-image smoke jobs on 2026-08-02
   ([push run 30743106711](https://github.com/tcballard/annotated/actions/runs/30743106711),
   [pull-request run 30743109841](https://github.com/tcballard/annotated/actions/runs/30743109841)).
+- PR44 decodes bounded HTML entities before exposing article titles,
+  descriptions, excerpts, media URLs, and canonical links, so real publisher
+  metadata does not leak `&amp;` or quoted entities into public annotations.
+  The fixture suite covers title, description, excerpt, and query-string
+  canonical decoding; hosted checks are recorded on PR44 after its final
+  evidence commit.
 
 ## Deliberately unverified external gates
 
