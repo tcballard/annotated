@@ -155,6 +155,13 @@ The local browser run exercised the user-facing flows below:
   and exercises the reconstruction path that previously duplicated the default
   owner record. Both runs passed on 2026-08-02 ([push run 30735871840](https://github.com/tcballard/annotated/actions/runs/30735871840),
   [pull-request run 30735872999](https://github.com/tcballard/annotated/actions/runs/30735872999)).
+- PR36 adds a persisted media-worker lease (`workerId` plus `leaseUntil`) and
+  transactionally claims jobs before provider/FFmpeg work. Active leases block
+  duplicate claims across app instances; queued and expired processing jobs are
+  recovered on restart, retry timing is preserved, and completed/failed/
+  cancelled jobs clear their lease. The hosted push and pull-request checks
+  cover this code alongside the two production image architectures ([push run 30736186426](https://github.com/tcballard/annotated/actions/runs/30736186426),
+  [pull-request run 30736193308](https://github.com/tcballard/annotated/actions/runs/30736193308)).
 
 ## Deliberately unverified external gates
 
@@ -176,4 +183,5 @@ evidence are available:
 - Multi-user production feed, follow, comment, claims, and moderation evidence.
 - Public deployment, production observability, durable-service backups and
   recovery, and live external traffic remain unverified. PR34 now covers the
-  image-to-service networking and readiness boundary in hosted CI.
+  image-to-service networking and readiness boundary in hosted CI; PR36's
+  persisted lease is not a managed queue or a live deployment.
