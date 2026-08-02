@@ -347,6 +347,7 @@ const handleApi = async (request, response, pathname) => {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
     if (!isModerator(actor)) return forbidden(response);
+    if (!mutationAllowed(request, actor, 'moderation', 60)) return send(response, 429, { error: 'Too many moderation changes. Try again later.' }, { 'retry-after': '60' });
     const payload = await readJson(request);
     const currentStore = await readStore();
     const currentClaim = (currentStore.claims || []).find((item) => item.id === moderateClaimMatch[1]);
