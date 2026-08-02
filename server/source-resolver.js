@@ -2,6 +2,7 @@ import { assertPublicUrl, blockedHostname } from './ssrf.js';
 
 const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'youtu.be', 'www.youtu.be']);
 const PODCAST_HOST_HINTS = ['podcast', 'overcast', 'spotify', 'soundcloud', 'transistor.fm', 'simplecast'];
+const PODCAST_PATH_HINTS = /(?:^|\/)(?:feed|rss|atom)(?:\.[a-z0-9]+)?$/i;
 const VIDEO_EXTENSIONS = /\.(?:mp4|webm|mov|m3u8)(?:$|\?)/i;
 const AUDIO_EXTENSIONS = /\.(?:mp3|m4a|wav|ogg|aac|flac)(?:$|\?)/i;
 const maxSourceBytes = 2 * 1024 * 1024;
@@ -19,7 +20,7 @@ export function classifySource(value) {
   const url = parseSourceUrl(value);
   const hostname = url.hostname.toLowerCase();
   if (YOUTUBE_HOSTS.has(hostname) || VIDEO_EXTENSIONS.test(url.pathname)) return 'video';
-  if (PODCAST_HOST_HINTS.some((hint) => hostname.includes(hint)) || AUDIO_EXTENSIONS.test(url.pathname)) return 'podcast';
+  if (PODCAST_HOST_HINTS.some((hint) => hostname.includes(hint)) || PODCAST_PATH_HINTS.test(url.pathname) || AUDIO_EXTENSIONS.test(url.pathname)) return 'podcast';
   return 'article';
 }
 
@@ -49,6 +50,93 @@ const stripMarkup = (value) => value
   .replace(/&#39;/gi, "'")
   .replace(/\s+/g, ' ')
   .trim();
+
+const decodeXmlEntities = (value) => String(value || '')
+  .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1')
+  .replace(/&#x([0-9a-f]+);/gi, (_, code) => {
+    const point = Number.parseInt(code, 16);
+    return Number.isFinite(point) && point <= 0x10ffff ? String.fromCodePoint(point) : '';
+  })
+  .replace(/&#(\d+);/g, (_, code) => {
+    const point = Number.parseInt(code, 10);
+    return Number.isFinite(point) && point <= 0x10ffff ? String.fromCodePoint(point) : '';
+  })
+  .replace(/&apos;/gi, "'")
+  .replace(/&quot;/gi, '"')
+  .replace(/&lt;/gi, '<')
+  .replace(/&gt;/gi, '>')
+  .replace(/&amp;/gi, '&');
+
+const xmlTag = (tag) => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const xmlBlock = (value, tag) => {
+  const escaped = xmlTag(tag);
+  return String(value || '').match(new RegExp(`<${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${escaped}>`, 'i'))?.[1] || '';
+};
+
+const xmlText = (value, tag) => {
+  const raw = xmlBlock(value, tag);
+  return raw ? stripMarkup(decodeXmlEntities(raw)) : null;
+};
+
+const xmlAttribute = (value, tag, attribute) => {
+  const escapedTag = xmlTag(tag);
+  const escapedAttribute = xmlTag(attribute);
+  const match = String(value || '').match(new RegExp(`<${escapedTag}\\b[^>]*\\b${escapedAttribute}\\s*=\\s*["']([^"']+)["']`, 'i'));
+  return match?.[1] ? decodeXmlEntities(match[1].trim()) : null;
+};
+
+const safeResolvedUrl = (value, pageUrl) => {
+  if (!value) return null;
+  try {
+    const resolved = new URL(value, pageUrl).toString();
+    parseSourceUrl(resolved);
+    return resolved;
+  } catch {
+    return null;
+  }
+};
+
+const firstFeedBlock = (html) => html.match(/<(?:item|entry)\b[^>]*>[\s\S]*?<\/(?:item|entry)>/i)?.[0] || '';
+
+export const parsePodcastFeed = (html, pageUrl) => {
+  const episode = firstFeedBlock(html);
+  if (!episode) return null;
+  const feed = xmlBlock(html, 'channel') || html;
+  const atomFeed = xmlBlock(html, 'feed') || html;
+  const feedScope = feed === html ? atomFeed : feed;
+  const title = xmlText(episode, 'title') || xmlText(feedScope, 'title') || 'Podcast episode';
+  const author = xmlText(episode, 'itunes:author')
+    || xmlText(episode, 'author')
+    || xmlText(episode, 'dc:creator')
+    || xmlText(feedScope, 'itunes:author')
+    || xmlText(feedScope, 'author')
+    || xmlText(feedScope, 'dc:creator')
+    || null;
+  const description = xmlText(episode, 'description')
+    || xmlText(episode, 'summary')
+    || xmlText(episode, 'content:encoded')
+    || xmlText(feedScope, 'description')
+    || xmlText(feedScope, 'subtitle')
+    || null;
+  const enclosureTag = episode.match(/<enclosure\b[^>]*>/i)?.[0] || '';
+  const atomEnclosure = [...episode.matchAll(/<link\b[^>]*>/gi)].map((match) => match[0]).find((tag) => /\brel\s*=\s*["']enclosure["']/i.test(tag)) || '';
+  const mediaUrl = safeResolvedUrl(xmlAttribute(enclosureTag, 'enclosure', 'url') || xmlAttribute(atomEnclosure, 'link', 'href'), pageUrl);
+  const imageTag = episode.match(/<itunes:image\b[^>]*>/i)?.[0] || feedScope.match(/<itunes:image\b[^>]*>/i)?.[0] || '';
+  const imageUrl = safeResolvedUrl(xmlAttribute(imageTag, 'itunes:image', 'href') || xmlText(episode, 'image') || xmlText(feedScope, 'image'), pageUrl);
+  const feedLink = xmlText(feedScope, 'link');
+
+  return {
+    title,
+    author,
+    description,
+    imageUrl,
+    mediaUrl,
+    canonicalUrl: safeResolvedUrl(feedLink, pageUrl) || pageUrl,
+    processing: 'ready-for-range',
+    provider: 'podcast',
+  };
+};
 
 const articleExcerpt = (html) => {
   const candidates = [...html.matchAll(/<(?:article|main|p)[^>]*>([\s\S]*?)<\/(?:article|main|p)>/gi)]
@@ -124,6 +212,10 @@ export async function resolveSource(value, { lookup } = {}) {
 
   try {
     const html = await fetchText(url.toString(), 8000, { lookup });
+    if (kind === 'podcast' && /<(?:rss|feed|channel|item|entry|enclosure)\b/i.test(html)) {
+      const feed = parsePodcastFeed(html, url.toString());
+      if (feed) return { ...base, ...feed };
+    }
     const canonicalUrl = canonicalFromHTML(html, url.toString());
     return {
       ...base,
