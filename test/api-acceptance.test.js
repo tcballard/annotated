@@ -104,6 +104,19 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.equal(me.response.status, 200);
   assert.equal(me.payload.user.id, 'local-tom');
 
+  const unsupportedAudioResponse = await fetch(`${baseUrl}/api/media/audio`, { method: 'POST', headers: { 'content-type': 'video/mp4' }, body: Buffer.from('not audio') });
+  const unsupportedAudio = await unsupportedAudioResponse.json();
+  assert.equal(unsupportedAudioResponse.status, 415);
+  assert.match(unsupportedAudio.error, /Unsupported audio content type/);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const audioResponse = await fetch(`${baseUrl}/api/media/audio`, { method: 'POST', headers: { 'content-type': 'audio/webm;codecs=opus' }, body: Buffer.from(`audio fixture ${attempt}`) });
+    assert.equal(audioResponse.status, 201);
+  }
+  const audioLimitResponse = await fetch(`${baseUrl}/api/media/audio`, { method: 'POST', headers: { 'content-type': 'audio/webm' }, body: Buffer.from('rate limit boundary') });
+  const audioLimit = await audioLimitResponse.json();
+  assert.equal(audioLimitResponse.status, 429);
+  assert.equal(audioLimitResponse.headers.get('retry-after'), '60');
+
   const annotationPayload = {
     sourceUrl: 'https://example.com/acceptance-source',
     sourceType: 'article',

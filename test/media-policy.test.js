@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildFfmpegArgs, checkMediaRuntime, mediaJobLeaseExpired, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe } from '../server/media-worker.js';
+import { normalizeAudioMimeType } from '../server/media-store.js';
+
+test('audio uploads accept recorder parameters but reject non-audio content types', () => {
+  assert.equal(normalizeAudioMimeType('audio/webm;codecs=opus'), 'audio/webm');
+  assert.equal(normalizeAudioMimeType(' AUDIO/MPEG '), 'audio/mpeg');
+  assert.throws(() => normalizeAudioMimeType('video/mp4'), /Unsupported audio content type/);
+  assert.throws(() => normalizeAudioMimeType('audio/x-unknown'), /Unsupported audio content type/);
+});
 
 test('video transcodes are capped at 90 seconds and 240p', () => {
   const args = buildFfmpegArgs({ sourceType: 'video', clipStart: 5, clipEnd: 200 }, 'input.mp4', 'output.mp4');

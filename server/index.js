@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { checkStore, closeStore, readStore, storageDescription, updateStore } from './store.js';
-import { serveStoredMedia, writeIncomingMedia } from './media-store.js';
+import { normalizeAudioMimeType, serveStoredMedia, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
@@ -144,8 +144,9 @@ const handleApi = async (request, response, pathname) => {
   if (request.method === 'POST' && pathname === '/api/media/audio') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
-    const mimeType = String(request.headers['content-type'] || '').split(';')[0].toLowerCase();
-    if (!mimeType.startsWith('audio/')) return send(response, 415, { error: 'Audio uploads must use an audio content type.' });
+    let mimeType;
+    try { mimeType = normalizeAudioMimeType(request.headers['content-type']); } catch (error) { return send(response, 415, { error: error.message }); }
+    if (!mutationAllowed(request, actor, 'audio-upload', 10)) return send(response, 429, { error: 'Too many audio uploads. Try again later.' }, { 'retry-after': '60' });
     const media = await writeIncomingMedia(request, mimeType);
     await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, ownerId: actor?.id || 'local-tom', createdAt: media.createdAt }] }));
     return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, url: `${publicOrigin}/media/${media.id}` } });

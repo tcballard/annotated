@@ -9,22 +9,38 @@ const mediaDirectory = path.join(dataDirectory, 'media');
 const mediaWorkDirectory = path.join(dataDirectory, 'media-work');
 const maxMediaBytes = 25 * 1024 * 1024;
 
+const audioMimeExtensions = new Map([
+  ['audio/aac', 'aac'],
+  ['audio/flac', 'flac'],
+  ['audio/mp4', 'm4a'],
+  ['audio/mpeg', 'mp3'],
+  ['audio/ogg', 'ogg'],
+  ['audio/opus', 'opus'],
+  ['audio/wav', 'wav'],
+  ['audio/webm', 'webm'],
+  ['audio/x-wav', 'wav'],
+]);
+
+export const normalizeAudioMimeType = (mimeType) => {
+  const normalized = String(mimeType || '').split(';', 1)[0].trim().toLowerCase();
+  if (!audioMimeExtensions.has(normalized)) throw new Error('Unsupported audio content type.');
+  return normalized;
+};
+
 const extensionForMime = (mimeType) => {
-  if (mimeType === 'audio/mp4') return 'm4a';
-  if (mimeType === 'audio/ogg') return 'ogg';
-  if (mimeType === 'audio/wav' || mimeType === 'audio/x-wav') return 'wav';
-  return 'webm';
+  return audioMimeExtensions.get(mimeType) || 'webm';
 };
 
 export async function writeIncomingMedia(request, mimeType) {
+  const normalizedMimeType = normalizeAudioMimeType(mimeType);
   const contentLength = Number(request.headers['content-length'] || 0);
   if (contentLength > maxMediaBytes) throw new Error('Media payload is too large.');
   const id = randomUUID();
-  const extension = extensionForMime(mimeType);
+  const extension = extensionForMime(normalizedMimeType);
   const key = `audio/${id}.${extension}`;
   const store = getObjectStore();
-  const result = await store.putStream(request, { id, key, mimeType, maxBytes: maxMediaBytes });
-  return { id, key, fileName: result.fileName || key, mimeType, bytes: result.bytes, createdAt: new Date().toISOString() };
+  const result = await store.putStream(request, { id, key, mimeType: normalizedMimeType, maxBytes: maxMediaBytes });
+  return { id, key, fileName: result.fileName || key, mimeType: normalizedMimeType, bytes: result.bytes, createdAt: new Date().toISOString() };
 }
 
 export async function storeMediaFile(filePath, { id, key, mimeType }) {
