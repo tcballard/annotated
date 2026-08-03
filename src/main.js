@@ -471,11 +471,8 @@ const commentaryEditor = () => `
 
 const sidebar = () => `
   <aside class="extension-sidebar" aria-label="Annotated capture sidebar">
-    <div class="sidebar-brand"><div class="mini-mark">a</div><div><strong>annotated</strong><span>SIDEBAR</span></div><button class="icon-button" data-action="sidebar-help" aria-label="Sidebar help">${icon('more')}</button></div>
-    <div class="sidebar-rule"></div>
-    <div class="sidebar-heading"><div><span class="eyebrow">Capture</span><h2>Add the meaning.</h2></div><span class="capture-number">01</span></div>
+    <div class="sidebar-heading"><div><span class="eyebrow">Capture</span><h2>Add context.</h2></div><div class="sidebar-heading-actions"><span class="capture-number">01</span><button class="icon-button" data-action="sidebar-help" aria-label="Sidebar help">${icon('more')}</button></div></div>
     <div class="source-type-grid" role="group" aria-label="Source type">${sourceTypeButton('video')}${sourceTypeButton('article')}${sourceTypeButton('podcast')}</div>
-    <div class="sidebar-source"><div class="sidebar-source-icon">${icon(state.sourceType)}</div><div><strong>${escapeHTML(source().title)}</strong><span>${escapeHTML(source().host)} · <a href="${escapeHTML(source().url)}" target="_blank" rel="noreferrer">source link</a></span></div></div>
     ${timeRange()}
     ${commentaryEditor()}
     <button class="publish-button" data-action="publish" ${state.isPublishing ? 'disabled' : ''}>${state.isPublishing ? 'Publishing…' : state.published ? `${icon('check')} Published` : 'Publish annotation'}<span>${state.isPublishing ? '…' : state.published ? '↗' : icon('arrow')}</span></button>
