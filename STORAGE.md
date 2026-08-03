@@ -44,4 +44,4 @@ ANNOTATED_STORAGE=postgres ANNOTATED_ASSET_STORAGE=s3 NODE_ENV=production npm st
 
 The local adapter remains the default for `npm run dev:server`, tests, and offline UI work. Do not claim production readiness from a file-backed run.
 
-Production operations should call `/api/ready` after migrations and object-store credentials are loaded. A 200 response proves the configured repository/object-store adapters can initialize; it does not replace a live provider, backup, or browser acceptance run.
+Production operations should call `/api/ready` after migrations and object-store credentials are loaded. A 200 response proves the configured repository can query and the object store can answer a bucket health check; it does not replace a live provider, backup, or browser acceptance run.

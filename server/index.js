@@ -4,7 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { closeStore, readStore, storageDescription, updateStore } from './store.js';
+import { checkStore, closeStore, readStore, storageDescription, updateStore } from './store.js';
 import { serveStoredMedia, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, enqueueMediaJob, recoverMediaJobs } from './media-worker.js';
@@ -63,8 +63,8 @@ const handleApi = async (request, response, pathname) => {
   if (request.method === 'GET' && pathname === '/api/health') return send(response, 200, { status: 'ok', version: '0.2.0', persistence: storageDescription() });
   if (request.method === 'GET' && pathname === '/api/ready') {
     try {
-      await readStore();
-      getObjectStore();
+      await checkStore();
+      await getObjectStore().check();
       return send(response, 200, { status: 'ready', persistence: storageDescription() });
     } catch (error) {
       return send(response, 503, { status: 'not-ready', error: error.message });
