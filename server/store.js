@@ -12,6 +12,7 @@ const emptyStore = {
   claims: [],
   media: [],
   mediaJobs: [],
+  sessions: [],
   users: [{ id: 'local-tom', handle: 'tcballard', displayName: 'Tom Ballard' }],
 };
 

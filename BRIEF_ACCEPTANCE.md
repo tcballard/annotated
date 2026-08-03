@@ -14,7 +14,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 | Public social feed | partial | Published annotations and comments load from the local server store. | Durable database, pagination, profiles, authorization, and production evidence. |
 | Follow other users | missing | Follow UI is local-only state. | Persisted social graph and authorization tests. |
 | Comment on annotations | partial | Comments persist in the local server store. | Identity, authorization, abuse controls, and durable database tests. |
-| Sign up with X or Google OAuth only | missing | `/api/me` returns a hard-coded local user. | Real Google and X configuration, sessions, logout/expiry, extension handoff, and provider evidence. |
+| Sign up with X or Google OAuth only | partial | Configurable Google/X OAuth starts and callbacks use PKCE; sessions, logout, expiry, and owner IDs are server-backed. Local mode retains the development user. | Real provider credentials, callback success/cancellation/expiry browser evidence, and extension handoff. |
 | Paste a URL or use the active page | partial | Web app resolves pasted URLs; extension reads the active tab. | Unified production API configuration and browser coverage. |
 | Support YouTube videos | partial | Metadata uses YouTube oEmbed and the worker can invoke `yt-dlp`. | Installed/configured provider adapter, failure/retry coverage, playable output evidence. |
 | Support news articles with selected passage and metadata | partial | Resolver extracts bounded metadata; extension reads the user's selection. | Canonical URL handling, robust extraction, and selected-passage contract tests. |

@@ -76,6 +76,9 @@ a { color: inherit; }
 .nav-link:hover, .nav-link.is-active { color: var(--surface); background: #252d2b; }
 .nav-link.is-active::after { position: absolute; right: 12px; bottom: 3px; left: 12px; height: 2px; background: var(--orange); content: ''; }
 .header-actions { justify-content: flex-end; gap: 15px; }
+.auth-label, .auth-user { color: var(--muted); font-family: var(--mono); font-size: 9px; text-transform: uppercase; }
+.auth-link { color: var(--orange); font-family: var(--mono); font-size: 9px; text-decoration: none; text-transform: uppercase; }
+.auth-link:hover { color: var(--surface); }
 .connection-status { display: inline-flex; align-items: center; gap: 7px; color: #aab1ac; font-family: var(--mono); font-size: 10px; text-transform: uppercase; }
 .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #7adc97; box-shadow: 0 0 0 3px rgba(122,220,151,.13); }.status-dot.is-offline { background: #f28b70; box-shadow: 0 0 0 3px rgba(242,139,112,.14); }
 .avatar { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid #6f7974; border-radius: 50%; background: transparent; color: var(--surface); font-family: var(--mono); font-size: 10px; transition: border-color var(--motion), background var(--motion); }

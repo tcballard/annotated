@@ -6,7 +6,7 @@ Annotated is a Chrome-sidebar-first tool for clipping a moment from a page, addi
 
 The product is not ready until these are real end-to-end flows, not local UI simulations:
 
-1. A user can sign in with Google or X and keep a stable account.
+1. A user can sign in with Google or X and keep a stable account. The current identity slice provides configurable OAuth starts/callbacks, PKCE, signed sessions, logout, expiry, and ownership IDs; provider credentials are required for production.
 2. The sidebar can read the active tab, capture a text selection, and choose a bounded media range.
 3. Articles resolve to title, author, selected passage, metadata, and canonical source URL.
 4. YouTube and podcast sources produce a playable clip no longer than 90 seconds and store the required 240p video/audio asset.

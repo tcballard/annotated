@@ -128,6 +128,9 @@ const initialState = {
   publishedSlug: '',
   publishedAnnotation: null,
   feedAnnotations: [],
+  user: null,
+  authProviders: {},
+  authRequired: false,
   serverStatus: 'checking',
   serverError: '',
   isResolvingSource: false,
@@ -266,6 +269,10 @@ const bootstrap = async () => {
   try {
     await api.health();
     state.serverStatus = 'online';
+    const providers = await api.providers().catch(() => ({ providers: {}, required: false }));
+    state.authProviders = providers.providers || {};
+    state.authRequired = Boolean(providers.required);
+    state.user = await api.me().then((result) => result.user).catch(() => null);
     if (state.publishedSlug) {
       const { annotation } = await api.getAnnotation(state.publishedSlug);
       hydrateAnnotation(annotation);
@@ -290,6 +297,10 @@ const sourceTypeButton = (type) => {
   return `<button class="source-type ${state.sourceType === type ? 'is-active' : ''}" data-action="source-type" data-type="${type}" aria-pressed="${state.sourceType === type}">${icon(type)}<span>${item.label}</span></button>`;
 };
 
+const authControls = () => state.user
+  ? `<span class="auth-user">${escapeHTML(state.user.displayName || state.user.handle || 'Signed in')}</span><button class="avatar" data-action="logout" aria-label="Sign out">${escapeHTML((state.user.displayName || state.user.handle || 'A').slice(0, 2).toUpperCase())}</button>`
+  : `<span class="auth-label">${state.authRequired ? 'Sign in' : 'Local account'}</span>${state.authProviders.google ? '<a class="auth-link" href="/api/auth/google/start">Google</a>' : ''}${state.authProviders.x ? '<a class="auth-link" href="/api/auth/x/start">X</a>' : ''}`;
+
 const appHeader = () => `
   <header class="app-header">
     <div class="brand-lockup">
@@ -306,7 +317,7 @@ const appHeader = () => `
     </nav>
     <div class="header-actions">
       <span class="connection-status"><span class="status-dot ${state.serverStatus === 'offline' ? 'is-offline' : ''}"></span> ${state.serverStatus === 'online' ? 'Live backend' : state.serverStatus === 'checking' ? 'Connecting…' : 'Backend offline'}</span>
-      <button class="avatar" data-action="profile" aria-label="Open profile">TB</button>
+      ${authControls()}
     </div>
   </header>`;
 
@@ -714,6 +725,7 @@ app.addEventListener('click', (event) => {
   if (action === 'open-original') { if (target.getAttribute('href') === '#') { event.preventDefault(); notify('Original source link preserved.'); } return; }
   if (action === 'toggle-claim') { state.claimOpen = !state.claimOpen; render(); return; }
   if (action === 'submit-claim') { submitClaim(); return; }
+  if (action === 'logout') { api.logout().then(() => { state.user = null; notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
   if (action === 'profile') { notify('Profile controls arrive in the next pass.'); return; }
   if (action === 'sidebar-help') { notify('Annotated keeps a source link on every public page.'); return; }
   if (action === 'toggle-preview') { notify('Preview playback is represented in this prototype.'); return; }
