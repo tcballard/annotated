@@ -18,7 +18,7 @@ The extension never stores audio/video Blobs in `chrome.storage`. The web app ne
 ## Production target
 
 - PostgreSQL for users, annotations, comments, claims, follows, likes, sessions, media, and media-job records. The repository now persists each API collection as a durable entity record in `annotated_records`, reconstructs the stable store contract, and keeps the legacy state document as a compatibility fallback during migration. Updates use an advisory transaction lock; versioned SQL migrations are tracked in `annotated_schema_migrations`.
-- S3/R2-compatible object storage for uploaded audio and derived clips. The web process streams uploads to S3 and serves signed/public delivery URLs; it does not persist production media under `data/media/`.
+- S3/R2-compatible object storage for uploaded audio and derived clips. The web process streams uploads to S3, serves signed/public delivery URLs, and deletes derived objects when a cancelled or failed job has already uploaded them; it does not persist production media under `data/media/`.
 - Signed or public CDN URLs for playback; the API acknowledges uploads without proxying large media through the web process.
 - `chrome.storage.local` only for small draft metadata, preferences, and pending IDs.
 - `chrome.storage.session` for ephemeral runtime state; no long-lived provider secrets in extension storage.
