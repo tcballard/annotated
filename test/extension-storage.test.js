@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compactDraft, compactPending, extensionStorage, MAX_PENDING_CAPTURES, normalizeApiOrigin } from '../extension/storage.js';
+import { compactDraft, compactPending, extensionStorage, MAX_PENDING_ATTEMPTS, MAX_PENDING_CAPTURES, normalizeApiOrigin } from '../extension/storage.js';
 
 test('extension drafts remain bounded metadata and never retain media blobs', () => {
   const draft = compactDraft({
@@ -27,6 +27,37 @@ test('pending captures stay bounded and preserve only retry metadata', () => {
   assert.equal(pending.attempts, 3);
   assert.equal('blob' in pending, false);
   assert.equal('blob' in pending.payload, false);
+});
+
+test('pending captures persist uploaded audio IDs and bounded blocked failure state', async () => {
+  const previousChrome = globalThis.chrome;
+  const localState = {};
+  globalThis.chrome = {
+    storage: {
+      local: {
+        async get(key) { return { [key]: localState[key] }; },
+        async set(value) { Object.assign(localState, value); },
+        async remove(key) { delete localState[key]; },
+      },
+    },
+  };
+  try {
+    const id = await extensionStorage.queueCapture({ sourceUrl: 'https://example.com/story', commentaryMode: 'audio', audioDraftId: 'draft-1' });
+    const queued = (await extensionStorage.getPendingCaptures())[0];
+    const uploaded = await extensionStorage.updatePendingCapture(id, { payload: { ...queued.payload, audioAssetId: 'asset-1', audioDraftId: '' } });
+    assert.equal(uploaded.payload.audioAssetId, 'asset-1');
+    assert.equal(uploaded.payload.audioDraftId, '');
+    const blocked = await extensionStorage.markPendingAttempt({ ...uploaded, attempts: MAX_PENDING_ATTEMPTS - 1 }, { retryable: true, message: 'backend unavailable' });
+    assert.equal(blocked.status, 'blocked');
+    assert.equal(blocked.attempts, MAX_PENDING_ATTEMPTS);
+    assert.equal(blocked.lastError, 'backend unavailable');
+    const reset = await extensionStorage.retryPendingCapture(id);
+    assert.equal(reset.status, 'queued');
+    assert.equal(reset.attempts, 0);
+    assert.equal(reset.payload.audioAssetId, 'asset-1');
+  } finally {
+    globalThis.chrome = previousChrome;
+  }
 });
 
 test('deployed extension origins require HTTPS while local development remains usable', () => {

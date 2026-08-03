@@ -13,7 +13,7 @@ The following checks passed on `agent/brief-16-source-redirects`:
 ```text
 npm ci
 npm run build
-npm test                         # 34 passing tests
+npm test                         # 35 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -64,7 +64,9 @@ The local browser run exercised the user-facing flows below:
   displayed `Claim marked in review.` and the API recorded the audit transition.
 - Extension storage tests prove draft/pending payloads remain metadata-only,
   the pending queue cap remains five captures, deployed API origins require
-  HTTPS, and expired session tokens are discarded before use.
+  HTTPS, expired session tokens are discarded before use, uploaded audio IDs
+  survive annotation retries, and repeated failures become bounded blocked
+  items with a reset path.
 - Source-processing tests prove redirects are bounded and each redirect target
   is revalidated against the private-host SSRF policy.
 
