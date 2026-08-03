@@ -13,7 +13,7 @@ The following checks passed on `agent/brief-16-source-redirects`:
 ```text
 npm ci
 npm run build
-npm test                         # 42 passing tests
+npm test                         # 44 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -79,6 +79,8 @@ The local browser run exercised the user-facing flows below:
   object-store tests cover deletion of abandoned derived objects.
 - Auth tests cover malformed cookie handling and exact OAuth return-origin
   checks; ownership tests reject attaching another account's audio asset.
+- Hardening tests cover origin validation, security headers, and bounded request
+  telemetry; the server emits request IDs and structured `http_request` logs.
 
 ## Deliberately unverified external gates
 

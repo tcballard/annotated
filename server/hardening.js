@@ -7,6 +7,11 @@ export const assertHardeningConfiguration = () => {
   if (!production) return;
   if (!process.env.PUBLIC_ORIGIN) throw new Error('Production requires PUBLIC_ORIGIN.');
   if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*') throw new Error('Production requires a restricted CORS_ORIGIN.');
+  for (const [name, value] of [['PUBLIC_ORIGIN', process.env.PUBLIC_ORIGIN], ['CORS_ORIGIN', process.env.CORS_ORIGIN]]) {
+    let origin;
+    try { origin = new URL(value); } catch { throw new Error(`Production requires a valid ${name}.`); }
+    if (!['http:', 'https:'].includes(origin.protocol) || origin.pathname !== '/' || origin.search || origin.hash) throw new Error(`Production requires ${name} to be an origin without a path.`);
+  }
 };
 
 export const requestId = (request) => {
@@ -28,6 +33,8 @@ export const securityHeaders = ({ api = false } = {}) => ({
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
   'x-frame-options': 'DENY',
+  'permissions-policy': 'camera=(), geolocation=(), payment=()',
+  'cross-origin-resource-policy': api ? 'same-site' : 'same-origin',
   ...(api ? {} : { 'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" }),
 });
 
