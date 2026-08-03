@@ -150,7 +150,7 @@ backend storage, deletion requests, and contact details.
 
 - The icon, screenshots, promo artwork, public privacy-policy URL, and monitored publisher email are still required before submission.
 - The extension requires a configured Annotated backend. Local development uses `http://localhost:8787`; deployed API origins must be HTTPS.
-- Google/X OAuth, PostgreSQL/S3 media delivery, provider extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates.
+- Google/X OAuth, PostgreSQL/S3 media delivery, real provider fixture extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates. The production image now includes a pinned, SHA-256-verified `yt-dlp` runtime, but that does not replace a real provider fixture run.
 - The broad page host permissions are intentional because the product works on the user-selected active page, but the sidebar only reads and publishes data after an explicit user action.
 - If Google sign-in is enabled for the extension, update the OAuth client with the Chrome Web Store-assigned extension ID after publishing.
 
