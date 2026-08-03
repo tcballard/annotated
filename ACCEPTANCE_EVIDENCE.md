@@ -1,10 +1,35 @@
 # Acceptance evidence
 
-Last run: 2026-08-02
+Last run: 2026-08-03
 
 This record supplements [`BRIEF_ACCEPTANCE.md`](./BRIEF_ACCEPTANCE.md). It is
 evidence from the current stacked branch, not a claim that the external
 production gates are complete.
+
+## Railway staging acceptance
+
+The current brand/slider stack was deployed to the existing Railway staging
+service (`annotated-poc`, environment `staging`) as deployment
+`c27f03c6-ea77-42f7-a0b8-71aa5c263dd5` at
+`https://annotated-staging.up.railway.app`. The non-mutating acceptance command
+below passed on 2026-08-03:
+
+```text
+npm run acceptance:staging
+{
+  "origin": "https://annotated-staging.up.railway.app",
+  "version": "0.1.0",
+  "persistence": "postgres",
+  "providerState": { "google": false, "x": true },
+  "feedAnnotations": 0
+}
+```
+
+It verifies `/api/health`, `/api/ready`, `/api/auth/providers`, the root brand
+asset, `/privacy.html`, an empty server-backed feed, and the expected `401`
+identity and claims boundaries. This is deployed API evidence; it does not
+replace live OAuth consent, docked Chrome, microphone, offline replay, or
+provider fixture/browser playback evidence.
 
 ## Clean-checkout validation
 

@@ -48,6 +48,11 @@ credential.
    migrations from the release artifact, deploy, and require `/api/ready` to
    return 200 before trying the media acceptance flow. It confirms PostgreSQL,
    the private bucket, and the media runtime are usable with deployed settings.
+6. From a clean checkout, run `STAGING_ORIGIN=https://<railway-domain>
+   npm run acceptance:staging`. The command is non-mutating: it verifies health,
+   readiness, provider configuration shape, the public root/brand asset, the
+   privacy policy, an empty server-backed feed, and the expected unauthenticated
+   identity and claims responses.
 
 Railway Buckets use virtual-hosted URLs at `https://storage.railway.app` with
 the `auto` region. The generic adapter still validates a Cloudflare R2 endpoint
