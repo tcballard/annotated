@@ -1,14 +1,20 @@
+export const apiError = (body = {}, status, fallback) => {
+  const error = new Error(body.errors?.join(' ') || body.error || fallback);
+  error.status = status;
+  return error;
+};
+
 const apiRequest = async (path, options = {}) => {
   const response = await fetch(path, { credentials: 'include', headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.errors?.join(' ') || body.error || `Request failed (${response.status}).`);
+  if (!response.ok) throw apiError(body, response.status, `Request failed (${response.status}).`);
   return body;
 };
 
 const uploadRequest = async (path, blob) => {
   const response = await fetch(path, { method: 'POST', credentials: 'include', headers: { 'content-type': blob.type || 'audio/webm' }, body: blob });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.errors?.join(' ') || body.error || `Upload failed (${response.status}).`);
+  if (!response.ok) throw apiError(body, response.status, `Upload failed (${response.status}).`);
   return body;
 };
 

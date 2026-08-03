@@ -87,14 +87,18 @@ const providerFor = (name) => {
   return provider;
 };
 
+const chromiumReturnUrl = (url) => url.protocol === 'https:' && url.hostname.endsWith('.chromiumapp.org');
+const configuredAppOrigin = () => {
+  try { return new URL(process.env.APP_ORIGIN || publicOrigin).origin; } catch { throw new Error('OAuth app origin is invalid.'); }
+};
+const appReturnUrl = (url) => url.origin === configuredAppOrigin();
+
 const validateReturnTo = (value) => {
   if (!value) return null;
   let url;
   try { url = new URL(value); } catch { throw new Error('OAuth return URL is invalid.'); }
-  const allowedExtension = url.protocol === 'https:' && url.hostname.endsWith('.chromiumapp.org');
-  let appOrigin;
-  try { appOrigin = new URL(process.env.APP_ORIGIN || publicOrigin).origin; } catch { throw new Error('OAuth app origin is invalid.'); }
-  const allowedApp = url.origin === appOrigin;
+  const allowedExtension = chromiumReturnUrl(url);
+  const allowedApp = appReturnUrl(url);
   if (!allowedExtension && !allowedApp) throw new Error('OAuth return URL is not allowed.');
   return url.toString();
 };
@@ -211,8 +215,13 @@ export const finishOAuth = async (request, providerName, url) => {
   const user = await upsertUser(await profileFromProvider(providerName, provider, tokens.access_token));
   const session = await createSession(user);
   const returnTo = cookies[returnCookieName] || null;
-  const extension = returnTo ? await createExtensionTicket(user, returnTo) : null;
-  return { user, cookie: cookie(cookieName, session.token, { maxAge: sessionTtlSeconds }), redirectTo: extension ? `${returnTo}${returnTo.includes('?') ? '&' : '?'}ticket=${encodeURIComponent(extension.ticket)}` : null, clearCookies: [cookie(stateCookieName, '', { clear: true }), cookie(verifierCookieName, '', { clear: true }), cookie(returnCookieName, '', { clear: true })] };
+  const returnUrl = returnTo ? new URL(returnTo) : null;
+  const extension = returnUrl && chromiumReturnUrl(returnUrl) ? await createExtensionTicket(user, returnTo) : null;
+  const browserRedirect = returnUrl && appReturnUrl(returnUrl) ? (() => {
+    returnUrl.searchParams.set('auth', 'success');
+    return returnUrl.toString();
+  })() : null;
+  return { user, cookie: cookie(cookieName, session.token, { maxAge: sessionTtlSeconds }), redirectTo: extension ? `${returnTo}${returnTo.includes('?') ? '&' : '?'}ticket=${encodeURIComponent(extension.ticket)}` : browserRedirect, clearCookies: [cookie(stateCookieName, '', { clear: true }), cookie(verifierCookieName, '', { clear: true }), cookie(returnCookieName, '', { clear: true })] };
 };
 
 const requestToken = (request) => {

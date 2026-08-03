@@ -307,6 +307,19 @@ The local browser run exercised the user-facing flows below:
   30747195804](https://github.com/tcballard/annotated/actions/runs/30747195804),
   [pull-request run
   30747199116](https://github.com/tcballard/annotated/actions/runs/30747199116)).
+- PR50 makes the web identity boundary actionable. Sign-in links preserve the
+  current app path/query/hash, successful web callbacks return to that page
+  without an extension ticket, and protected publish/like/follow/comment/claim
+  actions show a provider-aware recovery banner instead of failing silently.
+  The full local suite passed 79 tests with one explicit PostgreSQL/S3
+  service-integration skip; build, syntax, and diff checks also pass. A live
+  Chrome DevTools session was unavailable in this environment, so browser
+  success/error/cancellation rendering remains unverified. PR50's hosted push
+  and pull-request workflows both passed Node plus linux/amd64 and linux/arm64
+  production-image smoke jobs on 2026-08-02 ([push run
+  30748473132](https://github.com/tcballard/annotated/actions/runs/30748473132),
+  [pull-request run
+  30748478973](https://github.com/tcballard/annotated/actions/runs/30748478973)).
 
 ## Deliberately unverified external gates
 
