@@ -50,6 +50,13 @@ The same deployed API resolved the public YouTube fixture
 `text-ready` metadata. The worker transcode, media delivery, and browser
 playback gates remain intentionally unclaimed.
 
+The repository also contains a guarded `accept-staging-media.mjs` command for
+the Railway container. It is explicitly restricted to the staging host and
+production PostgreSQL/S3 settings; when run, it creates and cleans one direct
+audio podcast fixture while checking the worker output, private media redirect,
+signed object delivery, and object/database cleanup. This does not claim
+authenticated OAuth publishing or YouTube extraction.
+
 ## Clean-checkout validation
 
 The baseline acceptance checks passed from a fresh clone of the prior stack tip
@@ -81,6 +88,10 @@ The 2026-08-04 docs-boundary update corrects the README, release record, and
 deployment runbook to describe the verified Railway POC staging service without
 calling it a public production release. `node --test test/deployment.test.js`
 and the full local suite cover the wording and release-boundary contract.
+
+The deployed image's read-only YouTube provider probe reached the pinned
+extractor but received HTTP 429/bot verification from YouTube; this is recorded
+as an unverified provider gate, not treated as a passing extraction claim.
 
 ## Browser acceptance run
 

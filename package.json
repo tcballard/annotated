@@ -9,6 +9,7 @@
     "build": "vite build",
     "test": "node --test",
     "acceptance:staging": "node scripts/accept-staging.mjs",
+    "acceptance:staging:media": "node scripts/accept-staging-media.mjs",
     "generate:extension-icons": "node scripts/generate-extension-icons.mjs",
     "package:extension": "node scripts/package-extension.js",
     "db:migrate": "node scripts/migrate.js",

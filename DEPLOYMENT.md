@@ -53,6 +53,18 @@ credential.
    readiness, provider configuration shape, the public root/brand asset, the
    privacy policy, an empty server-backed feed, and the expected unauthenticated
    identity and claims responses.
+7. For a controlled worker/object-delivery smoke, run the guarded script inside
+   the deployed app container after confirming the target is staging:
+
+   ```bash
+   railway ssh --service annotated --environment staging -- env \
+     ACCEPTANCE_MEDIA_SMOKE=1 node scripts/accept-staging-media.mjs
+   ```
+
+   It creates one direct-audio podcast fixture, waits for the production
+   worker to transcode it, verifies the private `/media/:id` redirect and
+   signed object response, then removes the fixture and object. It is not a
+   substitute for authenticated OAuth publishing or browser playback.
 
 Railway Buckets use virtual-hosted URLs at `https://storage.railway.app` with
 the `auto` region. The generic adapter still validates a Cloudflare R2 endpoint
