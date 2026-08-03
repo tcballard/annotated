@@ -1,6 +1,6 @@
 # Acceptance evidence
 
-Last run: 2026-08-03
+Last run: 2026-08-04
 
 This record supplements [`BRIEF_ACCEPTANCE.md`](./BRIEF_ACCEPTANCE.md). It is
 evidence from the current stacked branch, not a claim that the external
@@ -8,11 +8,11 @@ production gates are complete.
 
 ## Railway staging acceptance
 
-The current brand/slider stack was deployed to the existing Railway staging
+The current claim-surface stack was deployed to the existing Railway staging
 service (`annotated-poc`, environment `staging`) as deployment
-`c27f03c6-ea77-42f7-a0b8-71aa5c263dd5` at
+`5a5fc2e3-1a25-44d9-8e94-9e469180f2c8` at
 `https://annotated-staging.up.railway.app`. The non-mutating acceptance command
-below passed on 2026-08-03:
+below passed on 2026-08-04:
 
 ```text
 npm run acceptance:staging
@@ -31,6 +31,12 @@ asset, `/privacy.html`, an empty server-backed feed, and the expected `401`
 identity and claims boundaries. This is deployed API evidence; it does not
 replace live OAuth consent, docked Chrome, microphone, offline replay, or
 provider fixture/browser playback evidence.
+
+The claim-surface deployment also serves the feed/profile card contract from
+the same PostgreSQL-backed staging service. The claim action preserves the
+selected annotation slug and submits through the persisted claim endpoint;
+staging smoke confirms the route is live while authenticated moderation and
+multi-user browser evidence remain external.
 
 For each enabled provider it also starts an OAuth request, verifies the PKCE
 state/verifier cookies and provider authorize host, then exercises an ephemeral
@@ -192,8 +198,9 @@ The local browser run exercised the user-facing flows below:
 - The 2026-08-04 claim UI contract test verifies that feed/profile annotation
   cards render a visible `File a claim` action, preserve the card slug, and
   submit through the existing persisted claim endpoint. The public landing
-  page keeps its existing claim card; live browser interaction remains an
-  external gate.
+  page keeps its existing claim card. The same branch is deployed to Railway
+  staging and passed `npm run acceptance:staging`; live authenticated browser
+  interaction remains an external gate.
 - Deployment tests verify Vite builds before production pruning, the container
   runs as an unprivileged user, local state/secrets are excluded from its build
   context, and the Dockerfile pins the official yt-dlp 2026.06.09 amd64/arm64
