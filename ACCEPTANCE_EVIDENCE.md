@@ -14,7 +14,7 @@ tip (`agent/brief-29-chrome-plugin-audit`):
 ```text
 npm ci
 npm run build
-npm test                         # 55 passing tests
+npm test                         # 57 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -100,6 +100,10 @@ The local browser run exercised the user-facing flows below:
 - Storage tests exercise repository health queries and the local/S3 object-store
   readiness checks used by `/api/ready`, including rejection of an outdated
   migration ledger.
+- Media-runtime tests verify that production readiness probes `ffmpeg`,
+  `ffprobe`, and the configured `YTDLP_BIN` provider extractor, and returns an
+  explicit unavailable-runtime failure. Development readiness reports the
+  deliberate non-provider `development` media-runtime status.
 - Storage tests cover reconstruction from collection records and the write path
   that persists entity records while retaining the compatibility state row.
 - Source/media tests revalidate provider-returned URLs before FFmpeg use, and

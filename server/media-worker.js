@@ -64,6 +64,22 @@ const run = (command, args, { maxOutput = 64_000, jobId = '' } = {}) => new Prom
   });
 });
 
+export const checkMediaRuntime = async ({ runCommand = run, includeProvider = process.env.NODE_ENV === 'production' } = {}) => {
+  const checks = [
+    ['ffmpeg', 'ffmpeg', ['-version']],
+    ['ffprobe', 'ffprobe', ['-version']],
+  ];
+  if (includeProvider) checks.push(['provider extractor', ytdlpBinary, ['--version']]);
+  for (const [label, command, args] of checks) {
+    try {
+      await runCommand(command, args, { maxOutput: 2_000 });
+    } catch (error) {
+      throw new Error(`Media runtime ${label} is unavailable: ${error.message}`);
+    }
+  }
+  return { status: 'ready', checks: checks.map(([label]) => label) };
+};
+
 export const shouldAbortMediaJob = (job, store, cancelled = cancelledJobs) => cancelled.has(job.id) || (store.mediaJobs || []).some((item) => item.id === job.id && item.status === 'cancelled');
 
 export const resolveInput = async (job, { lookup } = {}) => {

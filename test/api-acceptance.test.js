@@ -86,6 +86,7 @@ test('local API serves the acceptance-critical health, identity, publish, social
   const ready = await request(baseUrl, '/api/ready', { origin: allowedOrigin });
   assert.equal(ready.response.status, 200);
   assert.equal(ready.payload.status, 'ready');
+  assert.equal(ready.payload.mediaRuntime.status, 'development');
 
   const denied = await request(baseUrl, '/api/health', { origin: 'https://not-annotated.example' });
   assert.equal(denied.response.status, 403);

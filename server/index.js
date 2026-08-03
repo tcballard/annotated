@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { checkStore, closeStore, readStore, storageDescription, updateStore } from './store.js';
 import { serveStoredMedia, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
-import { cancelMediaJob, enqueueMediaJob, recoverMediaJobs } from './media-worker.js';
+import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
 import { matchesFeedQuery, normalizeFeedQuery } from './feed.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
@@ -69,7 +69,8 @@ const handleApi = async (request, response, pathname) => {
     try {
       await checkStore();
       await getObjectStore().check();
-      return send(response, 200, { status: 'ready', persistence: storageDescription() });
+      const mediaRuntime = process.env.NODE_ENV === 'production' ? await checkMediaRuntime({ includeProvider: true }) : { status: 'development' };
+      return send(response, 200, { status: 'ready', persistence: storageDescription(), mediaRuntime });
     } catch (error) {
       return send(response, 503, { status: 'not-ready', error: error.message });
     }
