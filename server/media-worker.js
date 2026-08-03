@@ -4,9 +4,12 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mediaWorkDirectory, removeMediaFile, storeMediaFile } from './media-store.js';
 import { readStore, updateStore } from './store.js';
+import { parseSourceUrl } from './source-resolver.js';
 
 const maxConcurrentJobs = Number(process.env.MEDIA_WORKER_CONCURRENCY || 2);
 const ytdlpBinary = process.env.YTDLP_BIN || 'yt-dlp';
+const maxAttempts = Math.max(1, Number(process.env.MEDIA_WORKER_MAX_ATTEMPTS || 3));
+const retryDelayMs = Math.max(100, Number(process.env.MEDIA_WORKER_RETRY_DELAY_MS || 1500));
 const queue = [];
 let activeJobs = 0;
 
@@ -35,12 +38,13 @@ const run = (command, args, { maxOutput = 64_000 } = {}) => new Promise((resolve
   child.on('close', (code) => code === 0 ? resolve({ stdout, stderr }) : reject(new Error(stderr.trim() || `${command} exited with code ${code}.`)));
 });
 
-const resolveInput = async (job) => {
-  if (job.mediaUrl && directMediaUrl(job.mediaUrl)) return job.mediaUrl;
-  if (directMediaUrl(job.sourceUrl)) return job.sourceUrl;
-  if (job.provider === 'youtube' || /(?:youtube\.com|youtu\.be)/i.test(job.sourceUrl)) {
+export const resolveInput = async (job) => {
+  const sourceUrl = parseSourceUrl(job.sourceUrl).toString();
+  if (job.mediaUrl && directMediaUrl(parseSourceUrl(job.mediaUrl).toString())) return job.mediaUrl;
+  if (directMediaUrl(sourceUrl)) return sourceUrl;
+  if (job.provider === 'youtube' || job.provider === 'podcast' || job.sourceType === 'podcast' || /(?:youtube\.com|youtu\.be)/i.test(sourceUrl)) {
     const format = job.sourceType === 'video' ? 'best[height<=240]/best' : 'bestaudio/best';
-    const result = await run(ytdlpBinary, ['--no-playlist', '--format', format, '--get-url', job.sourceUrl]);
+    const result = await run(ytdlpBinary, ['--no-playlist', '--format', format, '--get-url', sourceUrl]);
     const input = result.stdout.trim().split(/\s+/)[0];
     if (!input) throw new Error('The media provider returned no playable stream.');
     return input;
@@ -54,6 +58,9 @@ const updateAnnotation = (annotationId, changes) => updateStore((store) => ({
 }));
 
 const runJob = async (job) => {
+  const current = await readStore();
+  const annotation = current.annotations.find((item) => item.id === job.annotationId);
+  if (!annotation || annotation.mediaStatus === 'cancelled') return;
   await updateAnnotation(job.annotationId, { mediaStatus: 'processing', mediaError: null });
   const assetId = randomUUID();
   const output = outputFor(job.sourceType, assetId);
@@ -74,11 +81,14 @@ const runJob = async (job) => {
     await removeMediaFile(outputPath);
   } catch (error) {
     await removeMediaFile(outputPath);
+    const attempts = Number(job.attempts || 0) + 1;
+    const retry = attempts < maxAttempts;
     await updateStore((store) => ({
       ...store,
-      annotations: store.annotations.map((annotation) => annotation.id === job.annotationId ? { ...annotation, mediaStatus: 'failed', mediaError: error.message } : annotation),
-      mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: 'failed', error: error.message, completedAt: new Date().toISOString() } : item),
+      annotations: store.annotations.map((item) => item.id === job.annotationId ? { ...item, mediaStatus: retry ? 'queued' : 'failed', mediaError: retry ? `Retrying media processing (${attempts}/${maxAttempts}).` : error.message } : item),
+      mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: retry ? 'queued' : 'failed', attempts, error: error.message, retryAt: retry ? new Date(Date.now() + retryDelayMs * attempts).toISOString() : null, completedAt: retry ? null : new Date().toISOString() } : item),
     }));
+    if (retry) setTimeout(() => { queue.push({ ...job, attempts, status: 'queued' }); drain(); }, retryDelayMs * attempts);
   }
 };
 
@@ -91,17 +101,36 @@ const drain = () => {
 };
 
 export async function enqueueMediaJob(input) {
-  const job = { id: randomUUID(), ...input, status: 'queued', createdAt: new Date().toISOString() };
+  const job = { id: randomUUID(), ...input, attempts: 0, status: 'queued', createdAt: new Date().toISOString() };
   await updateStore((store) => ({ ...store, mediaJobs: [...(store.mediaJobs || []), job], annotations: store.annotations.map((annotation) => annotation.id === input.annotationId ? { ...annotation, mediaStatus: 'queued', mediaError: null } : annotation) }));
   queue.push(job);
   drain();
   return job;
 }
 
+export async function cancelMediaJob(jobId, userId) {
+  let cancelled = false;
+  await updateStore((store) => {
+    const job = (store.mediaJobs || []).find((item) => item.id === jobId);
+    const annotation = job && store.annotations.find((item) => item.id === job.annotationId);
+    if (!job || !annotation || annotation.authorId !== userId || ['ready', 'failed', 'cancelled'].includes(job.status)) return store;
+    cancelled = true;
+    return {
+      ...store,
+      annotations: store.annotations.map((item) => item.id === annotation.id ? { ...item, mediaStatus: 'cancelled', mediaError: 'Processing cancelled by the owner.' } : item),
+      mediaJobs: (store.mediaJobs || []).map((item) => item.id === jobId ? { ...item, status: 'cancelled', completedAt: new Date().toISOString() } : item),
+    };
+  });
+  if (cancelled) {
+    for (let index = queue.length - 1; index >= 0; index -= 1) if (queue[index].id === jobId) queue.splice(index, 1);
+  }
+  return cancelled;
+}
+
 export async function recoverMediaJobs() {
   const store = await readStore();
   for (const annotation of store.annotations.filter((item) => item.status === 'published' && ['queued', 'processing'].includes(item.mediaStatus))) {
-    const job = (store.mediaJobs || []).find((item) => item.annotationId === annotation.id && item.status !== 'ready');
+    const job = (store.mediaJobs || []).find((item) => item.annotationId === annotation.id && ['queued', 'processing'].includes(item.status) && Number(item.attempts || 0) < maxAttempts);
     if (job) queue.push({ ...job, status: 'queued' });
   }
   drain();
