@@ -65,6 +65,11 @@ The local browser run exercised the user-facing flows below:
 - Media-policy tests cover cancellation checks before both a late successful
   publish and a retry update, preventing a cancelled job from being revived by
   a child-process completion.
+- PR55 adds a bounded process deadline for provider extraction, FFmpeg, and
+  FFprobe commands. A timed-out child is terminated and recorded through the
+  existing retry/failure path; the timeout is configurable with
+  `MEDIA_WORKER_PROCESS_TIMEOUT_MS` and defaults to 300 seconds, below the
+  default persisted lease. The targeted timeout test and full local suite pass.
 - Media-policy tests cover the FFprobe boundary for duration, required audio,
   audio-only outputs, and the 240px video-height limit; the generated artifact
   is inspected before the worker marks it ready.

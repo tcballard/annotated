@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildFfmpegArgs, checkMediaRuntime, mediaJobLeaseExpired, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe } from '../server/media-worker.js';
+import { buildFfmpegArgs, checkMediaRuntime, mediaJobLeaseExpired, runMediaCommand, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe } from '../server/media-worker.js';
 import { normalizeAudioMimeType } from '../server/media-store.js';
 
 test('audio uploads accept recorder parameters but reject non-audio content types', () => {
@@ -39,6 +39,13 @@ test('production readiness fails explicitly when a media runtime binary is unava
   await assert.rejects(
     () => checkMediaRuntime({ includeProvider: true, runCommand: async (command) => { throw new Error(`${command} not found`); } }),
     /Media runtime ffmpeg is unavailable: ffmpeg not found/,
+  );
+});
+
+test('media commands are killed when they exceed their execution deadline', async () => {
+  await assert.rejects(
+    () => runMediaCommand(process.execPath, ['-e', 'setTimeout(() => {}, 1000)'], { timeoutMs: 50 }),
+    /Media command timed out after 50ms/,
   );
 });
 

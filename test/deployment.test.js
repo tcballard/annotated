@@ -35,7 +35,9 @@ test('deployment documents persisted media-worker leases', async () => {
   const env = await readFile(new URL('../.env.example', import.meta.url), 'utf8');
   assert.match(deployment, /worker leases live in the configured repository/);
   assert.match(deployment, /managed queue when independent worker scaling is required/);
+  assert.match(deployment, /MEDIA_WORKER_PROCESS_TIMEOUT_MS/);
   assert.match(env, /MEDIA_WORKER_LEASE_MS=600000/);
+  assert.match(env, /MEDIA_WORKER_PROCESS_TIMEOUT_MS=300000/);
 });
 
 test('deployment documents the private Railway Buckets POC profile', async () => {
