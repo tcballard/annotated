@@ -5,7 +5,7 @@ The container is deliberately configuration-only: it does not contain provider c
 Before starting a production container:
 
 1. Load `DATABASE_URL`, `ANNOTATED_STORAGE=postgres`, and the Google/X OAuth values from the deployment secret manager.
-2. Load `ANNOTATED_ASSET_STORAGE=s3`, the S3/R2 bucket/endpoint/credentials, `PUBLIC_ORIGIN`, and a non-wildcard `CORS_ORIGIN`.
+2. Load `ANNOTATED_ASSET_STORAGE=s3`, the S3/R2 bucket/endpoint/credentials, `PUBLIC_ORIGIN`, `APP_ORIGIN`, and a non-wildcard `CORS_ORIGIN`.
 3. Run `npm run db:migrate` from the same release artifact against the target database.
 4. Start the container and require `/api/ready` to return 200 before routing traffic; readiness now verifies the latest migration, performs a database health query, and checks the S3-compatible bucket.
 5. Verify a real OAuth callback, source resolution, media upload, feed write, and claim review in the deployed environment.

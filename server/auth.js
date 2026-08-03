@@ -38,13 +38,23 @@ const hashToken = (value) => createHash('sha256').update(value).digest('hex');
 const codeChallenge = (verifier) => base64url(createHash('sha256').update(verifier).digest());
 const cookie = (name, value, { maxAge = 0, clear = false } = {}) => `${name}=${clear ? '' : encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax;${secureCookies ? ' Secure;' : ''}${maxAge ? ` Max-Age=${maxAge};` : clear ? ' Max-Age=0;' : ''}`;
 
-export const parseCookies = (header = '') => Object.fromEntries(header.split(';').map((item) => item.trim().split('=').map(decodeURIComponent)).filter(([name, value]) => name && value));
+export const parseCookies = (header = '') => Object.fromEntries(header.split(';').flatMap((item) => {
+  const separator = item.indexOf('=');
+  if (separator < 1) return [];
+  try {
+    const name = decodeURIComponent(item.slice(0, separator).trim());
+    const value = decodeURIComponent(item.slice(separator + 1).trim());
+    return name && value ? [[name, value]] : [];
+  } catch {
+    return [];
+  }
+}));
 
 export const authIsRequired = () => authRequired;
 export const providerStatus = () => Object.fromEntries(Object.entries(providers).map(([name, provider]) => [name, Boolean(provider.clientId() && provider.clientSecret())]));
 export const assertAuthConfiguration = () => {
   if (!authRequired) return;
-  const missing = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'X_CLIENT_ID', 'X_CLIENT_SECRET'].filter((name) => !process.env[name]);
+  const missing = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'X_CLIENT_ID', 'X_CLIENT_SECRET', 'APP_ORIGIN'].filter((name) => !process.env[name]);
   if (missing.length) throw new Error(`Production authentication requires ${missing.join(', ')}.`);
 };
 
@@ -60,7 +70,9 @@ const validateReturnTo = (value) => {
   let url;
   try { url = new URL(value); } catch { throw new Error('OAuth return URL is invalid.'); }
   const allowedExtension = url.protocol === 'https:' && url.hostname.endsWith('.chromiumapp.org');
-  const allowedApp = value.startsWith(process.env.APP_ORIGIN || publicOrigin);
+  let appOrigin;
+  try { appOrigin = new URL(process.env.APP_ORIGIN || publicOrigin).origin; } catch { throw new Error('OAuth app origin is invalid.'); }
+  const allowedApp = url.origin === appOrigin;
   if (!allowedExtension && !allowedApp) throw new Error('OAuth return URL is not allowed.');
   return url.toString();
 };
@@ -98,8 +110,18 @@ export const startOAuth = async (request, providerName, returnTo = '') => {
   };
 };
 
-const fetchJson = async (url, options) => {
-  const response = await fetch(url, options);
+const fetchJson = async (url, options, timeoutMs = 10_000) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error.name === 'AbortError') throw new Error('Identity provider request timed out.');
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error_description || body.detail || `Identity provider returned ${response.status}.`);
   return body;
@@ -158,8 +180,12 @@ const createExtensionTicket = async (user, returnTo) => {
 export const finishOAuth = async (request, providerName, url) => {
   const provider = providerFor(providerName);
   const cookies = parseCookies(request.headers.cookie);
-  if (!url.searchParams.get('code') || !url.searchParams.get('state') || !cookies[stateCookieName] || !cookies[verifierCookieName] || !timingSafeEqual(Buffer.from(url.searchParams.get('state')), Buffer.from(cookies[stateCookieName]))) throw new Error('OAuth state validation failed.');
+  const returnedState = url.searchParams.get('state') || '';
+  const storedState = cookies[stateCookieName] || '';
+  const stateMatches = returnedState.length === storedState.length && returnedState.length > 0 && timingSafeEqual(Buffer.from(returnedState), Buffer.from(storedState));
+  if (!url.searchParams.get('code') || !stateMatches || !cookies[verifierCookieName]) throw new Error('OAuth state validation failed.');
   const tokens = await exchangeCode(provider, url.searchParams.get('code'), cookies[verifierCookieName]);
+  if (!tokens.access_token) throw new Error('Identity provider returned no access token.');
   const user = await upsertUser(await profileFromProvider(providerName, provider, tokens.access_token));
   const session = await createSession(user);
   const returnTo = cookies[returnCookieName] || null;
@@ -201,12 +227,15 @@ export const exchangeExtensionTicket = async (ticket) => {
 export const currentUser = async (request) => {
   const user = await sessionUser(request);
   if (user) return user;
-  if (!authRequired) return (await readStore()).users[0] || null;
+  if (!authRequired) {
+    const users = (await readStore()).users || [];
+    return users.find((item) => item.id === 'local-tom') || users[0] || null;
+  }
   return null;
 };
 
 export const logout = async (request) => {
-  const token = parseCookies(request.headers.cookie)[cookieName];
+  const token = requestToken(request);
   if (token) await updateStore((store) => ({ ...store, sessions: (store.sessions || []).filter((session) => session.tokenHash !== hashToken(token)) }));
   return cookie(cookieName, '', { clear: true });
 };

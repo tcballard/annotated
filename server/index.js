@@ -13,6 +13,7 @@ import { matchesFeedQuery, normalizeFeedQuery } from './feed.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, rateLimit, requestId, securityHeaders } from './hardening.js';
+import { canUseAudioAsset } from './media-access.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
@@ -182,7 +183,8 @@ const handleApi = async (request, response, pathname) => {
     if (errors.length) return send(response, 422, { errors });
     if (normalized.commentaryMode === 'audio') {
       const store = await readStore();
-      if (!(store.media || []).some((item) => item.id === normalized.audioAssetId && item.mimeType.startsWith('audio/'))) return send(response, 422, { errors: ['The uploaded audio asset could not be found.'] });
+      const media = (store.media || []).find((item) => item.id === normalized.audioAssetId);
+      if (!canUseAudioAsset(media, actor)) return send(response, 422, { errors: ['The uploaded audio asset could not be found or is not owned by this account.'] });
     }
     const now = new Date().toISOString();
     const id = randomUUID();

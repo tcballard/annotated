@@ -14,6 +14,10 @@ test('development identity remains explicit and providers report configuration s
   assert.deepEqual(providerStatus(), { google: false, x: false });
 });
 
+test('cookie parsing tolerates malformed values without corrupting neighboring cookies', () => {
+  assert.deepEqual(parseCookies('annotated_session=token%3Dvalue; broken=%E0%A4%A; other=ok'), { annotated_session: 'token=value', other: 'ok' });
+});
+
 test('OAuth start creates a PKCE challenge and short-lived state cookies', async () => {
   const saved = envSnapshot();
   process.env.GOOGLE_CLIENT_ID = 'google-client';
@@ -53,6 +57,7 @@ test('extension OAuth return URLs are constrained to Chromium app redirects', as
     const result = await startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://example.chromiumapp.org/annotated-auth');
     assert.equal(result.cookies.length, 3);
     await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://evil.example/callback'), /return URL is not allowed/);
+    await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://example.chromiumapp.org.evil.example/callback'), /return URL is not allowed/);
   } finally {
     restoreEnv(saved);
   }
