@@ -132,6 +132,8 @@ const initialState = {
   commentDraft: '',
   comments: 12,
   claimOpen: false,
+  claimSlug: '',
+  claimTitle: '',
   claimReason: '',
   toast: '',
   showSourceInput: false,
@@ -505,7 +507,7 @@ const feedCard = (item, index) => {
     <div class="feed-source-row"><div class="feed-avatar avatar-${index}">${escapeHTML(item.initials)}</div><div>${item.authorId && item.authorHandle ? `<a class="profile-link" href="/u/${encodeURIComponent(item.authorHandle)}">${escapeHTML(item.author)}</a>` : `<strong>${escapeHTML(item.author)}</strong>`}<span>${escapeHTML(item.handle)} · ${escapeHTML(item.time)}</span></div>${item.authorId && item.authorId !== state.user?.id ? `<button class="follow-button ${state.followingIds[item.authorId] ? 'is-following' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>` : ''}</div>
     ${item.type === 'Video' ? videoMedia : item.type === 'Article' && media.kind !== 'audio' ? `<div class="feed-media feed-quote"><span>“</span><p>${escapeHTML(item.quote)}</p><small>Highlight from ${escapeHTML(item.host)}</small></div>` : audioMedia}
     <h3>${escapeHTML(item.title)}</h3><p class="feed-commentary">${escapeHTML(item.commentary)}</p>
-    <div class="feed-source-link"><span>${icon('link')} From ${escapeHTML(item.host)}</span><a href="${sourceHref}" ${item.sourceUrl ? 'target="_blank" rel="noreferrer"' : ''} data-action="open-original">Open source ${icon('external')}</a></div>
+    <div class="feed-source-link"><span>${icon('link')} From ${escapeHTML(item.host)}</span><div class="feed-source-actions"><a href="${sourceHref}" ${item.sourceUrl ? 'target="_blank" rel="noreferrer"' : ''} data-action="open-original">Open source ${icon('external')}</a><button class="feed-claim-link" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug || '')}" data-claim-title="${escapeHTML(item.title || 'this annotation')}">File a claim</button></div></div>
     <div class="feed-actions"><button data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" class="feed-action ${item.likedByMe || (state.liked && index === 0) ? 'is-liked' : ''}">${icon('heart')} <span>${item.likes + (state.liked && index === 0 && !item.likedByMe ? 1 : 0)}</span></button><button data-action="focus-comment" class="feed-action">${icon('message')} <span>${item.comments + (index === 0 && !state.feedAnnotations.length ? state.comments - 12 : 0)}</span></button><button class="feed-action share-action" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(item, window.location.origin))}" aria-label="Share annotation">${icon('link')} Share</button></div>
     ${index === 0 ? `<form class="comment-row" data-action="comment-form"><input aria-label="Add a comment" placeholder="Add a considered comment…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" /><button aria-label="Post comment">${icon('arrow')}</button></form>` : ''}
   </article>`;
@@ -574,7 +576,7 @@ const publishedView = () => {
     ${state.claimOpen ? claimModal() : ''}`;
 };
 
-const claimModal = () => `<div class="modal-backdrop" data-action="toggle-claim"><div class="claim-modal" role="dialog" aria-modal="true" aria-labelledby="claim-title" data-stop-click="true"><button class="icon-button modal-close" data-action="toggle-claim" aria-label="Close claim form">${icon('close')}</button><span class="eyebrow">Source & rights</span><h3 id="claim-title">File a claim</h3><p>Tell us what is wrong with this annotation. We’ll keep your report attached to the source page.</p><label>What should we review?<textarea placeholder="Describe the issue…" data-action="claim-text">${escapeHTML(state.claimReason)}</textarea></label><button class="dark-button full-button" data-action="submit-claim">Send claim ${icon('arrow')}</button></div></div>`;
+const claimModal = () => `<div class="modal-backdrop" data-action="toggle-claim"><div class="claim-modal" role="dialog" aria-modal="true" aria-labelledby="claim-title" data-stop-click="true"><button class="icon-button modal-close" data-action="toggle-claim" aria-label="Close claim form">${icon('close')}</button><span class="eyebrow">Source & rights</span><h3 id="claim-title">File a claim</h3>${state.claimTitle ? `<p class="claim-context">About: ${escapeHTML(state.claimTitle)}</p>` : ''}<p>Tell us what is wrong with this annotation. We’ll keep your report attached to the source page.</p><label>What should we review?<textarea placeholder="Describe the issue…" data-action="claim-text">${escapeHTML(state.claimReason)}</textarea></label><button class="dark-button full-button" data-action="submit-claim">Send claim ${icon('arrow')}</button></div></div>`;
 
 const toast = () => state.toast ? `<div class="toast" role="status"><span class="toast-icon">${icon('check')}</span>${escapeHTML(state.toast)}</div>` : '';
 
@@ -883,11 +885,14 @@ const submitComment = async () => {
 const submitClaim = async () => {
   const reason = state.claimReason.trim();
   if (!reason) { notify('Tell us what should be reviewed.'); return; }
-  if (!state.publishedSlug || state.serverStatus !== 'online') { notify('Backend unavailable — claim not submitted.'); return; }
+  const claimSlug = state.claimSlug || state.publishedSlug;
+  if (!claimSlug || state.serverStatus !== 'online') { notify('Backend unavailable — claim not submitted.'); return; }
   if (requestSignIn('file a claim')) return;
   try {
-    await api.fileClaim(state.publishedSlug, reason);
+    await api.fileClaim(claimSlug, reason);
     state.claimReason = '';
+    state.claimSlug = '';
+    state.claimTitle = '';
     state.claimOpen = false;
     notify('Claim received. We’ll review the source.');
   } catch (error) {
@@ -988,7 +993,19 @@ app.addEventListener('click', (event) => {
   if (action === 'share') { copyPublicLink(target.dataset.shareUrl || ''); return; }
   if (action === 'copy-link') { copyPublicLink(); return; }
   if (action === 'open-original') { if (target.getAttribute('href') === '#') { event.preventDefault(); notify('Original source link preserved.'); } return; }
-  if (action === 'toggle-claim') { state.claimOpen = !state.claimOpen; render(); return; }
+  if (action === 'toggle-claim') {
+    if (target.dataset.claimSlug) {
+      state.claimSlug = target.dataset.claimSlug;
+      state.claimTitle = target.dataset.claimTitle || '';
+      state.claimOpen = true;
+    } else {
+      state.claimOpen = !state.claimOpen;
+      if (!state.claimOpen) { state.claimSlug = ''; state.claimTitle = ''; }
+    }
+    render();
+    if (state.claimOpen) document.querySelector('[data-action="claim-text"]')?.focus();
+    return;
+  }
   if (action === 'submit-claim') { submitClaim(); return; }
   if (action === 'logout') { api.logout().then(() => { state.user = null; notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
   if (action === 'sidebar-help') { notify('Annotated keeps a source link on every public page.'); return; }

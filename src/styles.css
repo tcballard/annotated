@@ -520,6 +520,37 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   }
 }
 
+.feed-source-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.feed-claim-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--orange-deep);
+  font-family: var(--mono);
+  font-size: 9px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.feed-claim-link:hover {
+  color: var(--ink);
+}
+
+.claim-context {
+  margin-bottom: 6px !important;
+  color: var(--ink) !important;
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  text-transform: uppercase;
+}
+
 /* Brand mark and range editor hardening. The mark stays raster-faithful to
    the supplied asset; the range controls keep their DOM identity while the
    pointer moves so dragging cannot reset focus or swap the handles. */

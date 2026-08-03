@@ -189,6 +189,11 @@ The local browser run exercised the user-facing flows below:
   and author-scoped retry lookup; web and extension drafts preserve the key.
 - Moderation tests cover active-claim deduplication and restricted terminal
   reopening; new claims and status changes append audit records in the store.
+- The 2026-08-04 claim UI contract test verifies that feed/profile annotation
+  cards render a visible `File a claim` action, preserve the card slug, and
+  submit through the existing persisted claim endpoint. The public landing
+  page keeps its existing claim card; live browser interaction remains an
+  external gate.
 - Deployment tests verify Vite builds before production pruning, the container
   runs as an unprivileged user, local state/secrets are excluded from its build
   context, and the Dockerfile pins the official yt-dlp 2026.06.09 amd64/arm64
