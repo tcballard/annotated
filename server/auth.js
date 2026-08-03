@@ -9,18 +9,24 @@ const publicOrigin = process.env.PUBLIC_ORIGIN || `http://localhost:${process.en
 
 const providers = {
   google: {
+    label: 'Google',
+    envPrefix: 'GOOGLE',
     authorize: 'https://accounts.google.com/o/oauth2/v2/auth',
     token: 'https://oauth2.googleapis.com/token',
     profile: 'https://openidconnect.googleapis.com/v1/userinfo',
+    profileData: (body) => body,
     clientId: () => process.env.GOOGLE_CLIENT_ID,
     clientSecret: () => process.env.GOOGLE_CLIENT_SECRET,
     redirectUri: () => process.env.GOOGLE_REDIRECT_URI || `${publicOrigin}/api/auth/google/callback`,
     scope: 'openid email profile',
   },
   x: {
+    label: 'X',
+    envPrefix: 'X',
     authorize: 'https://twitter.com/i/oauth2/authorize',
     token: 'https://api.x.com/2/oauth2/token',
     profile: 'https://api.x.com/2/users/me?user.fields=profile_image_url,name,username',
+    profileData: (body) => body.data || {},
     clientId: () => process.env.X_CLIENT_ID,
     clientSecret: () => process.env.X_CLIENT_SECRET,
     redirectUri: () => process.env.X_REDIRECT_URI || `${publicOrigin}/api/auth/x/callback`,
@@ -51,17 +57,33 @@ export const parseCookies = (header = '') => Object.fromEntries(header.split(';'
 }));
 
 export const authIsRequired = () => authRequired;
-export const providerStatus = () => Object.fromEntries(Object.entries(providers).map(([name, provider]) => [name, Boolean(provider.clientId() && provider.clientSecret())]));
+export const enabledProviderNames = () => {
+  const configured = String(process.env.OAUTH_PROVIDERS || 'google').split(',').map((name) => name.trim().toLowerCase()).filter(Boolean);
+  const names = [...new Set(configured)];
+  const unsupported = names.filter((name) => !providers[name]);
+  if (!names.length || unsupported.length) throw new Error(`Unsupported OAuth provider configuration: ${[...unsupported, ...(names.length ? [] : ['none'])].join(', ')}.`);
+  return names;
+};
+export const providerStatus = () => {
+  const enabled = new Set(enabledProviderNames());
+  return Object.fromEntries(Object.entries(providers).map(([name, provider]) => [name, enabled.has(name) && Boolean(provider.clientId() && provider.clientSecret())]));
+};
 export const assertAuthConfiguration = () => {
   if (!authRequired) return;
-  const missing = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'X_CLIENT_ID', 'X_CLIENT_SECRET', 'APP_ORIGIN'].filter((name) => !process.env[name]);
+  const providerNames = enabledProviderNames();
+  const missing = process.env.APP_ORIGIN ? [] : ['APP_ORIGIN'];
+  for (const name of providerNames) {
+    const prefix = providers[name].envPrefix;
+    for (const suffix of ['CLIENT_ID', 'CLIENT_SECRET']) if (!process.env[`${prefix}_${suffix}`]) missing.push(`${prefix}_${suffix}`);
+  }
   if (missing.length) throw new Error(`Production authentication requires ${missing.join(', ')}.`);
 };
 
 const providerFor = (name) => {
   const provider = providers[name];
   if (!provider) throw new Error('Unsupported identity provider.');
-  if (!provider.clientId() || !provider.clientSecret()) throw new Error(`${name === 'x' ? 'X' : 'Google'} OAuth is not configured.`);
+  if (!enabledProviderNames().includes(name)) throw new Error(`${provider.label} OAuth is disabled. Add ${name} to OAUTH_PROVIDERS to enable it.`);
+  if (!provider.clientId() || !provider.clientSecret()) throw new Error(`${provider.label} OAuth is not configured.`);
   return provider;
 };
 
@@ -136,7 +158,7 @@ const exchangeCode = async (provider, code, verifier) => {
 
 const profileFromProvider = async (providerName, provider, accessToken) => {
   const profile = await fetchJson(provider.profile, { headers: { authorization: `Bearer ${accessToken}` } });
-  const data = providerName === 'x' ? profile.data || {} : profile;
+  const data = provider.profileData(profile);
   if (!data.sub && !data.id) throw new Error('Identity provider returned no stable user id.');
   return {
     provider: providerName,
