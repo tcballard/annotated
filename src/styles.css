@@ -520,6 +520,43 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   }
 }
 
+/* Brand mark and range editor hardening. The mark stays raster-faithful to
+   the supplied asset; the range controls keep their DOM identity while the
+   pointer moves so dragging cannot reset focus or swap the handles. */
+.brand-mark {
+  overflow: hidden;
+  padding: 0;
+  border-color: var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+}
+
+.brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.empty-symbol {
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  color: transparent;
+  font-size: 0;
+}
+
+.range-track,
+.range-track input,
+.range-track input::-webkit-slider-thumb,
+.range-track input::-moz-range-thumb {
+  touch-action: none;
+}
+
+.range-track input[data-action="clip-start"] { z-index: 2; }
+.range-track input[data-action="clip-end"] { z-index: 1; }
+.range-track input:focus { z-index: 3; outline: none; }
+
 /* UX pass: keep the capture desk in one calm, viewport-aware flow. The web
    shell already names the product, so the capture controls start at the
    decision that matters: what to keep and what to say about it. */

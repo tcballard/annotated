@@ -2,6 +2,7 @@ import { extensionStorage, PENDING_KEY } from './storage.js';
 import { apiOrigin, authHeaders, signIn } from './config.js';
 import { clampAudioDuration, MAX_AUDIO_SECONDS, preferredAudioMimeType } from './audio.js';
 import { deleteAudioDraft, readAudioDraft, stageAudioDraft } from './media-draft-store.js';
+import { moveClipBoundary, normalizeClipRange } from './clip-range.js';
 
 const start = document.querySelector('#start');
 const end = document.querySelector('#end');
@@ -296,16 +297,21 @@ const saveDraft = () => {
   draftSaveTimer = setTimeout(() => extensionStorage.saveDraft(draftPayload()).catch(() => {}), 250);
 };
 
-function syncRange() {
-  let from = Math.max(0, Math.min(90, Number(start.value)));
-  let to = Math.max(0, Math.min(90, Number(end.value)));
-  if (to < from) [from, to] = [to, from];
+function syncRange({ save = true } = {}) {
+  const { start: from, end: to } = normalizeClipRange(start.value, end.value, { allowEmpty: currentTab.sourceType === 'article' });
   start.value = startNumber.value = from;
   end.value = endNumber.value = to;
   clipLength.textContent = format(to - from);
   trackFill.style.left = `${from / 90 * 100}%`;
   trackFill.style.width = `${(to - from) / 90 * 100}%`;
-  saveDraft();
+  if (save) saveDraft();
+}
+
+function moveRange(boundary, value) {
+  const range = moveClipBoundary(start.value, end.value, boundary, value, { allowEmpty: currentTab.sourceType === 'article' });
+  start.value = range.start;
+  end.value = range.end;
+  syncRange();
 }
 
 function syncNote() { noteCount.textContent = `${note.value.length}/280`; saveDraft(); }
@@ -431,9 +437,9 @@ chrome.storage?.onChanged?.addListener((changes, areaName) => {
   if (areaName === 'local' && changes[PENDING_KEY]) void refreshQueueStatus();
 });
 
-[start, end].forEach((input) => input.addEventListener('input', syncRange));
-startNumber.addEventListener('change', () => { start.value = startNumber.value; syncRange(); });
-endNumber.addEventListener('change', () => { end.value = endNumber.value; syncRange(); });
+[start, end].forEach((input) => input.addEventListener('input', () => moveRange(input === start ? 'start' : 'end', input.value)));
+startNumber.addEventListener('change', () => moveRange('start', startNumber.value));
+endNumber.addEventListener('change', () => moveRange('end', endNumber.value));
 note.addEventListener('input', syncNote);
 
 document.querySelectorAll('[data-mode]').forEach((mode) => mode.addEventListener('click', () => {
