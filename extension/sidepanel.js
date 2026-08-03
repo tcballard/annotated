@@ -1,4 +1,4 @@
-import { extensionStorage } from './storage.js';
+import { extensionStorage, PENDING_KEY } from './storage.js';
 import { apiOrigin, authHeaders, signIn } from './config.js';
 import { clampAudioDuration, MAX_AUDIO_SECONDS, preferredAudioMimeType } from './audio.js';
 import { deleteAudioDraft, readAudioDraft, stageAudioDraft } from './media-draft-store.js';
@@ -26,6 +26,10 @@ const backendStatus = document.querySelector('#backendStatus');
 const selectionCard = document.querySelector('#selectionCard');
 const selectionText = document.querySelector('#selectionText');
 const authActions = document.querySelector('#authActions');
+const queueStatus = document.querySelector('#queueStatus');
+const queueStatusTitle = document.querySelector('#queueStatusTitle');
+const queueStatusDetail = document.querySelector('#queueStatusDetail');
+const queueRetry = document.querySelector('#queueRetry');
 
 let currentTab = { url: '', title: 'Current browser tab', host: '', sourceType: 'article' };
 let selectedText = '';
@@ -63,6 +67,37 @@ const showError = (message) => {
   success.hidden = true;
 };
 
+const refreshQueueStatus = async () => {
+  const captures = await extensionStorage.getPendingCaptures().catch(() => []);
+  queueStatus.hidden = captures.length === 0;
+  if (!captures.length) return;
+  const queued = captures.filter((capture) => capture.status === 'queued').length;
+  const needsAuth = captures.filter((capture) => capture.status === 'needs-auth').length;
+  const blocked = captures.filter((capture) => capture.status === 'blocked').length;
+  const token = await extensionStorage.getAuthToken().catch(() => null);
+  queueStatus.dataset.state = needsAuth ? 'needs-auth' : blocked ? 'blocked' : 'queued';
+  queueStatusTitle.textContent = needsAuth ? 'Sign in to finish this capture' : blocked ? 'Capture needs attention' : 'Capture waiting to retry';
+  queueStatusDetail.textContent = [
+    queued ? `${queued} queued` : '',
+    needsAuth ? `${needsAuth} needs sign-in` : '',
+    blocked ? `${blocked} blocked — review and retry` : '',
+  ].filter(Boolean).join(' · ');
+  queueRetry.textContent = needsAuth && !token ? 'Sign in' : 'Retry now';
+};
+
+const retryQueuedCaptures = async () => {
+  const captures = await extensionStorage.getPendingCaptures().catch(() => []);
+  const needsAuth = captures.some((capture) => capture.status === 'needs-auth');
+  if (needsAuth && !(await extensionStorage.getAuthToken().catch(() => null))) {
+    showError('Your session expired. Sign in again before retrying this capture.');
+    authActions.hidden = false;
+    return;
+  }
+  for (const capture of captures) await extensionStorage.retryPendingCapture(capture.id);
+  await chrome.runtime.sendMessage({ type: 'RETRY_PENDING' }).catch(() => {});
+  await refreshQueueStatus();
+};
+
 const setAudioStatus = (status, hint = '') => {
   audioStatus.textContent = status;
   audioHint.textContent = hint;
@@ -97,6 +132,10 @@ const apiRequest = async (path, options = {}) => {
     const requestError = new Error(body.errors?.join(' ') || body.error || `Request failed (${response.status}).`);
     requestError.status = response.status;
     requestError.retryable = response.status >= 500 || response.status === 429;
+    if (response.status === 401) {
+      requestError.authRequired = true;
+      await extensionStorage.clearAuthSession().catch(() => {});
+    }
     throw requestError;
   }
   return body;
@@ -120,6 +159,10 @@ const uploadAudioRequest = async (blob) => {
     const requestError = new Error(body.errors?.join(' ') || body.error || `Audio upload failed (${response.status}).`);
     requestError.status = response.status;
     requestError.retryable = response.status >= 500 || response.status === 429;
+    if (response.status === 401) {
+      requestError.authRequired = true;
+      await extensionStorage.clearAuthSession().catch(() => {});
+    }
     throw requestError;
   }
   return body;
@@ -355,6 +398,7 @@ chrome.tabs?.onUpdated?.addListener((_tabId, changeInfo) => {
 });
 
 async function checkBackend() {
+  const origin = await apiOrigin();
   try {
     await apiRequest('/api/health');
     backendStatus.innerHTML = '<i></i> LIVE';
@@ -362,9 +406,10 @@ async function checkBackend() {
     const providers = auth.providers || {};
     authActions.hidden = !(providers.google || providers.x);
     authActions.querySelectorAll('[data-auth]').forEach((button) => { button.hidden = !providers[button.dataset.auth]; });
+    await refreshQueueStatus();
   } catch {
     backendStatus.innerHTML = '<i></i> OFFLINE';
-    showError('Start the annotated backend on localhost:8787 before publishing.');
+    showError(`Annotated backend unavailable at ${origin}. Check the extension API origin in settings.`);
   }
 }
 
@@ -374,10 +419,17 @@ authActions.querySelectorAll('[data-auth]').forEach((button) => button.addEventL
     authActions.hidden = true;
     error.hidden = true;
     error.textContent = '';
+    await chrome.runtime.sendMessage({ type: 'RETRY_PENDING' }).catch(() => {});
+    await refreshQueueStatus();
   } catch (authError) {
     showError(authError.message || 'Sign-in failed.');
   }
 }));
+
+queueRetry.addEventListener('click', () => { void retryQueuedCaptures(); });
+chrome.storage?.onChanged?.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes[PENDING_KEY]) void refreshQueueStatus();
+});
 
 [start, end].forEach((input) => input.addEventListener('input', syncRange));
 startNumber.addEventListener('change', () => { start.value = startNumber.value; syncRange(); });
@@ -443,9 +495,15 @@ document.querySelector('#publish').addEventListener('click', async () => {
     if (audioDraftId) await deleteAudioDraft(audioDraftId).catch(() => {});
     audioDraftId = '';
   } catch (publishError) {
-    if (publishError.retryable) {
+    if (publishError.authRequired) {
+      await extensionStorage.queueCapture({ ...payload, audioDraftId }).catch(() => {});
+      authActions.hidden = false;
+      showError('Your session expired. Sign in again; this capture is safe in the local queue.');
+      await refreshQueueStatus();
+    } else if (publishError.retryable) {
       await extensionStorage.queueCapture({ ...payload, audioDraftId }).catch(() => {});
       showError('Backend unavailable. This capture is queued locally and will retry when the service worker reconnects.');
+      await refreshQueueStatus();
     } else showError(publishError.message || 'Annotation could not be published.');
   }
 });
@@ -455,3 +513,4 @@ syncNote();
 syncComposer();
 loadCurrentTab();
 checkBackend();
+refreshQueueStatus();

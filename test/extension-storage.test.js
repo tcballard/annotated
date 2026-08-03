@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { compactDraft, compactPending, extensionStorage, MAX_PENDING_ATTEMPTS, MAX_PENDING_CAPTURES, normalizeApiOrigin } from '../extension/storage.js';
+import { signIn } from '../extension/config.js';
 
 test('extension drafts remain bounded metadata and never retain media blobs', () => {
   const draft = compactDraft({
@@ -60,6 +61,40 @@ test('pending captures persist uploaded audio IDs and bounded blocked failure st
   }
 });
 
+test('queued captures deduplicate client retries and preserve auth-required work', async () => {
+  const previousChrome = globalThis.chrome;
+  const localState = {};
+  const sessionState = {};
+  globalThis.chrome = {
+    storage: {
+      local: {
+        async get(key) { return { [key]: localState[key] }; },
+        async set(value) { Object.assign(localState, value); },
+      },
+      session: {
+        async get(key) { return { [key]: sessionState[key] }; },
+        async set(value) { Object.assign(sessionState, value); },
+        async remove(key) { delete sessionState[key]; },
+      },
+    },
+  };
+  try {
+    const payload = { sourceUrl: 'https://example.com/story', commentary: 'retry me', clientRequestId: 'request-1' };
+    const firstId = await extensionStorage.queueCapture(payload);
+    const secondId = await extensionStorage.queueCapture(payload);
+    assert.equal(secondId, firstId);
+    assert.equal((await extensionStorage.getPendingCaptures()).length, 1);
+    const authRequired = await extensionStorage.markPendingAttempt((await extensionStorage.getPendingCaptures())[0], { authRequired: true, message: 'sign in again' });
+    assert.equal(authRequired.status, 'needs-auth');
+    assert.equal(authRequired.lastError, 'sign in again');
+    const reset = await extensionStorage.retryPendingCapture(firstId);
+    assert.equal(reset.status, 'queued');
+    assert.equal(reset.attempts, 0);
+  } finally {
+    globalThis.chrome = previousChrome;
+  }
+});
+
 test('deployed extension origins require HTTPS while local development remains usable', () => {
   assert.equal(normalizeApiOrigin('http://localhost:8787/'), 'http://localhost:8787');
   assert.equal(normalizeApiOrigin('http://127.0.0.1:8787/'), 'http://127.0.0.1:8787');
@@ -98,6 +133,23 @@ test('expired extension sessions are removed before a bearer token is returned',
   try {
     assert.equal(await extensionStorage.getAuthToken(), null);
     assert.equal(removed, 'annotatedSession');
+  } finally {
+    globalThis.chrome = previousChrome;
+  }
+});
+
+test('extension auth handoff accepts only its own callback origin and path', async () => {
+  const previousChrome = globalThis.chrome;
+  globalThis.chrome = {
+    storage: { local: { async get() { return {}; } } },
+    identity: {
+      getRedirectURL() { return 'https://extension-id.chromiumapp.org/annotated-auth'; },
+      async launchWebAuthFlow() { return 'https://attacker.example/annotated-auth?ticket=stolen'; },
+    },
+  };
+  try {
+    await assert.rejects(signIn('google'), /did not return to this extension/);
+    await assert.rejects(signIn('password'), /provider is not supported/);
   } finally {
     globalThis.chrome = previousChrome;
   }

@@ -1,18 +1,48 @@
-import { apiOrigin, authHeaders } from './config.js';
+import { apiOrigin } from './config.js';
 import { extensionStorage, MAX_PENDING_ATTEMPTS } from './storage.js';
 import { deleteAudioDraft, readAudioDraft } from './media-draft-store.js';
 
 const runBackgroundTask = (label, task) => {
-  void (async () => {
+  return (async () => {
     try {
-      await task();
+      return await task();
     } catch (error) {
       console.error(`annotated ${label} failed:`, error);
+      return null;
     }
   })();
 };
 
-const uploadStagedAudio = async (capture) => {
+const RETRY_LOCK_KEY = 'annotatedRetryLock';
+const RETRY_LOCK_TTL_MS = 25_000;
+
+const requestError = async (response, fallback) => {
+  const body = await response.json().catch(() => ({}));
+  const error = new Error(body.errors?.join(' ') || body.error || `${fallback} (${response.status}).`);
+  error.status = response.status;
+  error.authRequired = response.status === 401;
+  error.retryable = response.status >= 500 || response.status === 429;
+  if (error.authRequired) await extensionStorage.clearAuthSession().catch(() => {});
+  return error;
+};
+
+const withRetryLock = async (task) => {
+  const session = chrome.storage?.session;
+  if (!session) return task();
+  const token = crypto.randomUUID();
+  const existing = await session.get(RETRY_LOCK_KEY).catch(() => ({}));
+  const lockedAt = Date.parse(existing[RETRY_LOCK_KEY]?.at || '');
+  if (Number.isFinite(lockedAt) && Date.now() - lockedAt < RETRY_LOCK_TTL_MS) return null;
+  await session.set({ [RETRY_LOCK_KEY]: { token, at: new Date().toISOString() } });
+  try {
+    return await task();
+  } finally {
+    const latest = await session.get(RETRY_LOCK_KEY).catch(() => ({}));
+    if (latest[RETRY_LOCK_KEY]?.token === token) await session.remove(RETRY_LOCK_KEY).catch(() => {});
+  }
+};
+
+const uploadStagedAudio = async (capture, origin, headers) => {
   const payload = capture.payload;
   if (!payload.audioDraftId || payload.audioAssetId) return payload;
   const staged = await readAudioDraft(payload.audioDraftId);
@@ -23,23 +53,18 @@ const uploadStagedAudio = async (capture) => {
   }
   let response;
   try {
-    response = await fetch(`${await apiOrigin()}/api/media/audio`, {
+    response = await fetch(`${origin}/api/media/audio`, {
       method: 'POST',
       credentials: 'omit',
-      headers: { 'content-type': staged.mimeType || staged.blob.type || 'audio/webm', ...(await authHeaders()) },
+      headers: { 'content-type': staged.mimeType || staged.blob.type || 'audio/webm', ...headers },
       body: staged.blob,
     });
   } catch (error) {
     error.retryable = true;
     throw error;
   }
+  if (!response.ok) throw await requestError(response, 'Audio upload failed');
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(body.errors?.join(' ') || body.error || `Audio upload failed (${response.status}).`);
-    error.status = response.status;
-    error.retryable = response.status >= 500 || response.status === 429;
-    throw error;
-  }
   const uploadedPayload = {
     ...payload,
     audioAssetId: body.media?.id || '',
@@ -56,16 +81,20 @@ const uploadStagedAudio = async (capture) => {
   return uploadedPayload;
 };
 
-const retryPendingCaptures = async () => {
+const retryPendingCapturesOnce = async () => {
+  const origin = await apiOrigin();
   const captures = await extensionStorage.getPendingCaptures().catch(() => []);
+  let token = await extensionStorage.getAuthToken().catch(() => null);
   for (const capture of captures) {
     if (capture.status === 'blocked' || capture.attempts >= MAX_PENDING_ATTEMPTS) continue;
+    if (capture.status === 'needs-auth' && !token) continue;
+    const headers = token ? { authorization: `Bearer ${token}` } : {};
     try {
-      const payload = await uploadStagedAudio(capture);
-      const response = await fetch(`${await apiOrigin()}/api/annotations`, {
+      const payload = await uploadStagedAudio(capture, origin, headers);
+      const response = await fetch(`${origin}/api/annotations`, {
         method: 'POST',
         credentials: 'omit',
-        headers: { 'content-type': 'application/json', ...(await authHeaders()) },
+        headers: { 'content-type': 'application/json', ...headers },
         body: JSON.stringify(payload),
       });
       if (response.ok) {
@@ -74,35 +103,44 @@ const retryPendingCaptures = async () => {
         await extensionStorage.removePendingCapture(capture.id);
         if (body.annotation) await extensionStorage.savePublished(body.annotation);
       } else {
-        const body = await response.json().catch(() => ({}));
-        const error = new Error(body.errors?.join(' ') || body.error || `Publish failed (${response.status}).`);
-        error.status = response.status;
-        error.retryable = response.status >= 500 || response.status === 429;
+        const error = await requestError(response, 'Publish failed');
+        if (error.authRequired) token = null;
         await extensionStorage.markPendingAttempt(capture, error);
       }
     } catch (error) {
-      const updated = await extensionStorage.markPendingAttempt(capture, error);
-      if (error.retryable === false && !updated?.payload?.audioAssetId) await extensionStorage.removePendingCapture(capture.id);
+      if (error.authRequired) token = null;
+      await extensionStorage.markPendingAttempt(capture, error);
     }
   }
+};
+
+const retryPendingCaptures = () => withRetryLock(retryPendingCapturesOnce);
+
+const setupRetry = async () => {
+  await chrome.alarms.create('annotated-retry', { periodInMinutes: 1 });
+  await retryPendingCaptures();
 };
 
 chrome.runtime.onInstalled.addListener(() => {
   runBackgroundTask('installation setup', async () => {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-    await chrome.alarms.create('annotated-retry', { periodInMinutes: 1 });
+    await setupRetry();
   });
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  runBackgroundTask('startup setup', () => chrome.alarms.create('annotated-retry', { periodInMinutes: 1 }));
+  runBackgroundTask('startup setup', setupRetry);
 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'annotated-retry') runBackgroundTask('pending capture retry', retryPendingCaptures);
 });
 
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === 'RETRY_PENDING') return runBackgroundTask('manual pending capture retry', retryPendingCaptures);
+});
+
 chrome.action.onClicked.addListener((tab) => {
   runBackgroundTask('side panel open', async () => {
-    if (tab?.windowId) await chrome.sidePanel.open({ windowId: tab.windowId });
+    if (Number.isInteger(tab?.windowId)) await chrome.sidePanel.open({ windowId: tab.windowId });
   });
 });

@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — annotated — keep the moment
 
-> Last Updated: 2026-08-01
+> Last Updated: 2026-08-02
 >
 > Status: pre-submission draft. This document is the source of truth for a
 > future Chrome Web Store submission; the unchecked external gates are not
@@ -25,6 +25,7 @@ FEATURES
 • Choose a bounded video or podcast moment, with a 90-second maximum.
 • Add a short written note or a recorded audio note.
 • Save a draft when the service is unavailable and retry it later.
+• Keep queued captures safe when a sign-in session expires, then retry after sign-in.
 • Open the published annotation page and share its source-backed link.
 
 HOW TO USE
@@ -142,7 +143,7 @@ backend storage, deletion requests, and contact details.
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.1.0 | 2026-08-01 | Initial sidebar capture, selected-text capture, bounded media controls, written/audio notes, local retry queue, and source-backed publishing flow. | Draft |
+| 0.1.0 | 2026-08-02 | Initial sidebar capture plus bounded retry queue, session-expiry recovery, selected-text capture, media controls, written/audio notes, and source-backed publishing flow. | Draft |
 
 ## Review Notes
 
@@ -150,7 +151,7 @@ backend storage, deletion requests, and contact details.
 
 - The icon, screenshots, promo artwork, public privacy-policy URL, and monitored publisher email are still required before submission.
 - The extension requires a configured Annotated backend. Local development uses `http://localhost:8787`; deployed API origins must be HTTPS.
-- Google/X OAuth, PostgreSQL/S3 media delivery, real provider fixture extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates. The production image now includes a pinned, SHA-256-verified `yt-dlp` runtime, but that does not replace a real provider fixture run.
+- Google/X OAuth, PostgreSQL/S3 media delivery, real provider fixture extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates. Queued captures now remain visible when authentication expires and can be retried after sign-in. The production image now includes a pinned, SHA-256-verified `yt-dlp` runtime, but that does not replace a real provider fixture run.
 - The broad page host permissions are intentional because the product works on the user-selected active page, but the sidebar only reads and publishes data after an explicit user action.
 - If Google sign-in is enabled for the extension, update the OAuth client with the Chrome Web Store-assigned extension ID after publishing.
 
