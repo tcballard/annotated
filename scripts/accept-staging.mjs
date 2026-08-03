@@ -37,6 +37,30 @@ assert.equal(providers.required, true);
 assert.deepEqual(Object.keys(providers.providers || {}).sort(), ['google', 'x']);
 assert.ok(Object.values(providers.providers).some(Boolean), 'at least one OAuth provider must be enabled');
 
+const oauthPreflight = [];
+for (const [provider, enabled] of Object.entries(providers.providers)) {
+  if (!enabled) continue;
+  const startResponse = await fetch(new URL(`/api/auth/${provider}/start?returnTo=%2F`, origin), { redirect: 'manual' });
+  assert.equal(startResponse.status, 302, `${provider} OAuth start must redirect`);
+  const authorizeUrl = startResponse.headers.get('location') || '';
+  assert.match(authorizeUrl, provider === 'x' ? /twitter\.com\/i\/oauth2\/authorize/ : /accounts\.google\.com\/o\/oauth2\/v2\/auth/);
+  const cookies = startResponse.headers.getSetCookie?.() || [];
+  const state = cookies.find((cookie) => cookie.startsWith('annotated_oauth_state='))?.split(';', 1)[0]?.split('=', 2)[1];
+  const verifier = cookies.find((cookie) => cookie.startsWith('annotated_oauth_verifier='))?.split(';', 1)[0]?.split('=', 2)[1];
+  assert.ok(state && verifier, `${provider} OAuth start must issue PKCE state cookies`);
+
+  const callbackUrl = new URL(`/api/auth/${provider}/callback?error=access_denied&state=${encodeURIComponent(state)}`, origin);
+  const callbackResponse = await fetch(callbackUrl, {
+    redirect: 'manual',
+    headers: { cookie: `annotated_oauth_state=${state}; annotated_oauth_verifier=${verifier}` },
+  });
+  assert.equal(callbackResponse.status, 302, `${provider} OAuth cancellation must redirect`);
+  const returnUrl = callbackResponse.headers.get('location') || '';
+  assert.equal(new URL(returnUrl).origin, origin.origin);
+  assert.match(returnUrl, /[?&]auth=/);
+  oauthPreflight.push({ provider, startStatus: startResponse.status, cancellationStatus: callbackResponse.status });
+}
+
 const feed = await json('/api/feed?limit=3');
 assert.ok(Array.isArray(feed.annotations));
 assert.equal(feed.annotations.length <= 3, true);
@@ -57,6 +81,7 @@ console.log(JSON.stringify({
   version: health.version,
   persistence: health.persistence,
   providerState: providers.providers,
+  oauthPreflight,
   feedAnnotations: feed.annotations.length,
   checks,
 }, null, 2));

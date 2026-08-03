@@ -21,6 +21,7 @@ npm run acceptance:staging
   "version": "0.1.0",
   "persistence": "postgres",
   "providerState": { "google": false, "x": true },
+  "oauthPreflight": [{ "provider": "x", "startStatus": 302, "cancellationStatus": 302 }],
   "feedAnnotations": 0
 }
 ```
@@ -30,6 +31,12 @@ asset, `/privacy.html`, an empty server-backed feed, and the expected `401`
 identity and claims boundaries. This is deployed API evidence; it does not
 replace live OAuth consent, docked Chrome, microphone, offline replay, or
 provider fixture/browser playback evidence.
+
+For each enabled provider it also starts an OAuth request, verifies the PKCE
+state/verifier cookies and provider authorize host, then exercises an ephemeral
+`access_denied` callback and verifies the same-origin return. This proves the
+deployed start/cancellation boundary, not successful user consent or identity
+creation.
 
 The same deployed API resolved the public YouTube fixture
 `https://www.youtube.com/watch?v=jNQXAC9IVRw` as `video`, `youtube`, and

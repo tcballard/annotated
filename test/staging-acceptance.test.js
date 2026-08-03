@@ -8,6 +8,8 @@ test('staging acceptance command verifies only public, non-mutating boundaries',
   assert.match(script, /\/api\/health/);
   assert.match(script, /\/api\/ready/);
   assert.match(script, /\/api\/auth\/providers/);
+  assert.match(script, /\/api\/auth\/\$\{provider\}\/start/);
+  assert.match(script, /getSetCookie/);
   assert.match(script, /\/privacy\.html/);
   assert.match(script, /\/api\/me/);
   assert.match(script, /\/api\/claims/);
