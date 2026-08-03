@@ -163,6 +163,15 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.equal(moderated.response.status, 200);
   assert.equal(moderated.payload.claim.status, 'in_review');
 
+  for (let attempt = 0; attempt < 59; attempt += 1) {
+    const nextStatus = attempt % 2 === 0 ? 'in_review' : 'open';
+    const repeated = await request(baseUrl, `/api/moderation/claims/${claim.payload.claim.id}`, { method: 'POST', body: { status: nextStatus, note: 'Repeated moderation attempt.' } });
+    assert.equal(repeated.response.status, 200);
+  }
+  const moderationLimit = await request(baseUrl, `/api/moderation/claims/${claim.payload.claim.id}`, { method: 'POST', body: { status: 'in_review', note: 'Rate limit boundary.' } });
+  assert.equal(moderationLimit.response.status, 429);
+  assert.equal(moderationLimit.response.headers.get('retry-after'), '60');
+
   const updatedReporterClaims = await request(baseUrl, '/api/claims');
   assert.equal(updatedReporterClaims.payload.claims[0].status, 'in_review');
 });
