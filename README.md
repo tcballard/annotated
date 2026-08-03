@@ -26,14 +26,14 @@ Then open the local Vite URL. The Vite dev server proxies `/api` to `http://loca
 - Public annotation slugs and source citations
 - Streamed audio asset storage with playable public audio-note URLs
 - Asynchronous source-clip jobs with explicit queued, processing, ready, and failed states
-- A Manifest V3 Chrome side panel in `extension/` that reads the active tab, captures a text selection, and publishes text annotations through the local API
+- A Manifest V3 Chrome side panel in `extension/` that reads the active tab, captures a text selection, records bounded audio commentary, and publishes annotations through the local API
 - Bounded extension drafts in `chrome.storage.local` and browser-local audio staging in IndexedDB; media is never stored in extension key/value storage
 
 OAuth, durable object storage, social graph persistence, moderation operations, and production hosting are being added as separate product slices. Direct-media source clips now run through the FFmpeg worker; YouTube/podcast provider extraction requires an installed `yt-dlp` adapter and remains explicit when unavailable. To try the extension, start `npm run dev:server`, open `chrome://extensions`, enable Developer mode, choose “Load unpacked”, and select the `extension/` folder. See [STORAGE.md](STORAGE.md) for the storage boundary and [PERFORMANCE.md](PERFORMANCE.md) for the Rust/media-worker migration plan.
 
 For a production-shaped run, copy `.env.example`, set `ANNOTATED_STORAGE=postgres` and `ANNOTATED_ASSET_STORAGE=s3`, provide `DATABASE_URL`, the S3 credentials, and Google/X OAuth credentials, run `npm run db:migrate`, and then start the server. Production refuses to start without durable storage and both identity-provider configurations; local file storage and the local account remain explicit development adapters.
 
-The unpacked extension's options page controls its API origin. It stores only bounded draft metadata in `chrome.storage.local`, keeps the bearer session in `chrome.storage.session`, and retries failed text publishes from a five-item metadata queue through the service worker. Configure the deployed API origin before loading the extension; do not put provider credentials in the extension.
+The unpacked extension's options page controls its API origin. It stores only bounded draft metadata in `chrome.storage.local`, stages audio Blobs in IndexedDB, keeps the bearer session in `chrome.storage.session`, and retries failed text or audio publishes from a five-item metadata queue through the service worker. Configure the deployed API origin before loading the extension; do not put provider credentials in the extension.
 
 Source processing uses bounded HTML metadata extraction and canonical-link preservation. Direct media and configured `yt-dlp` provider streams are transcoded asynchronously; set `YTDLP_BIN`, `MEDIA_WORKER_MAX_ATTEMPTS`, and `MEDIA_WORKER_RETRY_DELAY_MS` explicitly for a deployed worker. A provider binary or credential is not assumed merely because the adapter exists.
 

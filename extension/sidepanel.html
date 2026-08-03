@@ -33,6 +33,12 @@
       <section class="note-card">
         <div class="card-heading"><span>Your annotation</span><div class="modes"><button class="mode active" data-mode="text">T Text</button><button class="mode" data-mode="audio">◉ Audio</button></div></div>
         <textarea id="note" maxlength="280" placeholder="What stayed with you? Add the context the original clip is missing…"></textarea>
+        <div class="audio-composer" id="audioComposer" hidden>
+          <button class="audio-record" id="audioRecord" type="button" aria-label="Start recording">●</button>
+          <div><strong id="audioStatus">Record a 90-second take</strong><small id="audioHint">Audio is staged locally before upload.</small></div>
+          <span class="audio-duration" id="audioDuration">0:00</span>
+          <button class="audio-retry" id="audioRetry" type="button" hidden>Retry upload</button>
+        </div>
         <div class="note-foot"><span id="noteCount">0/280</span><span>Public when published</span></div>
       </section>
       <button class="publish" id="publish">Publish annotation <b>→</b></button>

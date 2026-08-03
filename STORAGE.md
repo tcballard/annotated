@@ -8,7 +8,7 @@ Annotated has two different storage problems: keeping a capture usable in the br
 | --- | --- | --- |
 | Extension preferences and bounded capture drafts | `chrome.storage.local` | Small, extension-local recovery state |
 | Last published extension result | `chrome.storage.local` | A compact ID/URL/status convenience record |
-| In-progress recorded audio | IndexedDB `media-drafts` store | Temporary Blob staging before upload/retry |
+| In-progress recorded audio | IndexedDB (`media-drafts` in the web app; `annotated-extension-media/audio-drafts` in the extension) | Temporary Blob staging before upload/retry |
 | Web capture draft fields | `localStorage` | UI continuity only; never the product source of truth |
 | Annotation metadata and comments | `data/store.json` | Local development adapter |
 | Uploaded and derived media | `data/media/` | Local development adapter; production uses the configured S3-compatible store |
