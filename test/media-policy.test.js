@@ -35,7 +35,7 @@ test('production readiness checks ffmpeg, ffprobe, and the configured provider e
       return { stdout: `${command} version test`, stderr: '' };
     },
   });
-  assert.deepEqual(calls.map(({ command }) => command), ['ffmpeg', 'ffprobe', 'yt-dlp']);
+  assert.deepEqual(calls.map(({ command }) => command), ['ffmpeg', 'ffprobe', process.env.YTDLP_BIN || 'yt-dlp']);
   assert.deepEqual(runtime, { status: 'ready', checks: ['ffmpeg', 'ffprobe', 'provider extractor'] });
 });
 
