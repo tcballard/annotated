@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import net from 'node:net';
+import { tmpdir as systemTmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -50,7 +51,7 @@ const request = async (baseUrl, pathname, { method = 'GET', body, origin } = {})
 
 test('local API serves the acceptance-critical health, identity, publish, social, and moderation paths', async (t) => {
   const port = await freePort();
-  const dataDirectory = await mkdtemp('/private/tmp/annotated-api-');
+  const dataDirectory = await mkdtemp(path.join(systemTmpdir(), 'annotated-api-'));
   const allowedOrigin = 'http://127.0.0.1:5173';
   const baseUrl = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ['server/index.js'], {

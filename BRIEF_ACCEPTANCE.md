@@ -1,6 +1,10 @@
 # Annotated brief acceptance
 
-Last verified: 2026-08-01 against <https://annotated.lovable.app/>.
+Last verified: 2026-08-01 against <https://annotated.lovable.app/>. The
+handoff URL <https://annotated.com/brief> returned HTTP 404 on that date; the
+reachable Lovable brief is the current source used here and describes the same
+Chrome-sidebar, source-link, claim, identity, media, commentary, and social-feed
+requirements recorded below.
 
 Status meanings: `done` has current code and direct validation evidence; `partial` has a working slice but misses part of the brief or production boundary; `missing` has no working implementation; `blocked` requires owner credentials or external access for final proof.
 
@@ -16,7 +20,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 | Comment on annotations | partial | Comments persist with author metadata and the UI reloads them from the API. | Identity, authorization, abuse controls, and durable production tests. |
 | Sign up with X or Google OAuth only | partial | Configurable Google/X OAuth starts and callbacks use PKCE; exact return origins, malformed-cookie tolerance, provider timeouts, sessions, bearer/cookie logout, expiry, owner IDs, and one-time extension tickets are server-backed. Local mode retains the development user. | Real provider credentials and callback success/cancellation/expiry browser evidence. |
 | Paste a URL or use the active page | partial | Web app resolves pasted URLs; extension reads the active tab. | Unified production API configuration and browser coverage. |
-| Support YouTube videos | partial | Metadata uses YouTube oEmbed; worker validates source URLs and invokes the configured `yt-dlp` adapter with a 240p-safe format. Production `/api/ready` now probes `YTDLP_BIN` alongside FFmpeg/FFprobe and refuses readiness when the provider runtime is unavailable. The production image pins and SHA-256 verifies the official 2026.06.09 standalone extractor for amd64/arm64. | Real YouTube fixture extraction, failure/retry coverage, playable output evidence, and configured deployment run. |
+| Support YouTube videos | partial | Metadata uses YouTube oEmbed; worker validates source URLs and invokes the configured `yt-dlp` adapter with a 240p-safe format. Production `/api/ready` now probes `YTDLP_BIN` alongside FFmpeg/FFprobe and refuses readiness when the provider runtime is unavailable. The production image pins and SHA-256 verifies the official 2026.06.09 standalone extractor for amd64/arm64. A real public YouTube fixture resolved, downloaded, and transcoded locally with FFprobe-confirmed 240p/audio output. | Deployed PostgreSQL/S3 worker run, failure/retry evidence, and production browser playback. |
 | Support news articles with selected passage and metadata | partial | Resolver bounds response size, follows at most three redirects with URL and DNS-answer SSRF checks at every hop, extracts metadata/excerpts, preserves canonical URLs, and extension reads the user's selection. | Robust extraction across real article fixtures and selected-passage browser evidence. |
 | Support podcasts | partial | Resolver recognizes podcast sources/direct audio; worker validates inputs and invokes the configured `yt-dlp` audio adapter. | Provider extraction, retry/recovery, and browser playback evidence. |
 | Choose media start/end or exact text passage | partial | Web/extension range controls enforce bounds; active-tab text selection is captured. | Extension provider playback alignment and browser evidence. |
@@ -34,7 +38,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 - [ ] Provider extraction and FFmpeg processing enforce duration/resolution, retries, cancellation/recovery, cleanup, and visible failures; production readiness probes the actual FFmpeg/FFprobe/provider runtime and the image pins the provider executable.
 - [ ] Feed, profiles, follows, likes, comments, sharing, pagination, and authorization persist server-side.
 - [ ] Claims have review states, audit records, rate limits, and user-visible reporting outcomes.
-- [ ] CORS, secure headers, request limits, URL and DNS-answer SSRF defenses, bounded request telemetry, health/readiness, reproducible non-root image builds, migrations, backups, and recovery are documented and tested.
+- [ ] CORS, secure headers, request limits, URL and DNS-answer SSRF defenses, bounded request telemetry, health/readiness, reproducible non-root image builds, migrations, backups, and recovery are documented and tested; hosted CI now passes amd64/arm64 image and provider-runtime checks, while durable-service deployment, backups, and recovery remain external.
 - [ ] A clean-checkout automated suite and Chrome browser acceptance run pass with evidence linked from the final draft PR.
 
 ## Explicit non-goals from the brief

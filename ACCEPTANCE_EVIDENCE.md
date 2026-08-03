@@ -9,7 +9,7 @@ production gates are complete.
 ## Clean-checkout validation
 
 The following checks passed from a fresh clone of the final acceptance stack
-tip (`agent/brief-29-chrome-plugin-audit`):
+tip (`agent/brief-32-reproducible-ci`):
 
 ```text
 npm ci
@@ -67,6 +67,12 @@ The local browser run exercised the user-facing flows below:
 - Media-policy tests cover the FFprobe boundary for duration, required audio,
   audio-only outputs, and the 240px video-height limit; the generated artifact
   is inspected before the worker marks it ready.
+- The pinned yt-dlp 2026.06.09 host-compatible release resolved the public
+  YouTube fixture `jNQXAC9IVRw` with the production format selector, downloaded
+  the real 240p/audio source, and transcoded a 10-second MP4 using the worker's
+  production FFmpeg arguments. FFprobe reported duration `10.000000`, a video
+  height of `240`, and an audio stream. This is real provider/media evidence,
+  but not yet a deployed PostgreSQL/S3 worker run.
 - A local FFmpeg fixture using the worker's `scale=-2:240` policy produced an
   MP4 whose FFprobe report showed duration `1.266667`, a video height of `240`,
   and an audio stream.
@@ -123,6 +129,12 @@ The local browser run exercised the user-facing flows below:
   official release assets were independently downloaded and matched the
   committed checksums. Docker daemon execution was unavailable in this
   environment, so the image build remains an external gate.
+- `.github/workflows/ci.yml` now makes that external image gate reproducible in
+  GitHub Actions: it runs the clean Node/package checks and builds both
+  `linux/amd64` and `linux/arm64` images under QEMU, then executes the pinned
+  provider binary in each image. Both the push and pull-request runs for PR32
+  passed on 2026-08-01 (for example,
+  [run 30721572499](https://github.com/tcballard/annotated/actions/runs/30721572499)).
 
 ## Deliberately unverified external gates
 

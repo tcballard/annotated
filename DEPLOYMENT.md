@@ -10,6 +10,11 @@ Before starting a production container:
 4. Start the container and require `/api/ready` to return 200 before routing traffic; readiness now verifies the latest migration, performs a database health query, checks the S3-compatible bucket, and probes `ffmpeg`, `ffprobe`, and the configured `YTDLP_BIN` provider extractor. A missing or non-executable media runtime returns 503 instead of allowing provider jobs to fail after deployment. Forward structured `http_request` logs and `/api/health` telemetry to the deployment's log/metrics sink.
 5. Verify a real OAuth callback, source resolution, media upload, feed write, and claim review in the deployed environment.
 
+Every push and pull request runs `.github/workflows/ci.yml`: a clean Node install,
+build, test, syntax, diff, and extension-package check, followed by production
+image builds for both `linux/amd64` and `linux/arm64`. Each image executes the
+pin-verified `/usr/local/bin/yt-dlp --version` check before the workflow can pass.
+
 Backups and recovery are external operational gates: take a PostgreSQL snapshot before migrations, retain object-store versioning/retention for published assets, and keep the prior image available for rollback. Source and provider requests re-check DNS answers for private/link-local address space at each input or redirect hop; keep egress controls at the deployment boundary as a second layer. A failed readiness check must remove the instance from service; do not fall back to the file adapter in production.
 
 The Docker image installs FFmpeg. It intentionally does not pretend that a provider extractor is present; install/pin `yt-dlp` in a reviewed worker-image extension and verify the actual runtime before enabling YouTube/podcast jobs.
