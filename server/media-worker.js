@@ -101,7 +101,11 @@ export const shouldRecoverMediaJob = (job, now = Date.now()) => job?.status === 
 export const resolveInput = async (job, { lookup } = {}) => {
   const sourceUrl = (await assertPublicUrl(parseSourceUrl(job.sourceUrl).toString(), { lookup })).toString();
   const mediaUrl = job.mediaUrl ? (await assertPublicUrl(parseSourceUrl(job.mediaUrl).toString(), { lookup })).toString() : '';
-  if (mediaUrl && directMediaUrl(mediaUrl)) return mediaUrl;
+  // RSS/Atom enclosures often use signed or extensionless URLs. The source
+  // resolver marks those jobs as the podcast provider path; after the same
+  // public-URL validation, pass the enclosure directly to FFmpeg instead of
+  // asking yt-dlp to interpret the feed URL again.
+  if (mediaUrl && (directMediaUrl(mediaUrl) || (job.sourceType === 'podcast' && job.provider === 'podcast'))) return mediaUrl;
   if (directMediaUrl(sourceUrl)) return sourceUrl;
   if (job.provider === 'youtube' || job.provider === 'podcast' || job.sourceType === 'podcast' || /(?:youtube\.com|youtu\.be)/i.test(sourceUrl)) {
     const format = job.sourceType === 'video' ? 'best[height<=240]/best' : 'bestaudio/best';

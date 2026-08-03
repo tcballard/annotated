@@ -227,6 +227,7 @@ export async function resolveSource(value, { lookup } = {}) {
       excerpt: kind === 'article' ? articleExcerpt(html) : null,
       mediaUrl: base.mediaUrl || mediaUrlFromHTML(html, url.toString()),
       processing: kind === 'article' ? 'text-ready' : 'ready-for-range',
+      provider: kind === 'podcast' ? 'podcast' : undefined,
     };
   } catch (error) {
     return { ...base, title: base.host, author: base.host, description: null, imageUrl: null, excerpt: null, processing: 'metadata-unavailable', error: error.message };

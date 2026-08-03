@@ -142,6 +142,7 @@ test('source resolution rejects DNS answers that enter private address space', a
 
 test('direct media worker inputs remain SSRF-safe', async () => {
   assert.equal(await resolveInput({ sourceUrl: 'https://cdn.example/audio.mp3', sourceType: 'podcast' }, { lookup: publicLookup }), 'https://cdn.example/audio.mp3');
+  assert.equal(await resolveInput({ sourceUrl: 'https://radio.example/feed.xml', sourceType: 'podcast', provider: 'podcast', mediaUrl: 'https://cdn.example/stream?episode=1' }, { lookup: publicLookup }), 'https://cdn.example/stream?episode=1');
   await assert.rejects(() => resolveInput({ sourceUrl: 'http://127.0.0.1/audio.mp3', sourceType: 'podcast' }), /not allowed/);
   await assert.rejects(() => resolveInput({ sourceUrl: 'https://cdn.example/audio.mp3', sourceType: 'podcast' }, { lookup: async () => [{ address: '192.168.1.9', family: 4 }] }), /not allowed/);
 });
