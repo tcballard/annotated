@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { validateAnnotation } from '../server/validation.js';
+
+const mediaAnnotation = (overrides = {}) => ({
+  sourceUrl: 'https://www.youtube.com/watch?v=example',
+  sourceType: 'video',
+  sourceTitle: 'Example video',
+  commentaryMode: 'text',
+  commentary: 'A useful moment.',
+  clipStart: 10,
+  clipEnd: 100,
+  ...overrides,
+});
+
+test('accepts an exact 90-second media clip', () => {
+  const result = validateAnnotation(mediaAnnotation());
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.normalized.clipEnd - result.normalized.clipStart, 90);
+});
+
+test('rejects media clips longer than 90 seconds', () => {
+  const result = validateAnnotation(mediaAnnotation({ clipEnd: 100.001 }));
+  assert.ok(result.errors.includes('Media clips must be 90 seconds or shorter.'));
+});
+
+test('rejects private and non-http source URLs', () => {
+  assert.ok(validateAnnotation(mediaAnnotation({ sourceUrl: 'http://127.0.0.1/private' })).errors.length);
+  assert.ok(validateAnnotation(mediaAnnotation({ sourceUrl: 'file:///tmp/video.mp4' })).errors.length);
+});
+
+test('requires a server-owned audio asset for audio commentary', () => {
+  const result = validateAnnotation(mediaAnnotation({ commentaryMode: 'audio', commentary: '' }));
+  assert.ok(result.errors.includes('An uploaded audio asset is required.'));
+});

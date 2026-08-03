@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
-import { mkdir, stat, unlink } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { mediaDirectory } from './media-store.js';
+import { mediaWorkDirectory, removeMediaFile, storeMediaFile } from './media-store.js';
 import { readStore, updateStore } from './store.js';
 
 const maxConcurrentJobs = Number(process.env.MEDIA_WORKER_CONCURRENCY || 2);
@@ -14,6 +14,16 @@ const directMediaUrl = (value) => /\.(?:mp4|webm|mov|m3u8|mp3|m4a|wav|ogg|aac|fl
 const outputFor = (sourceType, id) => sourceType === 'video'
   ? { fileName: `${id}.mp4`, mimeType: 'video/mp4' }
   : { fileName: `${id}.webm`, mimeType: 'audio/webm' };
+
+export const buildFfmpegArgs = (job, input, outputPath) => {
+  const duration = Math.max(0, Math.min(90, Number(job.clipEnd) - Number(job.clipStart)));
+  if (!duration) throw new Error('Media clips must have a positive duration.');
+  const args = ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(Math.max(0, Number(job.clipStart) || 0)), '-i', input, '-t', String(duration)];
+  if (job.sourceType === 'video') args.push('-vf', 'scale=-2:240', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '30', '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart');
+  else args.push('-vn', '-c:a', 'libopus', '-b:a', '64k');
+  args.push(outputPath);
+  return args;
+};
 
 const run = (command, args, { maxOutput = 64_000 } = {}) => new Promise((resolve, reject) => {
   const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -47,26 +57,23 @@ const runJob = async (job) => {
   await updateAnnotation(job.annotationId, { mediaStatus: 'processing', mediaError: null });
   const assetId = randomUUID();
   const output = outputFor(job.sourceType, assetId);
-  const outputPath = path.join(mediaDirectory, output.fileName);
+  const key = `clips/${output.fileName}`;
+  const outputPath = path.join(mediaWorkDirectory, output.fileName);
   try {
-    await mkdir(mediaDirectory, { recursive: true });
+    await mkdir(mediaWorkDirectory, { recursive: true });
     const input = await resolveInput(job);
-    const duration = Math.max(0, Math.min(90, Number(job.clipEnd) - Number(job.clipStart)));
-    if (!duration) throw new Error('Media clips must have a positive duration.');
-    const args = ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(Math.max(0, Number(job.clipStart) || 0)), '-i', input, '-t', String(duration)];
-    if (job.sourceType === 'video') args.push('-vf', 'scale=-2:240', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '30', '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart');
-    else args.push('-vn', '-c:a', 'libopus', '-b:a', '64k');
-    args.push(outputPath);
+    const args = buildFfmpegArgs(job, input, outputPath);
     await run('ffmpeg', args);
-    const info = await stat(outputPath);
+    const asset = await storeMediaFile(outputPath, { id: assetId, key, mimeType: output.mimeType });
     await updateStore((store) => ({
       ...store,
-      media: [...(store.media || []), { id: assetId, fileName: output.fileName, mimeType: output.mimeType, bytes: info.size, kind: 'clip', createdAt: new Date().toISOString() }],
+      media: [...(store.media || []), { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, kind: 'clip', createdAt: new Date().toISOString() }],
       annotations: store.annotations.map((annotation) => annotation.id === job.annotationId ? { ...annotation, mediaAssetId: assetId, mediaStatus: 'ready', mediaError: null } : annotation),
       mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: 'ready', completedAt: new Date().toISOString() } : item),
     }));
+    await removeMediaFile(outputPath);
   } catch (error) {
-    await unlink(outputPath).catch(() => {});
+    await removeMediaFile(outputPath);
     await updateStore((store) => ({
       ...store,
       annotations: store.annotations.map((annotation) => annotation.id === job.annotationId ? { ...annotation, mediaStatus: 'failed', mediaError: error.message } : annotation),
