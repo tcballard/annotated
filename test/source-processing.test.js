@@ -4,6 +4,7 @@ import { classifySource, parseSourceUrl, resolveSource } from '../server/source-
 import { resolveInput, validatePlayableInput } from '../server/media-worker.js';
 import { matchesFeedQuery, normalizeFeedQuery } from '../server/feed.js';
 import { findIdempotentAnnotation } from '../server/idempotency.js';
+import { findActiveClaim, validateClaimTransition } from '../server/moderation.js';
 
 const publicLookup = async () => [{ address: '93.184.216.34', family: 4 }];
 
@@ -102,4 +103,12 @@ test('idempotent annotation lookup is scoped to the author and request ID', () =
   assert.equal(findIdempotentAnnotation(annotations, 'u1', 'capture-1')?.id, 'a1');
   assert.equal(findIdempotentAnnotation(annotations, 'u2', 'capture-1'), null);
   assert.equal(findIdempotentAnnotation(annotations, 'u1', 'capture-2'), null);
+});
+
+test('moderation claims deduplicate active reports and restrict terminal reopening', () => {
+  const claims = [{ id: 'c1', annotationId: 'a1', reporterId: 'u1', status: 'in_review' }];
+  assert.equal(findActiveClaim(claims, 'a1', 'u1')?.id, 'c1');
+  assert.equal(findActiveClaim(claims, 'a1', 'u2'), null);
+  assert.equal(validateClaimTransition('open', 'in_review'), null);
+  assert.equal(validateClaimTransition('resolved', 'rejected')?.includes('cannot move'), true);
 });

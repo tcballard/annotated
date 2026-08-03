@@ -23,7 +23,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 | Generate clip and public landing page | partial | Publishing creates the page immediately and queues FFmpeg processing; jobs now have bounded retries, recovery, owner cancellation, provider URL revalidation, object cleanup on abandoned output, and FFprobe inspection before readiness. | Durable queue/object storage, real provider fixtures, cleanup exercise, and browser evidence. |
 | Maximum 90-second video/audio clips | partial | API validation rejects longer ranges and worker clamps duration. | Automated boundary tests and output-duration inspection. |
 | Video output is 240p and below 480p | partial | Worker passes `scale=-2:240` to FFmpeg and rejects inspected output above 240px high. | Automated FFprobe inspection of a generated video fixture. |
-| Clearly visible `File a claim` on every annotation | partial | Public-page claim card submits a persisted claim; owner/moderator web queue exposes source context, reporter, status transitions, and audit-backed updates. | Authenticated production moderation, abuse controls, and durable storage. |
+| Clearly visible `File a claim` on every annotation | partial | Public-page claim card submits a persisted claim; active reports are deduplicated, reporters can query `/api/claims`, and the owner/moderator web queue exposes source context, reporter, restricted status transitions, and audit-backed updates. | Authenticated production moderation, abuse controls, and durable storage. |
 
 ## Production readiness gates
 
