@@ -1,6 +1,6 @@
 # Annotated brief acceptance
 
-Last verified: 2026-08-01 against <https://annotated.lovable.app/>. The
+Last verified: 2026-08-02 against <https://annotated.lovable.app/>. The
 handoff URL <https://annotated.com/brief> returned HTTP 404 on that date; the
 reachable Lovable brief is the current source used here and describes the same
 Chrome-sidebar, source-link, claim, identity, media, commentary, and social-feed
@@ -38,7 +38,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 - [ ] Provider extraction and FFmpeg processing enforce duration/resolution, retries, cancellation/recovery, cleanup, and visible failures; production readiness probes the actual FFmpeg/FFprobe/provider runtime and the image pins the provider executable.
 - [ ] Feed, profiles, follows, likes, comments, sharing, pagination, and authorization persist server-side.
 - [ ] Claims have review states, audit records, rate limits, and user-visible reporting outcomes.
-- [ ] CORS, secure headers, request limits, URL and DNS-answer SSRF defenses, bounded request telemetry, health/readiness, reproducible non-root image builds, migrations, backups, and recovery are documented and tested; hosted CI now passes amd64/arm64 image and provider-runtime checks, while durable-service deployment, backups, and recovery remain external.
+- [ ] CORS, secure headers, request limits, URL and DNS-answer SSRF defenses, bounded request telemetry, health/readiness, reproducible non-root image builds, and migrations are documented and tested; hosted CI now passes amd64/arm64 image and provider-runtime checks plus a real container-network smoke with PostgreSQL and MinIO (`/api/ready` reports `ready`, PostgreSQL persistence, and a ready media runtime), while public deployment, durable-service backups, recovery, and live traffic remain external.
 - [ ] A clean-checkout automated suite and Chrome browser acceptance run pass with evidence linked from the final draft PR.
 
 ## Explicit non-goals from the brief

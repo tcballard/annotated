@@ -121,3 +121,110 @@ jobs:
           provenance: false
       - name: Verify pinned provider runtime
         run: docker run --rm --platform "${{ matrix.platform }}" --entrypoint /usr/local/bin/yt-dlp "${{ matrix.tag }}" --version
+      - name: Start production service dependencies
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ matrix.tag }}
+          NETWORK_NAME: annotated-${{ matrix.tag }}
+        run: |
+          set -eu
+          docker network create "$NETWORK_NAME"
+          docker run --detach --name "${NETWORK_NAME}-postgres" --network "$NETWORK_NAME" \
+            --env POSTGRES_USER=annotated \
+            --env POSTGRES_PASSWORD=annotated \
+            --env POSTGRES_DB=annotated \
+            postgres:16
+          docker run --detach --name "${NETWORK_NAME}-minio" --network "$NETWORK_NAME" \
+            --env MINIO_ROOT_USER=minioadmin \
+            --env MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          for attempt in {1..30}; do
+            echo "Waiting for PostgreSQL (attempt ${attempt}/30)"
+            if docker exec "${NETWORK_NAME}-postgres" pg_isready -U annotated -d annotated >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec "${NETWORK_NAME}-postgres" pg_isready -U annotated -d annotated
+          bucket_ready=false
+          for attempt in {1..30}; do
+            echo "Waiting for MinIO bucket API (attempt ${attempt}/30)"
+            if docker run --rm --network "$NETWORK_NAME" \
+              --env S3_BUCKET=annotated-smoke \
+              --env S3_REGION=us-east-1 \
+              --env S3_ENDPOINT="http://${NETWORK_NAME}-minio:9000" \
+              --env S3_FORCE_PATH_STYLE=true \
+              --env S3_ACCESS_KEY_ID=minioadmin \
+              --env S3_SECRET_ACCESS_KEY=minioadmin \
+              --entrypoint node "$IMAGE_TAG" --input-type=module -e 'import { S3Client, CreateBucketCommand } from "@aws-sdk/client-s3"; const client = new S3Client({ region: process.env.S3_REGION, endpoint: process.env.S3_ENDPOINT, forcePathStyle: true, credentials: { accessKeyId: process.env.S3_ACCESS_KEY_ID, secretAccessKey: process.env.S3_SECRET_ACCESS_KEY } }); try { await client.send(new CreateBucketCommand({ Bucket: process.env.S3_BUCKET })); } catch (error) { if (!["BucketAlreadyOwnedByYou", "BucketAlreadyExists"].includes(error.Code)) throw error; }'; then
+              bucket_ready=true
+              break
+            fi
+            sleep 1
+          done
+          test "$bucket_ready" = true
+          docker run --rm --network "$NETWORK_NAME" \
+            --env "DATABASE_URL=postgresql://annotated:annotated@${NETWORK_NAME}-postgres:5432/annotated" \
+            --env PGSSL=disable \
+            --entrypoint node "$IMAGE_TAG" scripts/migrate.js
+      - name: Start production application
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ matrix.tag }}
+          NETWORK_NAME: annotated-${{ matrix.tag }}
+          APP_CONTAINER: annotated-${{ matrix.tag }}-app
+        run: |
+          set -eu
+          docker run --detach --name "$APP_CONTAINER" --network "$NETWORK_NAME" \
+            --env NODE_ENV=production \
+            --env HOST=0.0.0.0 \
+            --env PORT=8787 \
+            --env "PUBLIC_ORIGIN=http://${APP_CONTAINER}:8787" \
+            --env "APP_ORIGIN=http://${APP_CONTAINER}:8787" \
+            --env "CORS_ORIGIN=http://${APP_CONTAINER}:8787" \
+            --env AUTH_REQUIRED=true \
+            --env GOOGLE_CLIENT_ID=ci-google-client \
+            --env GOOGLE_CLIENT_SECRET=ci-google-secret \
+            --env X_CLIENT_ID=ci-x-client \
+            --env X_CLIENT_SECRET=ci-x-secret \
+            --env "DATABASE_URL=postgresql://annotated:annotated@${NETWORK_NAME}-postgres:5432/annotated" \
+            --env PGSSL=disable \
+            --env ANNOTATED_STORAGE=postgres \
+            --env ANNOTATED_ASSET_STORAGE=s3 \
+            --env S3_BUCKET=annotated-smoke \
+            --env S3_REGION=us-east-1 \
+            --env "S3_ENDPOINT=http://${NETWORK_NAME}-minio:9000" \
+            --env S3_FORCE_PATH_STYLE=true \
+            --env S3_ACCESS_KEY_ID=minioadmin \
+            --env S3_SECRET_ACCESS_KEY=minioadmin \
+            --env YTDLP_BIN=/usr/local/bin/yt-dlp \
+            "$IMAGE_TAG"
+      - name: Verify production readiness over the container network
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ matrix.tag }}
+          NETWORK_NAME: annotated-${{ matrix.tag }}
+          APP_CONTAINER: annotated-${{ matrix.tag }}-app
+        run: |
+          set -eu
+          for attempt in {1..30}; do
+            echo "Waiting for production readiness (attempt ${attempt}/30)"
+            if ready=$(docker run --rm --network "$NETWORK_NAME" "$IMAGE_TAG" node --input-type=module -e "const response = await fetch('http://${APP_CONTAINER}:8787/api/ready'); const body = await response.text(); console.log(body); process.exit(response.ok ? 0 : 1)"); then
+              printf '%s\n' "$ready"
+              printf '%s\n' "$ready" | jq -e '.status == "ready" and .persistence == "postgres" and .mediaRuntime.status == "ready"'
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs "$APP_CONTAINER" || true
+          exit 1
+      - name: Stop production smoke containers
+        if: always()
+        shell: bash
+        env:
+          NETWORK_NAME: annotated-${{ matrix.tag }}
+          APP_CONTAINER: annotated-${{ matrix.tag }}-app
+        run: |
+          docker logs "$APP_CONTAINER" 2>/dev/null || true
+          docker rm -f "$APP_CONTAINER" "${NETWORK_NAME}-postgres" "${NETWORK_NAME}-minio" 2>/dev/null || true
+          docker network rm "$NETWORK_NAME" 2>/dev/null || true

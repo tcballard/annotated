@@ -21,6 +21,7 @@ import { findActiveClaim, validateClaimTransition } from './moderation.js';
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
 const port = Number(process.env.PORT || 8787);
+const host = process.env.HOST || '127.0.0.1';
 const publicOrigin = process.env.PUBLIC_ORIGIN || `http://localhost:${port}`;
 const corsOrigin = process.env.CORS_ORIGIN || '*';
 
@@ -379,7 +380,7 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, '127.0.0.1', () => {
+server.listen(port, host, () => {
   assertHardeningConfiguration();
   assertAuthConfiguration();
   getObjectStore();
