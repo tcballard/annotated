@@ -207,6 +207,19 @@ The local browser run exercised the user-facing flows below:
   pull-request checks passed Node plus linux/amd64 and linux/arm64 production
   image jobs on 2026-08-02 ([push run 30740346231](https://github.com/tcballard/annotated/actions/runs/30740346231),
   [pull-request run 30740347784](https://github.com/tcballard/annotated/actions/runs/30740347784)).
+- PR40 adds a bounded podcast-feed metadata path. Podcast host URLs and generic
+  `/feed`, `/rss`, and `/atom` paths are classified as podcast sources; RSS and
+  Atom fixtures extract the first episode title, author, description, safe
+  artwork/enclosure URLs, and canonical show link while preserving the existing
+  source contract and worker handoff. `node --test test/source-processing.test.js`
+  passed 12 tests, including RSS and Atom fixtures, entity decoding, enclosure
+  links, source classification, redirect limits, and SSRF checks. The full local
+  suite passed 65 tests with one explicit production-service integration skip;
+  the Vite build, runtime-only extension package, JavaScript syntax checks, and
+  `git diff --check` also passed. PR40's hosted push and pull-request workflows
+  both passed Node plus linux/amd64 and linux/arm64 production-image smoke jobs
+  on 2026-08-02 ([push run 30740952993](https://github.com/tcballard/annotated/actions/runs/30740952993),
+  [pull-request run 30740968625](https://github.com/tcballard/annotated/actions/runs/30740968625)).
 
 ## Deliberately unverified external gates
 

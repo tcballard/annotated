@@ -11,6 +11,7 @@ const publicLookup = async () => [{ address: '93.184.216.34', family: 4 }];
 test('source classification covers the three brief source categories', () => {
   assert.equal(classifySource('https://www.youtube.com/watch?v=abc'), 'video');
   assert.equal(classifySource('https://podcasts.example/show/episode'), 'podcast');
+  assert.equal(classifySource('https://radio.example/feed.xml'), 'podcast');
   assert.equal(classifySource('https://news.example/story'), 'article');
 });
 
@@ -32,6 +33,69 @@ test('article resolution is bounded and preserves the page canonical URL', async
     assert.equal(source.sourceType, 'article');
     assert.equal(source.canonicalUrl, 'https://news.example/canonical');
     assert.match(source.excerpt, /sufficiently long article passage/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('podcast RSS resolution extracts the first episode, enclosure, and show metadata', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    arrayBuffer: async () => Buffer.from(`<?xml version="1.0"?>
+      <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+        <channel>
+          <title>Signal FM</title>
+          <link>https://radio.example/show</link>
+          <itunes:author>Signal FM team</itunes:author>
+          <description><![CDATA[Long-form conversations about attention &amp; craft.]]></description>
+          <item>
+            <title>The quiet advantage &amp; the long view</title>
+            <itunes:author>Rhea Cole</itunes:author>
+            <description><![CDATA[A concise episode description for the source preview.]]></description>
+            <enclosure url="https://cdn.example/quiet-advantage.mp3" type="audio/mpeg" />
+          </item>
+        </channel>
+      </rss>`),
+  });
+  try {
+    const source = await resolveSource('https://radio.example/feed.xml', { lookup: publicLookup });
+    assert.equal(source.sourceType, 'podcast');
+    assert.equal(source.provider, 'podcast');
+    assert.equal(source.title, 'The quiet advantage & the long view');
+    assert.equal(source.author, 'Rhea Cole');
+    assert.equal(source.description, 'A concise episode description for the source preview.');
+    assert.equal(source.mediaUrl, 'https://cdn.example/quiet-advantage.mp3');
+    assert.equal(source.canonicalUrl, 'https://radio.example/show');
+    assert.equal(source.processing, 'ready-for-range');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('podcast Atom resolution accepts enclosure links with either attribute order', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    arrayBuffer: async () => Buffer.from(`<feed xmlns="http://www.w3.org/2005/Atom">
+      <title>Field Notes</title>
+      <author><name>Field Notes studio</name></author>
+      <entry>
+        <title>Listening for signal</title>
+        <summary>How a small habit changes the way we notice.</summary>
+        <link href="https://cdn.example/listening.m4a" rel="enclosure" type="audio/mp4" />
+      </entry>
+    </feed>`),
+  });
+  try {
+    const source = await resolveSource('https://feeds.example/atom', { lookup: publicLookup });
+    assert.equal(source.provider, 'podcast');
+    assert.equal(source.title, 'Listening for signal');
+    assert.equal(source.author, 'Field Notes studio');
+    assert.equal(source.mediaUrl, 'https://cdn.example/listening.m4a');
+    assert.equal(source.description, 'How a small habit changes the way we notice.');
   } finally {
     globalThis.fetch = originalFetch;
   }
