@@ -13,7 +13,7 @@ The following checks passed on `agent/brief-16-source-redirects`:
 ```text
 npm ci
 npm run build
-npm test                         # 35 passing tests
+npm test                         # 36 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -68,7 +68,8 @@ The local browser run exercised the user-facing flows below:
   survive annotation retries, and repeated failures become bounded blocked
   items with a reset path.
 - Source-processing tests prove redirects are bounded and each redirect target
-  is revalidated against the private-host SSRF policy.
+  is revalidated against the private-host SSRF policy; DNS lookup tests reject
+  private answers before a fetch or provider input is used.
 
 ## Deliberately unverified external gates
 
