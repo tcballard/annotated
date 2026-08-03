@@ -11,6 +11,7 @@ import { cancelMediaJob, enqueueMediaJob, recoverMediaJobs } from './media-worke
 import { resolveSource } from './source-resolver.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, providerStatus, startOAuth } from './auth.js';
+import { assertHardeningConfiguration, rateLimit, requestId, securityHeaders } from './hardening.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
@@ -20,7 +21,7 @@ const corsOrigin = process.env.CORS_ORIGIN || '*';
 
 const send = (response, status, body, headers = {}) => {
   const payload = typeof body === 'string' ? body : JSON.stringify(body);
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'access-control-allow-origin': corsOrigin, 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type', ...(corsOrigin === '*' ? {} : { 'access-control-allow-credentials': 'true', vary: 'Origin' }), ...headers });
+  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...securityHeaders({ api: true }), 'access-control-allow-origin': corsOrigin, 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type, authorization, x-request-id', ...(corsOrigin === '*' ? {} : { 'access-control-allow-credentials': 'true', vary: 'Origin' }), ...headers });
   response.end(payload);
 };
 
@@ -30,6 +31,9 @@ const redirect = (response, location, headers = {}) => {
   response.end();
 };
 const unauthorized = (response) => send(response, 401, { error: 'Sign in is required.' });
+const forbidden = (response) => send(response, 403, { error: 'You do not have permission for this action.' });
+const mutationAllowed = (request, actor, name, limit = 60) => rateLimit(`${request.socket?.remoteAddress || 'unknown'}:${actor?.id || 'anonymous'}:${name}`, { limit }).allowed;
+const isModerator = (user) => Boolean(user && (['owner', 'admin', 'moderator'].includes(user.role) || String(process.env.MODERATOR_USER_IDS || '').split(',').map((value) => value.trim()).includes(user.id)));
 
 const readJson = async (request) => {
   let body = '';
@@ -56,6 +60,15 @@ const withComments = (annotation, store, viewerId = '') => ({
 
 const handleApi = async (request, response, pathname) => {
   if (request.method === 'GET' && pathname === '/api/health') return send(response, 200, { status: 'ok', version: '0.2.0', persistence: storageDescription() });
+  if (request.method === 'GET' && pathname === '/api/ready') {
+    try {
+      await readStore();
+      getObjectStore();
+      return send(response, 200, { status: 'ready', persistence: storageDescription() });
+    } catch (error) {
+      return send(response, 503, { status: 'not-ready', error: error.message });
+    }
+  }
   if (request.method === 'GET' && pathname === '/api/auth/providers') return send(response, 200, { required: authIsRequired(), providers: providerStatus() });
 
   const authStartMatch = pathname.match(/^\/api\/auth\/(google|x)\/start$/);
@@ -137,6 +150,7 @@ const handleApi = async (request, response, pathname) => {
     const knownUsers = (await readStore()).users || [];
     if (!knownUsers.some((user) => user.id === targetId)) return notFound(response);
     if (targetId === actor?.id) return send(response, 422, { error: 'You cannot follow yourself.' });
+    if (!mutationAllowed(request, actor, 'follow', 60)) return send(response, 429, { error: 'Too many follow changes. Try again later.' }, { 'retry-after': '60' });
     let following = followMatch[2] === 'follow';
     const result = await updateStore((store) => {
       const exists = (store.follows || []).some((follow) => follow.followerId === (actor?.id || 'local-tom') && follow.followingId === targetId);
@@ -160,6 +174,7 @@ const handleApi = async (request, response, pathname) => {
   if (request.method === 'POST' && pathname === '/api/annotations') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
+    if (!mutationAllowed(request, actor, 'annotation', 30)) return send(response, 429, { error: 'Too many publishes. Try again later.' }, { 'retry-after': '60' });
     const payload = await readJson(request);
     const { errors, normalized } = validateAnnotation(payload);
     if (errors.length) return send(response, 422, { errors });
@@ -188,6 +203,7 @@ const handleApi = async (request, response, pathname) => {
   if (commentsMatch && request.method === 'POST') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
+    if (!mutationAllowed(request, actor, 'comment', 30)) return send(response, 429, { error: 'Too many comments. Try again later.' }, { 'retry-after': '60' });
     const payload = await readJson(request);
     const validation = validateComment(payload);
     if (validation.error) return send(response, 422, { error: validation.error });
@@ -206,6 +222,7 @@ const handleApi = async (request, response, pathname) => {
   if (likeMatch && request.method === 'POST') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
+    if (!mutationAllowed(request, actor, 'like', 120)) return send(response, 429, { error: 'Too many like changes. Try again later.' }, { 'retry-after': '60' });
     const result = await updateStore((store) => {
       const annotation = store.annotations.find((item) => item.slug === likeMatch[1] || item.id === likeMatch[1]);
       if (!annotation) return store;
@@ -222,6 +239,7 @@ const handleApi = async (request, response, pathname) => {
   if (claimsMatch && request.method === 'POST') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
+    if (!mutationAllowed(request, actor, 'claim', 10)) return send(response, 429, { error: 'Too many claims. Try again later.' }, { 'retry-after': '60' });
     const payload = await readJson(request);
     const validation = validateClaim(payload);
     if (validation.error) return send(response, 422, { error: validation.error });
@@ -234,6 +252,33 @@ const handleApi = async (request, response, pathname) => {
     return result.claims.some((claim) => claim.annotationId === (result.annotations.find((item) => item.slug === claimsMatch[1] || item.id === claimsMatch[1])?.id))
       ? send(response, 201, { status: 'received' })
       : notFound(response);
+  }
+
+  if (request.method === 'GET' && pathname === '/api/moderation/claims') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
+    if (!isModerator(actor)) return forbidden(response);
+    const store = await readStore();
+    return send(response, 200, { claims: (store.claims || []).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((claim) => ({ ...claim, annotation: store.annotations.find((item) => item.id === claim.annotationId) || null, reporter: store.users.find((user) => user.id === claim.reporterId) || null })) });
+  }
+
+  const moderateClaimMatch = pathname.match(/^\/api\/moderation\/claims\/([^/]+)$/);
+  if (moderateClaimMatch && request.method === 'POST') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
+    if (!isModerator(actor)) return forbidden(response);
+    const payload = await readJson(request);
+    const allowedStatuses = new Set(['open', 'in_review', 'resolved', 'rejected']);
+    if (!allowedStatuses.has(payload.status)) return send(response, 422, { error: 'Claim status must be open, in_review, resolved, or rejected.' });
+    let found = false;
+    const result = await updateStore((store) => {
+      const claim = (store.claims || []).find((item) => item.id === moderateClaimMatch[1]);
+      if (!claim) return store;
+      found = true;
+      const updated = { ...claim, status: payload.status, moderatorId: actor.id, resolutionNote: String(payload.note || '').slice(0, 2000), updatedAt: new Date().toISOString() };
+      return { ...store, claims: store.claims.map((item) => item.id === claim.id ? updated : item), moderationAudit: [...(store.moderationAudit || []), { id: randomUUID(), claimId: claim.id, actorId: actor.id, from: claim.status, to: updated.status, note: updated.resolutionNote, createdAt: new Date().toISOString() }] };
+    });
+    return found ? send(response, 200, { claim: result.claims.find((item) => item.id === moderateClaimMatch[1]) }) : notFound(response);
   }
 
   return null;
@@ -256,11 +301,11 @@ const serveStatic = async (request, response, pathname) => {
   try {
     const info = await stat(candidate);
     if (!info.isFile()) return notFound(response);
-    response.writeHead(200, { 'content-type': contentType[path.extname(candidate)] || 'application/octet-stream' });
+    response.writeHead(200, { 'content-type': contentType[path.extname(candidate)] || 'application/octet-stream', ...securityHeaders() });
     return createReadStream(candidate).pipe(response);
   } catch {
     if (request.method === 'GET' && !path.extname(pathname)) {
-      try { response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); return createReadStream(path.join(projectRoot, 'dist/index.html')).pipe(response); } catch { return notFound(response); }
+      try { response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...securityHeaders() }); return createReadStream(path.join(projectRoot, 'dist/index.html')).pipe(response); } catch { return notFound(response); }
     }
     return notFound(response);
   }
@@ -268,6 +313,7 @@ const serveStatic = async (request, response, pathname) => {
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url || '/', publicOrigin);
+  response.setHeader('x-request-id', requestId(request));
   try {
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) return send(response, 204, '');
     if (request.method === 'GET' && url.pathname.startsWith('/media/')) return serveMedia(response, url.pathname.slice('/media/'.length));
@@ -284,6 +330,7 @@ const server = http.createServer(async (request, response) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
+  assertHardeningConfiguration();
   assertAuthConfiguration();
   getObjectStore();
   console.log(`annotated server listening on http://localhost:${port}`);
