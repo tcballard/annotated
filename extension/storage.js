@@ -3,6 +3,7 @@ const LAST_PUBLISHED_KEY = 'annotatedLastPublished';
 const CONFIG_KEY = 'annotatedConfig';
 const PENDING_KEY = 'annotatedPendingCaptures';
 const SESSION_KEY = 'annotatedSession';
+const DEFAULT_API_ORIGIN = 'http://localhost:8787';
 export const MAX_PENDING_CAPTURES = 5;
 export const MAX_PENDING_ATTEMPTS = 8;
 
@@ -73,7 +74,11 @@ export const extensionStorage = {
 
   async getApiOrigin() {
     const result = await chrome.storage.local.get(CONFIG_KEY);
-    return String(result[CONFIG_KEY]?.apiOrigin || 'http://localhost:8787').replace(/\/$/, '');
+    try {
+      return normalizeApiOrigin(result[CONFIG_KEY]?.apiOrigin || DEFAULT_API_ORIGIN);
+    } catch {
+      return DEFAULT_API_ORIGIN;
+    }
   },
 
   async saveApiOrigin(apiOrigin) {

@@ -3,3 +3,4 @@ dist/
 .DS_Store
 .git-real/
 data/
+annotated-extension-v*.zip

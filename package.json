@@ -8,6 +8,7 @@
     "dev:server": "node server/index.js",
     "build": "vite build",
     "test": "node --test",
+    "package:extension": "node scripts/package-extension.js",
     "db:migrate": "node scripts/migrate.js",
     "preview": "vite preview",
     "start": "NODE_ENV=production node server/index.js"

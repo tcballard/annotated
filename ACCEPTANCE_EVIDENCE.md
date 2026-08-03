@@ -9,12 +9,12 @@ production gates are complete.
 ## Clean-checkout validation
 
 The following checks passed from a fresh clone of the final acceptance stack
-tip (`agent/brief-27-acceptance-evidence`):
+tip (`agent/brief-28-extension-publishing`):
 
 ```text
 npm ci
 npm run build
-npm test                         # 50 passing tests
+npm test                         # 54 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -27,7 +27,7 @@ verified `/api/health`, `/api/ready`, restricted-origin rejection, provider
 configuration reporting, the development identity boundary, idempotent
 annotation publishing, public annotation reload, feed loading, comments,
 active-claim deduplication, reporter claim status, and owner moderation
-transitions. It passed as part of the 50-test run. The Docker daemon was not
+transitions. It passed as part of the 54-test run. The Docker daemon was not
 available in this environment, so the production image itself remains an
 external gate; the Dockerfile build order, non-root user, and context boundary
 are covered by static tests.
@@ -78,6 +78,11 @@ The local browser run exercised the user-facing flows below:
   HTTPS, expired session tokens are discarded before use, uploaded audio IDs
   survive annotation retries, and repeated failures become bounded blocked
   items with a reset path.
+- Chrome extension contract tests verify Manifest V3, the explicit side-panel
+  trigger, the minimum Chrome version, local runtime files, no remote-code or
+  service-worker timer patterns, and complete Chrome Web Store permission
+  coverage. `npm run package:extension` produced a clean runtime-only ZIP whose
+  archive contains only the extension files.
 - Source-processing tests prove redirects are bounded and each redirect target
   is revalidated against the private-host SSRF policy; DNS lookup tests reject
   private answers before a fetch or provider input is used.
@@ -114,5 +119,7 @@ evidence are available:
   be 240p.
 - Installed Chrome side-panel acceptance, extension audio capture, offline
   queue recovery, and service-worker/sidebar lifecycle checks.
+- Chrome Web Store icon/screenshots, a public privacy-policy URL, and a
+  monitored publisher contact address.
 - Multi-user production feed, follow, comment, claims, and moderation evidence.
 - Production observability, deployment, security, and readiness checks.
