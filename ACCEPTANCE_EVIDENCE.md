@@ -8,18 +8,29 @@ production gates are complete.
 
 ## Clean-checkout validation
 
-The following checks passed on `agent/brief-16-source-redirects`:
+The following checks passed from a fresh clone of the final acceptance stack
+tip (`agent/brief-27-acceptance-evidence`):
 
 ```text
 npm ci
 npm run build
-npm test                         # 49 passing tests
+npm test                         # 50 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
 
 The local API and Vite app were run together at `http://localhost:8787` and
 `http://127.0.0.1:5173`.
+
+The clean-checkout API acceptance test started an isolated local server and
+verified `/api/health`, `/api/ready`, restricted-origin rejection, provider
+configuration reporting, the development identity boundary, idempotent
+annotation publishing, public annotation reload, feed loading, comments,
+active-claim deduplication, reporter claim status, and owner moderation
+transitions. It passed as part of the 50-test run. The Docker daemon was not
+available in this environment, so the production image itself remains an
+external gate; the Dockerfile build order, non-root user, and context boundary
+are covered by static tests.
 
 ## Browser acceptance run
 
