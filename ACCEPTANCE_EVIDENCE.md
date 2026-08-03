@@ -199,7 +199,9 @@ The local browser run exercised the user-facing flows below:
 - `.github/workflows/ci.yml` now makes that external image gate reproducible in
   GitHub Actions: it runs the clean Node/package checks and builds both
   `linux/amd64` and `linux/arm64` images under QEMU, then executes the pinned
-  provider binary in each image. Both the push and pull-request runs for PR32
+  provider binary in each image. It also runs the generated-media/FFprobe
+  fixture contract inside each image after the container-network readiness
+  smoke. Both the push and pull-request runs for PR32
   passed on 2026-08-01 (for example,
   [run 30721572499](https://github.com/tcballard/annotated/actions/runs/30721572499)).
 - PR33’s hosted Node job ran all 58 tests with zero skips, including the real
