@@ -43,6 +43,7 @@ test('postgres repository serializes the existing store contract transactionally
 
 test('postgres repository reconstructs the API store contract from entity records', async () => {
   const rows = [
+    { collection: 'users', record_id: 'local-tom', payload: { id: 'local-tom', handle: 'tcballard', role: 'owner' } },
     { collection: 'users', record_id: 'u1', payload: { id: 'u1', handle: 'reader' } },
     { collection: 'annotations', record_id: 'a1', payload: { id: 'a1', status: 'published' } },
   ];
@@ -56,6 +57,7 @@ test('postgres repository reconstructs the API store contract from entity record
   const repository = createPostgresStore({ pool });
   const result = await repository.read();
   assert.ok(result.users.some((user) => user.id === 'u1' && user.handle === 'reader'));
+  assert.equal(result.users.filter((user) => user.id === 'local-tom').length, 1);
   assert.deepEqual(result.annotations, [{ id: 'a1', status: 'published' }]);
   assert.deepEqual(result.comments, []);
   await repository.close();
