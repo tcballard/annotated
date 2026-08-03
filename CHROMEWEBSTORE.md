@@ -118,10 +118,12 @@ production integrations are available.
 
 **Privacy Policy URL**
 
-TBD — publish and verify a stable public policy URL before submitting to the
-Chrome Web Store. The URL must match the disclosures above and explain local
-draft retention, published annotation/media retention, identity providers,
-backend storage, deletion requests, and contact details.
+Implemented in the web build at `/privacy.html`; the intended deployed URL is
+`https://annotated.com/privacy.html`. Publish and verify that URL before
+submitting to the Chrome Web Store. The policy explains local draft retention,
+published annotation/media retention, identity providers, backend storage,
+deletion requests, and contact details. Public deployment and URL verification
+remain external gates.
 
 ## Distribution
 
@@ -149,7 +151,7 @@ backend storage, deletion requests, and contact details.
 
 ### Known Issues / Limitations
 
-- The icon, screenshots, promo artwork, public privacy-policy URL, and monitored publisher email are still required before submission.
+- The icon, screenshots, promo artwork, public privacy-policy URL verification, and monitored publisher email are still required before submission. The policy source is now included in `public/privacy.html` and copied into `dist/` by the Vite build.
 - The extension requires a configured Annotated backend. Local development uses `http://localhost:8787`; deployed API origins must be HTTPS.
 - Google/X OAuth, PostgreSQL/S3 media delivery, real provider fixture extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates. Queued captures now remain visible when authentication expires and can be retried after sign-in. The production image now includes a pinned, SHA-256-verified `yt-dlp` runtime, but that does not replace a real provider fixture run.
 - The broad page host permissions are intentional because the product works on the user-selected active page, but the sidebar only reads and publishes data after an explicit user action.

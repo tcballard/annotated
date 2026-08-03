@@ -37,3 +37,14 @@ test('deployment documents persisted media-worker leases', async () => {
   assert.match(deployment, /managed queue when independent worker scaling is required/);
   assert.match(env, /MEDIA_WORKER_LEASE_MS=600000/);
 });
+
+test('web build includes a privacy policy with the extension data boundary', async () => {
+  const policy = await readFile(new URL('../public/privacy.html', import.meta.url), 'utf8');
+  const listing = await readFile(new URL('../CHROMEWEBSTORE.md', import.meta.url), 'utf8');
+  assert.match(policy, /Privacy policy/);
+  assert.match(policy, /browser-local IndexedDB/);
+  assert.match(policy, /Google or X/);
+  assert.match(policy, /deletion request/i);
+  assert.match(listing, /`\/privacy\.html`/);
+  assert.match(listing, /public deployment and URL verification[\s\S]*external gates/i);
+});
