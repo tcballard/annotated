@@ -11,6 +11,8 @@ const maxConcurrentJobs = Number(process.env.MEDIA_WORKER_CONCURRENCY || 2);
 const ytdlpBinary = process.env.YTDLP_BIN || 'yt-dlp';
 const maxAttempts = Math.max(1, Number(process.env.MEDIA_WORKER_MAX_ATTEMPTS || 3));
 const retryDelayMs = Math.max(100, Number(process.env.MEDIA_WORKER_RETRY_DELAY_MS || 1500));
+const workerId = process.env.MEDIA_WORKER_ID || randomUUID();
+const leaseMs = Math.max(30_000, Number(process.env.MEDIA_WORKER_LEASE_MS || 600_000));
 const queue = [];
 const activeProcesses = new Map();
 const cancelledJobs = new Set();
@@ -82,6 +84,20 @@ export const checkMediaRuntime = async ({ runCommand = run, includeProvider = pr
 
 export const shouldAbortMediaJob = (job, store, cancelled = cancelledJobs) => cancelled.has(job.id) || (store.mediaJobs || []).some((item) => item.id === job.id && item.status === 'cancelled');
 
+export const mediaJobLeaseExpired = (job, now = Date.now()) => {
+  const leaseUntil = Date.parse(job?.leaseUntil || '');
+  return !Number.isFinite(leaseUntil) || leaseUntil <= now;
+};
+
+export const shouldClaimMediaJob = (job, claimantId, now = Date.now()) => {
+  if (!job || ['cancelled', 'ready', 'failed'].includes(job.status)) return false;
+  if (job.status === 'queued') return true;
+  if (job.status !== 'processing') return false;
+  return job.workerId === claimantId || mediaJobLeaseExpired(job, now);
+};
+
+export const shouldRecoverMediaJob = (job, now = Date.now()) => job?.status === 'queued' || (job?.status === 'processing' && mediaJobLeaseExpired(job, now));
+
 export const resolveInput = async (job, { lookup } = {}) => {
   const sourceUrl = (await assertPublicUrl(parseSourceUrl(job.sourceUrl).toString(), { lookup })).toString();
   const mediaUrl = job.mediaUrl ? (await assertPublicUrl(parseSourceUrl(job.mediaUrl).toString(), { lookup })).toString() : '';
@@ -106,10 +122,25 @@ const updateAnnotation = (annotationId, changes) => updateStore((store) => ({
   annotations: store.annotations.map((annotation) => annotation.id === annotationId ? { ...annotation, ...changes } : annotation),
 }));
 
+const claimMediaJob = async (job) => {
+  let claimed = false;
+  await updateStore((store) => {
+    const current = (store.mediaJobs || []).find((item) => item.id === job.id);
+    if (!shouldClaimMediaJob(current, workerId)) return store;
+    claimed = true;
+    return {
+      ...store,
+      mediaJobs: store.mediaJobs.map((item) => item.id === job.id ? { ...item, status: 'processing', workerId, leaseUntil: new Date(Date.now() + leaseMs).toISOString() } : item),
+    };
+  });
+  return claimed;
+};
+
 const runJob = async (job) => {
   const current = await readStore();
   const annotation = current.annotations.find((item) => item.id === job.annotationId);
   if (!annotation || annotation.mediaStatus === 'cancelled') return;
+  if (!await claimMediaJob(job)) return;
   await updateAnnotation(job.annotationId, { mediaStatus: 'processing', mediaError: null });
   const assetId = randomUUID();
   const output = outputFor(job.sourceType, assetId);
@@ -141,7 +172,7 @@ const runJob = async (job) => {
         ...store,
         media: [...(store.media || []), { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, kind: 'clip', createdAt: new Date().toISOString() }],
         annotations: store.annotations.map((annotation) => annotation.id === job.annotationId ? { ...annotation, mediaAssetId: assetId, mediaStatus: 'ready', mediaError: null } : annotation),
-        mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: 'ready', completedAt: new Date().toISOString() } : item),
+        mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: 'ready', workerId: null, leaseUntil: null, completedAt: new Date().toISOString() } : item),
       };
     });
     if (!published) {
@@ -168,7 +199,7 @@ const runJob = async (job) => {
       return {
         ...store,
         annotations: store.annotations.map((item) => item.id === job.annotationId ? { ...item, mediaStatus: retry ? 'queued' : 'failed', mediaError: retry ? `Retrying media processing (${attempts}/${maxAttempts}).` : error.message } : item),
-        mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: retry ? 'queued' : 'failed', attempts, error: error.message, retryAt: retry ? new Date(Date.now() + retryDelayMs * attempts).toISOString() : null, completedAt: retry ? null : new Date().toISOString() } : item),
+        mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: retry ? 'queued' : 'failed', workerId: null, leaseUntil: null, attempts, error: error.message, retryAt: retry ? new Date(Date.now() + retryDelayMs * attempts).toISOString() : null, completedAt: retry ? null : new Date().toISOString() } : item),
       };
     });
     if (!recordedFailure) {
@@ -205,7 +236,7 @@ export async function cancelMediaJob(jobId, userId) {
     return {
       ...store,
       annotations: store.annotations.map((item) => item.id === annotation.id ? { ...item, mediaStatus: 'cancelled', mediaError: 'Processing cancelled by the owner.' } : item),
-      mediaJobs: (store.mediaJobs || []).map((item) => item.id === jobId ? { ...item, status: 'cancelled', completedAt: new Date().toISOString() } : item),
+      mediaJobs: (store.mediaJobs || []).map((item) => item.id === jobId ? { ...item, status: 'cancelled', workerId: null, leaseUntil: null, completedAt: new Date().toISOString() } : item),
     };
   });
   if (cancelled) {
@@ -222,8 +253,12 @@ export async function cancelMediaJob(jobId, userId) {
 export async function recoverMediaJobs() {
   const store = await readStore();
   for (const annotation of store.annotations.filter((item) => item.status === 'published' && ['queued', 'processing'].includes(item.mediaStatus))) {
-    const job = (store.mediaJobs || []).find((item) => item.annotationId === annotation.id && ['queued', 'processing'].includes(item.status) && Number(item.attempts || 0) < maxAttempts);
-    if (job) queue.push({ ...job, status: 'queued' });
+    const job = (store.mediaJobs || []).find((item) => item.annotationId === annotation.id && shouldRecoverMediaJob(item) && Number(item.attempts || 0) < maxAttempts);
+    if (!job) continue;
+    const retryAt = Date.parse(job.retryAt || '');
+    const delay = Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : 0;
+    if (delay) setTimeout(() => { queue.push({ ...job, status: 'queued' }); drain(); }, delay);
+    else queue.push({ ...job, status: 'queued' });
   }
   drain();
 }

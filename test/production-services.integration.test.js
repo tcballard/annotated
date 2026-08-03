@@ -58,7 +58,7 @@ test('production PostgreSQL and S3 adapters work against real services', {
     follows: { id: `${fixturePrefix}-follow`, followerId: markerId, followingId: 'local-tom', createdAt: new Date().toISOString() },
     likes: { id: `${fixturePrefix}-like`, annotationId, userId: markerId, createdAt: new Date().toISOString() },
     media: { id: `${fixturePrefix}-media`, annotationId, ownerId: markerId, key: `${fixturePrefix}/source.mp4`, status: 'ready' },
-    mediaJobs: { id: `${fixturePrefix}-job`, annotationId, ownerId: markerId, status: 'queued', attempts: 0 },
+    mediaJobs: { id: `${fixturePrefix}-job`, annotationId, ownerId: markerId, status: 'processing', attempts: 0, workerId: `${fixturePrefix}-worker`, leaseUntil: new Date(Date.now() + 60_000).toISOString() },
     sessions: { id: `${fixturePrefix}-session`, userId: markerId, tokenHash: `${fixturePrefix}-session-hash`, expiresAt: new Date(Date.now() + 60_000).toISOString() },
     extensionTickets: { id: `${fixturePrefix}-ticket`, userId: markerId, tokenHash: `${fixturePrefix}-ticket-hash`, expiresAt: new Date(Date.now() + 60_000).toISOString() },
     moderationAudit: { id: `${fixturePrefix}-audit`, claimId, actorId: markerId, from: null, to: 'open', note: 'fixture', createdAt: new Date().toISOString() },
