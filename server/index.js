@@ -9,6 +9,7 @@ import { serveStoredMedia, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, enqueueMediaJob, recoverMediaJobs } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
+import { matchesFeedQuery, normalizeFeedQuery } from './feed.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, rateLimit, requestId, securityHeaders } from './hardening.js';
@@ -126,11 +127,12 @@ const handleApi = async (request, response, pathname) => {
     const limit = Math.min(50, Math.max(1, Number(query.get('limit') || 20)));
     const offset = Math.max(0, Number(query.get('cursor') || 0));
     const sourceType = query.get('sourceType');
+    const search = normalizeFeedQuery(query.get('q'));
     const followingOnly = query.get('following') === 'true' && viewer;
     const followedIds = new Set((store.follows || []).filter((follow) => follow.followerId === viewer?.id).map((follow) => follow.followingId));
-    const candidates = store.annotations.filter((item) => item.status === 'published' && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const candidates = store.annotations.filter((item) => item.status === 'published' && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id) && matchesFeedQuery(item, store.users || [], search)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const page = candidates.slice(offset, offset + limit);
-    return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null });
+    return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null, query: search || null });
   }
 
   const profileMatch = pathname.match(/^\/api\/profiles\/([^/]+)$/);
