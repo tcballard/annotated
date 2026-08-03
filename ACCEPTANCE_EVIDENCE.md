@@ -169,6 +169,19 @@ The local browser run exercised the user-facing flows below:
   credential or consent-screen evidence. Both architecture smoke jobs also
   passed ([push run 30736689346](https://github.com/tcballard/annotated/actions/runs/30736689346),
   [pull-request run 30736699060](https://github.com/tcballard/annotated/actions/runs/30736699060)).
+- PR38’s UX pass was rendered in an isolated Chrome session at wide desktop,
+  mobile, feed, and empty-published states. The capture desk now uses one warm
+  surface, a restrained ink/coral token system, a source-first two-column grid,
+  and a single primary publish action; the responsive layout collapses to one
+  readable path below 840px. The Manifest V3 side panel adopts the same tokens
+  and keeps selection, recording, retry, publish, and error states visible.
+  A browser probe found no unlabeled controls, and reduced-motion emulation
+  reduced the publish transition to `0.01ms` while preserving the static state.
+  This is local rendered evidence; it does not replace docked extension,
+  microphone, offline, or deployed production acceptance. PR38’s hosted push
+  and pull-request checks also passed both Node and linux/amd64 + linux/arm64
+  production-image jobs on 2026-08-02 ([push run 30738159687](https://github.com/tcballard/annotated/actions/runs/30738159687),
+  [pull-request run 30738170634](https://github.com/tcballard/annotated/actions/runs/30738170634)).
 
 ## Deliberately unverified external gates
 

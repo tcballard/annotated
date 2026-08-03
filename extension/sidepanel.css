@@ -9,3 +9,40 @@ button:focus-visible,input:focus-visible,textarea:focus-visible { outline:2px so
 .current-source > div:last-child { min-width:0; }
 .time-fields label { min-width:0; }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; scroll-behavior:auto !important; transition-duration:.01ms !important; } }
+
+/* Keep the side panel visually quiet beside the page it annotates. */
+:root {
+  --color-text: #202522;
+  --color-muted: #7a837d;
+  --color-bg: #f5f4ef;
+  --color-surface: #fffefa;
+  --color-line: #d9ddd5;
+  --color-accent: #e85d3d;
+  --color-success: #e5eee7;
+}
+body { padding: 0 16px 20px; background: var(--color-bg); }
+.panel-header {
+  min-height: 60px;
+  margin: 0 -16px 27px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.mark { width: 27px; height: 27px; border: 1px solid var(--color-text); border-radius: 50%; background: var(--color-text); color: var(--color-surface); font-size: 16px; }
+.panel-header strong { font-size: 15px; }
+.panel-header small, .local { color: var(--color-muted); }
+.local i, .privacy i { width: 6px; height: 6px; background: #6cb984; }
+.title-row { margin-bottom: 17px; }
+.title-row h1 { font-size: 26px; }
+.current-source { padding: 12px 0; border: 0; border-bottom: 1px solid var(--color-line); background: transparent; }
+.source-icon { width: 27px; height: 27px; background: var(--color-surface); }
+.clip-card, .note-card { margin-top: 0; padding: 17px 0; border: 0; border-bottom: 1px solid var(--color-line); background: transparent; }
+.track { margin-top: 10px; }
+.note-card textarea { min-height: 106px; margin-top: 14px; }
+.mode { min-height: 30px; padding: 5px 7px; }
+.mode.active { background: transparent; box-shadow: none; border-bottom: 2px solid var(--color-accent); }
+.publish { margin-top: 18px; border-radius: 3px; background: var(--color-text); color: var(--color-surface); }
+.publish:hover { background: var(--color-accent); color: var(--color-text); }
+.success { border-color: var(--color-line); background: var(--color-surface); }
+.success-icon { background: var(--color-text); color: var(--color-success); }
