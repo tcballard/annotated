@@ -32,7 +32,7 @@ Then open the local Vite URL. The Vite dev server proxies `/api` to `http://loca
 
 OAuth, durable object storage, social graph persistence, moderation operations, and production hosting are being added as separate product slices. Direct-media source clips now run through the FFmpeg worker; YouTube/podcast provider extraction requires an installed `yt-dlp` adapter and remains explicit when unavailable. To try the extension, start `npm run dev:server`, open `chrome://extensions`, enable Developer mode, choose “Load unpacked”, and select the `extension/` folder. See [STORAGE.md](STORAGE.md) for the storage boundary, [EXTENSION_SURFACE_MAP.md](EXTENSION_SURFACE_MAP.md) for the extension surface and interaction contract, [CHROMEWEBSTORE.md](CHROMEWEBSTORE.md) for the store-readiness record, and [PERFORMANCE.md](PERFORMANCE.md) for the Rust/media-worker migration plan.
 
-Run `npm run package:extension` to create a runtime-only ZIP for a future Chrome Web Store submission. The package script intentionally does not claim that the required store icon, screenshots, public privacy-policy URL, or production browser evidence are ready.
+Run `npm run generate:extension-icons` when the authored icon source changes, then `npm run package:extension` to create a runtime-only ZIP for a future Chrome Web Store submission. The package now contains real 16/48/128 PNG icons; screenshots, public privacy-policy URL verification, and production browser evidence remain external gates.
 
 The web build includes a plain-language privacy policy at `/privacy.html`. It is part of the deployable `dist/` output, but the public URL must still be deployed and verified before a Chrome Web Store submission.
 
