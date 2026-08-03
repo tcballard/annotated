@@ -10,7 +10,7 @@ import { getObjectStore } from './object-store.js';
 import { enqueueMediaJob, recoverMediaJobs } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
-import { assertAuthConfiguration, authIsRequired, currentUser, finishOAuth, logout, providerStatus, startOAuth } from './auth.js';
+import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, providerStatus, startOAuth } from './auth.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
@@ -58,7 +58,7 @@ const handleApi = async (request, response, pathname) => {
   const authStartMatch = pathname.match(/^\/api\/auth\/(google|x)\/start$/);
   if (authStartMatch && request.method === 'GET') {
     try {
-      const result = await startOAuth(request, authStartMatch[1]);
+      const result = await startOAuth(request, authStartMatch[1], new URL(request.url || '/', publicOrigin).searchParams.get('return_to') || '');
       return redirect(response, result.location, { 'set-cookie': result.cookies });
     } catch (error) {
       return send(response, error.message.startsWith('Too many') ? 429 : 503, { error: error.message });
@@ -69,7 +69,7 @@ const handleApi = async (request, response, pathname) => {
   if (authCallbackMatch && request.method === 'GET') {
     try {
       const result = await finishOAuth(request, authCallbackMatch[1], new URL(request.url || '/', publicOrigin));
-      return redirect(response, `${process.env.APP_ORIGIN || publicOrigin}/?auth=success`, { 'set-cookie': [result.cookie, ...result.clearCookies] });
+      return redirect(response, result.redirectTo || `${process.env.APP_ORIGIN || publicOrigin}/?auth=success`, { 'set-cookie': [result.cookie, ...result.clearCookies] });
     } catch (error) {
       console.error('OAuth callback failed:', error.message);
       return redirect(response, `${process.env.APP_ORIGIN || publicOrigin}/?auth=error`);
@@ -77,6 +77,11 @@ const handleApi = async (request, response, pathname) => {
   }
 
   if (request.method === 'POST' && pathname === '/api/auth/logout') return send(response, 200, { status: 'signed-out' }, { 'set-cookie': await logout(request) });
+
+  if (request.method === 'POST' && pathname === '/api/auth/extension/exchange') {
+    const payload = await readJson(request);
+    try { return send(response, 200, await exchangeExtensionTicket(payload.ticket)); } catch (error) { return send(response, 401, { error: error.message }); }
+  }
 
   if (request.method === 'GET' && pathname === '/api/me') {
     const user = await currentUser(request);
