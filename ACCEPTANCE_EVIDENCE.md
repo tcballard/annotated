@@ -50,6 +50,9 @@ The local browser run exercised the user-facing flows below:
 - Discover search opened a labeled search form, returned matching server-backed
   annotations for `Rights smoke`, and showed a recoverable empty state for
   `unmatched phrase` with a clear-search action.
+- Media-policy tests cover cancellation checks before both a late successful
+  publish and a retry update, preventing a cancelled job from being revived by
+  a child-process completion.
 
 ## Deliberately unverified external gates
 

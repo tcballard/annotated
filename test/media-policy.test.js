@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildFfmpegArgs } from '../server/media-worker.js';
+import { buildFfmpegArgs, shouldAbortMediaJob } from '../server/media-worker.js';
 
 test('video transcodes are capped at 90 seconds and 240p', () => {
   const args = buildFfmpegArgs({ sourceType: 'video', clipStart: 5, clipEnd: 200 }, 'input.mp4', 'output.mp4');
@@ -19,4 +19,11 @@ test('zero-length media clips are rejected before spawning ffmpeg', () => {
     () => buildFfmpegArgs({ sourceType: 'video', clipStart: 10, clipEnd: 10 }, 'input.mp4', 'output.mp4'),
     /positive duration/,
   );
+});
+
+test('cancelled media jobs abort before a late worker completion can publish', () => {
+  const job = { id: 'job-1' };
+  assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'cancelled' }] }, new Set()), true);
+  assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'processing' }] }, new Set(['job-1'])), true);
+  assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'processing' }] }, new Set()), false);
 });
