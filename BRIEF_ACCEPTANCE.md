@@ -11,9 +11,9 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 | Text and recorded-audio commentary | partial | Web capture records, stages, uploads, publishes, and replays audio; extension publishes text only. | Extension audio flow and browser evidence. |
 | Public annotation landing page | partial | Stable `/a/:slug` route reloads published state from the API. | Durable production persistence and clean-checkout browser evidence. |
 | Every annotation links to its original source | partial | API preserves `sourceUrl`; public pages render the source citation. | Contract tests across every supported source and deployed browser evidence. |
-| Public social feed | partial | Published annotations and comments load from the local server store. | Durable database, pagination, profiles, authorization, and production evidence. |
-| Follow other users | missing | Follow UI is local-only state. | Persisted social graph and authorization tests. |
-| Comment on annotations | partial | Comments persist in the local server store. | Identity, authorization, abuse controls, and durable database tests. |
+| Public social feed | partial | Published annotations, author profiles, like counts, comments, filters, and cursor pagination load from the server store. | Durable production database, search, authorization, and deployed evidence. |
+| Follow other users | partial | Follow/unfollow endpoints persist a social graph and profile responses expose follower/following counts. | Multi-user OAuth browser evidence, abuse controls, and production database run. |
+| Comment on annotations | partial | Comments persist with author metadata and the UI reloads them from the API. | Identity, authorization, abuse controls, and durable production tests. |
 | Sign up with X or Google OAuth only | partial | Configurable Google/X OAuth starts and callbacks use PKCE; sessions, logout, expiry, owner IDs, and one-time extension tickets are server-backed. Local mode retains the development user. | Real provider credentials and callback success/cancellation/expiry browser evidence. |
 | Paste a URL or use the active page | partial | Web app resolves pasted URLs; extension reads the active tab. | Unified production API configuration and browser coverage. |
 | Support YouTube videos | partial | Metadata uses YouTube oEmbed; worker validates source URLs and invokes the configured `yt-dlp` adapter with a 240p-safe format. | Installed/configured provider adapter, failure/retry coverage, playable output evidence. |

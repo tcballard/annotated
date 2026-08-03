@@ -10,6 +10,8 @@ const emptyStore = {
   annotations: [],
   comments: [],
   claims: [],
+  follows: [],
+  likes: [],
   media: [],
   mediaJobs: [],
   sessions: [],
