@@ -113,6 +113,7 @@ const initialState = {
   audioUrl: '',
   audioDuration: 0,
   audioDraftId: '',
+  clientRequestId: globalThis.crypto?.randomUUID?.() || `capture-${Date.now()}`,
   isUploadingAudio: false,
   recordingSeconds: 0,
   clipUrl: '',
@@ -148,7 +149,7 @@ const initialState = {
 };
 
 const draftStorageKey = 'annotated-draft-v1';
-const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'commentary', 'commentaryMode', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId'];
+const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'commentary', 'commentaryMode', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId', 'clientRequestId'];
 
 const saved = (() => {
   try {
@@ -159,6 +160,7 @@ const saved = (() => {
 })();
 
 const state = { ...initialState, ...saved };
+state.clientRequestId ||= globalThis.crypto?.randomUUID?.() || `capture-${Date.now()}`;
 state.published = false;
 state.publishedSlug = '';
 state.publishedAnnotation = null;
@@ -185,6 +187,7 @@ const persist = () => {
       audioUrl: state.audioUrl,
       audioDuration: state.audioDuration,
       audioDraftId: state.audioDraftId,
+      clientRequestId: state.clientRequestId,
       customSource: state.customSource,
     }));
   } catch { /* private mode or blocked storage; the app remains usable */ }
@@ -211,6 +214,7 @@ const setSource = (type) => {
   state.sourceType = type;
   state.sourceUrl = sourceData[type].url;
   state.customSource = null;
+  state.clientRequestId = globalThis.crypto?.randomUUID?.() || `capture-${Date.now()}`;
   state.sourceError = '';
   if (type === 'video') { state.clipStart = 14; state.clipEnd = 62; }
   if (type === 'podcast') { state.clipStart = 10; state.clipEnd = 64; }
@@ -655,6 +659,7 @@ const loadSource = async () => {
     state.customSource = normalizeSource(resolved);
     state.sourceType = resolved.sourceType;
     state.sourceUrl = resolved.sourceUrl;
+    state.clientRequestId = globalThis.crypto?.randomUUID?.() || `capture-${Date.now()}`;
     if (state.sourceType === 'article') {
       state.clipStart = 0;
       state.clipEnd = 0;
@@ -705,6 +710,7 @@ const publishAnnotation = async () => {
       audioDuration: state.audioDuration || undefined,
       mediaUrl: currentSource.mediaUrl || undefined,
       provider: currentSource.provider || undefined,
+      clientRequestId: state.clientRequestId,
     });
     hydrateAnnotation(annotation);
     state.activeView = 'published';

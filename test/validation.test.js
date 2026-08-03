@@ -41,3 +41,9 @@ test('audio assets can only be attached by their owner', () => {
   assert.equal(canUseAudioAsset(media, { id: 'user-2' }), false);
   assert.equal(canUseAudioAsset({ ...media, mimeType: 'video/mp4' }, { id: 'user-1' }), false);
 });
+
+test('client request IDs are bounded and normalized for idempotent publishing', () => {
+  assert.deepEqual(validateAnnotation(mediaAnnotation({ clientRequestId: 'capture-1' })).errors, []);
+  assert.ok(validateAnnotation(mediaAnnotation({ clientRequestId: 'bad request' })).errors.includes('clientRequestId must be a bounded request ID.'));
+  assert.ok(validateAnnotation(mediaAnnotation({ clientRequestId: 'x'.repeat(81) })).errors.includes('clientRequestId must be a bounded request ID.'));
+});

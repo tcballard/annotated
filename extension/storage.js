@@ -24,6 +24,7 @@ export const compactDraft = (draft = {}) => ({
   audioAssetId: boundedString(draft.audioAssetId, 80),
   audioDuration: boundedNumber(draft.audioDuration),
   audioDraftId: boundedString(draft.audioDraftId, 80),
+  clientRequestId: boundedString(draft.clientRequestId, 80),
 });
 
 export const compactPublished = (annotation = {}) => ({

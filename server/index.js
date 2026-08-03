@@ -15,6 +15,7 @@ import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtension
 import { assertHardeningConfiguration, rateLimit, requestId, securityHeaders } from './hardening.js';
 import { canUseAudioAsset } from './media-access.js';
 import { metricsSnapshot, recordRequest } from './observability.js';
+import { findIdempotentAnnotation } from './idempotency.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
@@ -191,8 +192,21 @@ const handleApi = async (request, response, pathname) => {
     const id = randomUUID();
     const baseSlug = slugify(normalized.sourceTitle);
     const isMedia = normalized.sourceType !== 'article';
-    const annotation = { id, slug: `${baseSlug}-${id.slice(0, 6)}`, status: 'published', createdAt: now, authorId: actor?.id || 'local-tom', mediaStatus: isMedia ? 'queued' : 'not-applicable', ...normalized };
-    const next = await updateStore((store) => ({ ...store, annotations: [...store.annotations, annotation] }));
+    const ownerId = actor?.id || 'local-tom';
+    const candidate = { id, slug: `${baseSlug}-${id.slice(0, 6)}`, status: 'published', createdAt: now, authorId: ownerId, mediaStatus: isMedia ? 'queued' : 'not-applicable', ...normalized };
+    let created = false;
+    let annotation;
+    const next = await updateStore((store) => {
+      const existing = findIdempotentAnnotation(store.annotations, ownerId, normalized.clientRequestId);
+      if (existing) {
+        annotation = existing;
+        return store;
+      }
+      created = true;
+      annotation = candidate;
+      return { ...store, annotations: [...store.annotations, annotation] };
+    });
+    if (!created) return send(response, 200, { annotation: withComments(annotation, next, actor?.id) });
     if (isMedia) void enqueueMediaJob({ annotationId: id, sourceUrl: normalized.sourceUrl, sourceType: normalized.sourceType, sourceMediaUrl: normalized.mediaUrl, mediaUrl: normalized.mediaUrl, provider: normalized.provider, clipStart: normalized.clipStart, clipEnd: normalized.clipEnd }).catch((error) => console.error(error));
     return send(response, 201, { annotation: withComments(annotation, next) });
   }
