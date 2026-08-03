@@ -77,6 +77,11 @@ available in this environment, so the production image was validated through
 the hosted smoke workflow recorded below; the Dockerfile build order, non-root
 user, and context boundary are also covered by static tests.
 
+The 2026-08-04 docs-boundary update corrects the README, release record, and
+deployment runbook to describe the verified Railway POC staging service without
+calling it a public production release. `node --test test/deployment.test.js`
+and the full local suite cover the wording and release-boundary contract.
+
 ## Browser acceptance run
 
 The local browser run exercised the user-facing flows below:
