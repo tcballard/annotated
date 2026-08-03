@@ -20,9 +20,9 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 | Support news articles with selected passage and metadata | partial | Resolver bounds response size, extracts metadata/excerpts, preserves canonical URLs, and extension reads the user's selection. | Robust extraction across real article fixtures and selected-passage browser evidence. |
 | Support podcasts | partial | Resolver recognizes podcast sources/direct audio; worker validates inputs and invokes the configured `yt-dlp` audio adapter. | Provider extraction, retry/recovery, and browser playback evidence. |
 | Choose media start/end or exact text passage | partial | Web/extension range controls enforce bounds; active-tab text selection is captured. | Extension provider playback alignment and browser evidence. |
-| Generate clip and public landing page | partial | Publishing creates the page immediately and queues FFmpeg processing; jobs now have bounded retries, recovery, and owner cancellation. | Durable queue/object storage, real provider fixtures, cleanup, and browser evidence. |
+| Generate clip and public landing page | partial | Publishing creates the page immediately and queues FFmpeg processing; jobs now have bounded retries, recovery, owner cancellation, and FFprobe output inspection before readiness. | Durable queue/object storage, real provider fixtures, cleanup, and browser evidence. |
 | Maximum 90-second video/audio clips | partial | API validation rejects longer ranges and worker clamps duration. | Automated boundary tests and output-duration inspection. |
-| Video output is 240p and below 480p | partial | Worker passes `scale=-2:240` to FFmpeg. | Automated FFprobe inspection of a generated video fixture. |
+| Video output is 240p and below 480p | partial | Worker passes `scale=-2:240` to FFmpeg and rejects inspected output above 240px high. | Automated FFprobe inspection of a generated video fixture. |
 | Clearly visible `File a claim` on every annotation | partial | Public-page claim card submits a persisted local claim. | Authenticated moderation workflow, abuse controls, audit trail, and durable storage. |
 
 ## Production readiness gates

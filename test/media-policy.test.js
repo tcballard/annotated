@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildFfmpegArgs, shouldAbortMediaJob } from '../server/media-worker.js';
+import { buildFfmpegArgs, shouldAbortMediaJob, validateMediaProbe } from '../server/media-worker.js';
 
 test('video transcodes are capped at 90 seconds and 240p', () => {
   const args = buildFfmpegArgs({ sourceType: 'video', clipStart: 5, clipEnd: 200 }, 'input.mp4', 'output.mp4');
@@ -26,4 +26,12 @@ test('cancelled media jobs abort before a late worker completion can publish', (
   assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'cancelled' }] }, new Set()), true);
   assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'processing' }] }, new Set(['job-1'])), true);
   assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'processing' }] }, new Set()), false);
+});
+
+test('media output inspection enforces duration, audio, and video height boundaries', () => {
+  const video = validateMediaProbe('video', { format: { duration: '89.8' }, streams: [{ codec_type: 'video', height: 240 }, { codec_type: 'audio' }] });
+  assert.equal(video.duration, 89.8);
+  assert.throws(() => validateMediaProbe('video', { format: { duration: '90.1' }, streams: [{ codec_type: 'video', height: 240 }, { codec_type: 'audio' }] }), /90-second/);
+  assert.throws(() => validateMediaProbe('video', { format: { duration: '12' }, streams: [{ codec_type: 'video', height: 480 }, { codec_type: 'audio' }] }), /240p/);
+  assert.throws(() => validateMediaProbe('podcast', { format: { duration: '12' }, streams: [{ codec_type: 'video', height: 120 }, { codec_type: 'audio' }] }), /video stream/);
 });
