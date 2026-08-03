@@ -9,12 +9,12 @@ production gates are complete.
 ## Clean-checkout validation
 
 The following checks passed from a fresh clone of the final acceptance stack
-tip (`agent/brief-32-reproducible-ci`):
+tip (`agent/brief-33-production-services`):
 
 ```text
 npm ci
 npm run build
-npm test                         # 57 passing tests
+npm test                         # 57 passing, one explicit service-integration skip without local services
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -27,7 +27,7 @@ verified `/api/health`, `/api/ready`, restricted-origin rejection, provider
 configuration reporting, the development identity boundary, idempotent
 annotation publishing, public annotation reload, feed loading, comments,
 active-claim deduplication, reporter claim status, and owner moderation
-transitions. It passed as part of the 54-test run. The Docker daemon was not
+transitions. It passed as part of the 57-test local run. The Docker daemon was not
 available in this environment, so the production image itself remains an
 external gate; the Dockerfile build order, non-root user, and context boundary
 are covered by static tests.
@@ -135,6 +135,11 @@ The local browser run exercised the user-facing flows below:
   provider binary in each image. Both the push and pull-request runs for PR32
   passed on 2026-08-01 (for example,
   [run 30721572499](https://github.com/tcballard/annotated/actions/runs/30721572499)).
+- PR33’s hosted Node job ran all 58 tests with zero skips, including the real
+  PostgreSQL migration/repository test and the S3-compatible object lifecycle
+  test against an ephemeral MinIO service. The push and pull-request checks
+  passed on 2026-08-01 ([push run 30722800219](https://github.com/tcballard/annotated/actions/runs/30722800219),
+  [pull-request run 30722802311](https://github.com/tcballard/annotated/actions/runs/30722802311)).
 
 ## Deliberately unverified external gates
 
