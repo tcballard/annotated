@@ -6,7 +6,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 
 | Requirement | Status | Current evidence | Completion evidence still required |
 | --- | --- | --- | --- |
-| Chrome side-panel extension is the primary capture surface | partial | Manifest V3 side panel reads the active tab and selected text, uses a configurable API origin, exchanges OAuth tickets for bearer sessions, records bounded audio in IndexedDB, uploads server-side media, and queues retryable publishes in bounded local metadata. | Packaged-browser acceptance and a real deployed-origin run. |
+| Chrome side-panel extension is the primary capture surface | partial | Manifest V3 side panel reads the active tab and selected text, reloads on tab activation/navigation, uses an HTTPS-required deployed API origin, expires session tokens, exchanges OAuth tickets for bearer sessions, records bounded audio in IndexedDB, uploads server-side media, and queues retryable publishes in bounded local metadata. | Packaged-browser acceptance and a real deployed-origin run. |
 | Clip media, text, audio, or video from a website | partial | Web capture handles all three source categories; extension captures selected text and media ranges. | End-to-end provider clips from the extension for YouTube and podcasts. |
 | Text and recorded-audio commentary | partial | Web capture and the extension record, stage, upload, publish, and replay audio; extension audio drafts stay in IndexedDB and queued metadata contains no Blob. | Packaged extension audio browser evidence and production media delivery. |
 | Public annotation landing page | partial | Stable `/a/:slug` route reloads published state from the API. | Durable production persistence and clean-checkout browser evidence. |

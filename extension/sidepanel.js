@@ -39,6 +39,7 @@ let recordingChunks = [];
 let recordingStartedAt = 0;
 let recordingTimer;
 let audioUploadInFlight = false;
+let loadedTabUrl = '';
 
 const format = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
 
@@ -243,13 +244,33 @@ async function readSelection(tabId) {
   } catch { return ''; }
 }
 
+async function resetForNewTab(sourceType) {
+  draftReady = false;
+  if (audioDraftId) await deleteAudioDraft(audioDraftId).catch(() => {});
+  selectedText = '';
+  commentaryMode = 'text';
+  audioAssetId = '';
+  audioDurationSeconds = 0;
+  audioDraftId = '';
+  note.value = '';
+  const defaults = sourceType === 'podcast' ? [10, 64] : sourceType === 'video' ? [14, 62] : [0, 0];
+  start.value = startNumber.value = defaults[0];
+  end.value = endNumber.value = defaults[1];
+  document.querySelectorAll('[data-mode]').forEach((button) => button.classList.toggle('active', button.dataset.mode === 'text'));
+  syncRange();
+  syncNote();
+}
+
 async function loadCurrentTab() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) return;
     const url = tab.url || '';
     const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
-    currentTab = { url, title: tab.title || 'Current browser tab', host, sourceType: classify(url) };
+    const sourceType = classify(url);
+    if (loadedTabUrl && loadedTabUrl !== url) await resetForNewTab(sourceType);
+    loadedTabUrl = url;
+    currentTab = { url, title: tab.title || 'Current browser tab', host, sourceType };
     document.querySelector('#sourceTitle').textContent = currentTab.title;
     document.querySelector('#sourceUrl').textContent = url || 'Source URL unavailable';
     document.querySelector('#sourceIcon').textContent = currentTab.sourceType === 'video' ? '▶' : currentTab.sourceType === 'podcast' ? '◉' : 'T';
@@ -281,6 +302,11 @@ async function loadCurrentTab() {
     syncComposer();
   }
 }
+
+chrome.tabs?.onActivated?.addListener(() => { void loadCurrentTab(); });
+chrome.tabs?.onUpdated?.addListener((_tabId, changeInfo) => {
+  if (changeInfo.status === 'complete') void loadCurrentTab();
+});
 
 async function checkBackend() {
   try {
