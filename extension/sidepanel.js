@@ -17,6 +17,8 @@ const audioStatus = document.querySelector('#audioStatus');
 const audioHint = document.querySelector('#audioHint');
 const audioDuration = document.querySelector('#audioDuration');
 const audioRetry = document.querySelector('#audioRetry');
+const recordIcon = document.querySelector('.record-icon');
+const stopIcon = document.querySelector('.stop-icon');
 const success = document.querySelector('#success');
 const successLink = document.querySelector('#successLink');
 const error = document.querySelector('#error');
@@ -67,9 +69,11 @@ const setAudioStatus = (status, hint = '') => {
   audioDuration.textContent = format(audioDurationSeconds);
   audioRetry.hidden = !audioDraftId || Boolean(audioAssetId) || audioUploadInFlight || Boolean(mediaRecorder?.state === 'recording');
   audioRecord.disabled = audioUploadInFlight;
-  audioRecord.classList.toggle('is-recording', mediaRecorder?.state === 'recording');
-  audioRecord.setAttribute('aria-label', mediaRecorder?.state === 'recording' ? 'Stop recording' : 'Start recording');
-  audioRecord.textContent = mediaRecorder?.state === 'recording' ? '■' : '●';
+  const isRecording = mediaRecorder?.state === 'recording';
+  audioRecord.classList.toggle('is-recording', isRecording);
+  audioRecord.setAttribute('aria-label', isRecording ? 'Stop recording' : 'Start recording');
+  recordIcon.hidden = isRecording;
+  stopIcon.hidden = !isRecording;
 };
 
 const syncComposer = () => {
@@ -289,7 +293,11 @@ async function resetForNewTab(sourceType) {
   const defaults = sourceType === 'podcast' ? [10, 64] : sourceType === 'video' ? [14, 62] : [0, 0];
   start.value = startNumber.value = defaults[0];
   end.value = endNumber.value = defaults[1];
-  document.querySelectorAll('[data-mode]').forEach((button) => button.classList.toggle('active', button.dataset.mode === 'text'));
+  document.querySelectorAll('[data-mode]').forEach((button) => {
+    const active = button.dataset.mode === 'text';
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
   syncRange();
   syncNote();
 }
@@ -306,7 +314,7 @@ async function loadCurrentTab() {
     currentTab = { url, title: tab.title || 'Current browser tab', host, sourceType };
     document.querySelector('#sourceTitle').textContent = currentTab.title;
     document.querySelector('#sourceUrl').textContent = url || 'Source URL unavailable';
-    document.querySelector('#sourceIcon').textContent = currentTab.sourceType === 'video' ? '▶' : currentTab.sourceType === 'podcast' ? '◉' : 'T';
+    document.querySelector('#sourceIcon').dataset.sourceType = currentTab.sourceType;
     selectedText = tab.id ? await readSelection(tab.id) : '';
     selectionCard.hidden = !selectedText;
     selectionText.textContent = selectedText;
@@ -324,7 +332,11 @@ async function loadCurrentTab() {
       audioDraftId = draft.audioDraftId || '';
       clientRequestId = draft.clientRequestId || clientRequestId;
       note.placeholder = 'What stayed with you? Add the context the original clip is missing…';
-      document.querySelectorAll('[data-mode]').forEach((button) => button.classList.toggle('active', button.dataset.mode === commentaryMode));
+    document.querySelectorAll('[data-mode]').forEach((button) => {
+      const active = button.dataset.mode === commentaryMode;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
       syncRange();
       syncNote();
     }
@@ -375,7 +387,11 @@ note.addEventListener('input', syncNote);
 document.querySelectorAll('[data-mode]').forEach((mode) => mode.addEventListener('click', () => {
   if (mode.dataset.mode !== 'audio' && mediaRecorder?.state === 'recording') stopAudioRecording();
   commentaryMode = mode.dataset.mode;
-  document.querySelectorAll('[data-mode]').forEach((button) => button.classList.toggle('active', button === mode));
+  document.querySelectorAll('[data-mode]').forEach((button) => {
+    const active = button === mode;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
   note.placeholder = 'What stayed with you? Add the context the original clip is missing…';
   syncComposer();
   saveDraft();

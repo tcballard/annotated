@@ -42,6 +42,31 @@ test('extension runtime source avoids remote-code and service-worker timer patte
   assert.match(await read('options.html'), /<script type="module" src="options\.js"><\/script>/);
 });
 
+test('side panel keeps hidden states hidden and uses a coherent icon language', async () => {
+  const html = await read('sidepanel.html');
+  const styles = `${await read('sidepanel.css')}\n${await read('extra.css')}`;
+  const runtime = await read('sidepanel.js');
+  assert.match(styles, /\*\[hidden\]\s*\{\s*display:\s*none\s*!important/);
+  assert.match(html, /class="source-icon"[^>]*data-source-type/);
+  assert.match(html, /class="source-icon-glyph"/);
+  assert.match(html, /data-mode="text"[^>]*>\s*<svg/);
+  assert.match(html, /data-mode="audio"[^>]*>\s*<svg/);
+  assert.match(html, /data-mode="text"[^>]*aria-pressed="true"/);
+  assert.match(html, /data-mode="audio"[^>]*aria-pressed="false"/);
+  assert.match(html, /id="audioStatus"[^>]*role="status"/);
+  assert.match(html, /class="record-icon"/);
+  assert.match(html, /class="stop-icon"/);
+  assert.match(html, /id="publish"[^>]*>\s*<span>Publish annotation<\/span>\s*<svg/);
+  assert.doesNotMatch(html, />\s*[▶◉●■✓]\s*</);
+  assert.match(styles, /prefers-reduced-motion/);
+  assert.match(styles, /\.mode[^}]*min-height:\s*(?:3[6-9]|4[0-9])px/);
+  assert.match(styles, /\.audio-record[^}]*width:\s*44px[^}]*height:\s*44px/);
+  assert.match(runtime, /sourceIcon[\s\S]*dataset\.sourceType/);
+  assert.match(runtime, /recordIcon\.hidden\s*=\s*isRecording/);
+  assert.match(runtime, /stopIcon\.hidden\s*=\s*!isRecording/);
+  assert.match(runtime, /button\.setAttribute\('aria-pressed', String\(active\)\)/);
+});
+
 test('Chrome Web Store record covers every manifest permission and the privacy gate', async () => {
   const manifest = JSON.parse(await read('manifest.json'));
   const listing = await readFile(path.join(projectRoot, 'CHROMEWEBSTORE.md'), 'utf8');

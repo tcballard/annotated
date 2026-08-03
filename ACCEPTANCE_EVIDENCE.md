@@ -9,12 +9,12 @@ production gates are complete.
 ## Clean-checkout validation
 
 The following checks passed from a fresh clone of the final acceptance stack
-tip (`agent/brief-28-extension-publishing`):
+tip (`agent/brief-29-chrome-plugin-audit`):
 
 ```text
 npm ci
 npm run build
-npm test                         # 54 passing tests
+npm test                         # 55 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -80,9 +80,20 @@ The local browser run exercised the user-facing flows below:
   items with a reset path.
 - Chrome extension contract tests verify Manifest V3, the explicit side-panel
   trigger, the minimum Chrome version, local runtime files, no remote-code or
-  service-worker timer patterns, and complete Chrome Web Store permission
-  coverage. `npm run package:extension` produced a clean runtime-only ZIP whose
-  archive contains only the extension files.
+  service-worker timer patterns, complete Chrome Web Store permission coverage,
+  hidden-state rendering, the inline SVG icon system, reduced-motion support,
+  and accessible mode/status state. `npm run package:extension` produced a
+  clean runtime-only ZIP whose archive contains only the extension files.
+- An isolated headless Chrome DevTools MCP run loaded the unpacked extension
+  (`annotated — keep the moment` v0.1.0), opened the live
+  `chrome-extension://…/sidepanel.html` page, and produced an accessibility
+  snapshot with `LIVE` backend state, labeled sliders, text/audio buttons, the
+  publish action, and no page or service-worker console errors. The extension
+  action was also triggered against `https://example.com`; the service worker
+  remained error-free. The audio-mode interaction was clicked in the live page,
+  showing the staged-recording state and `Start recording` control. This does not
+  prove a user-facing docked side panel, microphone permission, offline replay,
+  or a deployed API origin.
 - Source-processing tests prove redirects are bounded and each redirect target
   is revalidated against the private-host SSRF policy; DNS lookup tests reject
   private answers before a fetch or provider input is used.
@@ -117,8 +128,9 @@ evidence are available:
 - Real YouTube/news/podcast extraction and FFmpeg output inspection, including
   a generated file proven to be no longer than 90 seconds and video proven to
   be 240p.
-- Installed Chrome side-panel acceptance, extension audio capture, offline
-  queue recovery, and service-worker/sidebar lifecycle checks.
+- Docked installed-Chrome side-panel acceptance, extension microphone capture,
+  offline queue recovery, and service-worker/sidebar lifecycle checks beyond the
+  isolated MCP page/action evidence above.
 - Chrome Web Store icon/screenshots, a public privacy-policy URL, and a
   monitored publisher contact address.
 - Multi-user production feed, follow, comment, claims, and moderation evidence.
