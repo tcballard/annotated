@@ -39,6 +39,19 @@ test('OAuth start creates a PKCE challenge and short-lived state cookies', async
   }
 });
 
+test('X OAuth requests only the identity scope needed for sign-in', async () => {
+  const saved = envSnapshot();
+  process.env.X_CLIENT_ID = 'x-client';
+  process.env.X_CLIENT_SECRET = 'x-secret';
+  process.env.OAUTH_PROVIDERS = 'x';
+  try {
+    const result = await startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'x');
+    assert.equal(new URL(result.location).searchParams.get('scope'), 'users.read');
+  } finally {
+    restoreEnv(saved);
+  }
+});
+
 test('production authentication fails fast when either required provider is absent', () => {
   const result = spawnSync(process.execPath, ['-e', "import('./server/auth.js').then((auth) => auth.assertAuthConfiguration())"], {
     cwd: process.cwd(),

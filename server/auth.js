@@ -30,7 +30,7 @@ const providers = {
     clientId: () => process.env.X_CLIENT_ID,
     clientSecret: () => process.env.X_CLIENT_SECRET,
     redirectUri: () => process.env.X_REDIRECT_URI || `${publicOrigin}/api/auth/x/callback`,
-    scope: 'users.read tweet.read offline.access',
+    scope: 'users.read',
   },
 };
 
