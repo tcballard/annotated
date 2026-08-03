@@ -3,6 +3,7 @@ const PODCAST_HOST_HINTS = ['podcast', 'overcast', 'spotify', 'soundcloud', 'tra
 const VIDEO_EXTENSIONS = /\.(?:mp4|webm|mov|m3u8)(?:$|\?)/i;
 const AUDIO_EXTENSIONS = /\.(?:mp3|m4a|wav|ogg|aac|flac)(?:$|\?)/i;
 const maxSourceBytes = 2 * 1024 * 1024;
+export const maxSourceRedirects = 3;
 
 const blockedHostname = (hostname) => {
   const value = hostname.toLowerCase().replace(/^\[|\]$/g, '');
@@ -85,15 +86,26 @@ const fetchText = async (url, timeoutMs = 8000) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'user-agent': 'annotated/0.1 source-resolver (+https://github.com/tcballard/annotated)' },
-      redirect: 'manual',
-    });
-    if (!response.ok) throw new Error(`Source returned ${response.status}.`);
-    const bytes = await response.arrayBuffer();
-    if (bytes.byteLength > maxSourceBytes) throw new Error('Source metadata is too large.');
-    return Buffer.from(bytes).toString('utf8');
+    let currentUrl = parseSourceUrl(url).toString();
+    for (let redirectCount = 0; redirectCount <= maxSourceRedirects; redirectCount += 1) {
+      const response = await fetch(currentUrl, {
+        signal: controller.signal,
+        headers: { 'user-agent': 'annotated/0.1 source-resolver (+https://github.com/tcballard/annotated)' },
+        redirect: 'manual',
+      });
+      if ([301, 302, 303, 307, 308].includes(response.status)) {
+        if (redirectCount === maxSourceRedirects) throw new Error('Source redirected too many times.');
+        const location = response.headers?.get?.('location') || response.headers?.location;
+        if (!location) throw new Error('Source redirect did not include a location.');
+        currentUrl = parseSourceUrl(new URL(location, currentUrl).toString()).toString();
+        continue;
+      }
+      if (!response.ok) throw new Error(`Source returned ${response.status}.`);
+      const bytes = await response.arrayBuffer();
+      if (bytes.byteLength > maxSourceBytes) throw new Error('Source metadata is too large.');
+      return Buffer.from(bytes).toString('utf8');
+    }
+    throw new Error('Source redirected too many times.');
   } finally {
     clearTimeout(timeout);
   }
