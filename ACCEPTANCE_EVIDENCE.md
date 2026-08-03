@@ -9,12 +9,12 @@ production gates are complete.
 ## Clean-checkout validation
 
 The following checks passed from a fresh clone of the final acceptance stack
-tip (`agent/brief-35-production-coverage`):
+tip (`agent/brief-37-identity-evidence`):
 
 ```text
 npm ci
 npm run build
-npm test                         # 58 passing, one explicit service-integration skip without local services
+npm test                         # 61 passing, one explicit service-integration skip without local services
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -27,7 +27,7 @@ verified `/api/health`, `/api/ready`, restricted-origin rejection, provider
 configuration reporting, the development identity boundary, idempotent
 annotation publishing, public annotation reload, feed loading, comments,
 active-claim deduplication, reporter claim status, and owner moderation
-transitions. It passed as part of the 59-test local run. The Docker daemon was not
+transitions. It passed as part of the 62-test local run. The Docker daemon was not
 available in this environment, so the production image was validated through
 the hosted smoke workflow recorded below; the Dockerfile build order, non-root
 user, and context boundary are also covered by static tests.
@@ -162,6 +162,13 @@ The local browser run exercised the user-facing flows below:
   cancelled jobs clear their lease. The hosted push and pull-request checks
   cover this code alongside the two production image architectures ([push run 30736186426](https://github.com/tcballard/annotated/actions/runs/30736186426),
   [pull-request run 30736193308](https://github.com/tcballard/annotated/actions/runs/30736193308)).
+- PR37’s hosted Node job ran all 62 tests with zero skips. The callback fixture
+  exercises PKCE state validation, Google profile exchange, session creation,
+  one-time extension-ticket exchange, and replay rejection in an isolated
+  temporary store. This is executable protocol evidence, not live provider
+  credential or consent-screen evidence. Both architecture smoke jobs also
+  passed ([push run 30736689346](https://github.com/tcballard/annotated/actions/runs/30736689346),
+  [pull-request run 30736699060](https://github.com/tcballard/annotated/actions/runs/30736699060)).
 
 ## Deliberately unverified external gates
 
