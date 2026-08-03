@@ -59,6 +59,9 @@ The local browser run exercised the user-facing flows below:
 - A local FFmpeg fixture using the worker's `scale=-2:240` policy produced an
   MP4 whose FFprobe report showed duration `1.266667`, a video height of `240`,
   and an audio stream.
+- The owner-only Moderation view loaded persisted claims, showed each source
+  and reporter, and changed the first claim from `open` to `in review`; the UI
+  displayed `Claim marked in review.` and the API recorded the audit transition.
 
 ## Deliberately unverified external gates
 
