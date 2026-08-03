@@ -83,9 +83,15 @@ test('side panel keeps hidden states hidden and uses a coherent icon language', 
 
 test('Chrome Web Store record covers every manifest permission and the privacy gate', async () => {
   const manifest = JSON.parse(await read('manifest.json'));
+  const packageVersion = JSON.parse(await readFile(path.join(projectRoot, 'package.json'), 'utf8')).version;
   const listing = await readFile(path.join(projectRoot, 'CHROMEWEBSTORE.md'), 'utf8');
+  const release = await readFile(path.join(projectRoot, 'RELEASE.md'), 'utf8');
+  assert.equal(manifest.version, packageVersion);
   assert.match(listing, /Chrome Web Store Listing/);
   assert.match(listing, new RegExp(`\`?${manifest.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\`?`));
+  assert.ok(listing.includes(`Version ${manifest.version} —`));
+  assert.match(release, new RegExp(`v${manifest.version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  assert.match(release, /draft release baseline/i);
   for (const permission of [...manifest.permissions, ...manifest.host_permissions]) assert.ok(listing.includes(permission), `Missing permission justification for ${permission}`);
   assert.match(listing, /Privacy Policy URL/);
   assert.match(listing, /not ready|TBD|external gate/i);

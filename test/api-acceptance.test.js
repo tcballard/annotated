@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import net from 'node:net';
 import { tmpdir as systemTmpdir } from 'node:os';
 import path from 'node:path';
@@ -8,6 +8,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+const packageVersion = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8')).version;
 
 const freePort = () => new Promise((resolve, reject) => {
   const probe = net.createServer();
@@ -80,6 +81,7 @@ test('local API serves the acceptance-critical health, identity, publish, social
   const health = await request(baseUrl, '/api/health', { origin: allowedOrigin });
   assert.equal(health.response.status, 200);
   assert.equal(health.payload.status, 'ok');
+  assert.equal(health.payload.version, packageVersion);
   assert.equal(health.payload.persistence, 'file');
   assert.equal(health.response.headers.get('access-control-allow-origin'), allowedOrigin);
   assert.ok(health.response.headers.get('x-request-id'));

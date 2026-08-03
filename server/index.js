@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import http from 'node:http';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -20,6 +21,8 @@ import { findActiveClaim, validateClaimTransition } from './moderation.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
+const require = createRequire(import.meta.url);
+const { version: releaseVersion } = require('../package.json');
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || '127.0.0.1';
 const publicOrigin = process.env.PUBLIC_ORIGIN || `http://localhost:${port}`;
@@ -87,7 +90,7 @@ const withComments = (annotation, store, viewerId = '') => ({
 });
 
 const handleApi = async (request, response, pathname) => {
-  if (request.method === 'GET' && pathname === '/api/health') return send(response, 200, { status: 'ok', version: '0.2.0', persistence: storageDescription(), metrics: metricsSnapshot() });
+  if (request.method === 'GET' && pathname === '/api/health') return send(response, 200, { status: 'ok', version: releaseVersion, persistence: storageDescription(), metrics: metricsSnapshot() });
   if (request.method === 'GET' && pathname === '/api/ready') {
     try {
       await checkStore();
