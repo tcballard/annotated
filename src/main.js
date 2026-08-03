@@ -137,6 +137,7 @@ const initialState = {
   authRequired: false,
   serverStatus: 'checking',
   serverError: '',
+  sourceError: '',
   isResolvingSource: false,
   isPublishing: false,
 };
@@ -205,6 +206,7 @@ const setSource = (type) => {
   state.sourceType = type;
   state.sourceUrl = sourceData[type].url;
   state.customSource = null;
+  state.sourceError = '';
   if (type === 'video') { state.clipStart = 14; state.clipEnd = 62; }
   if (type === 'podcast') { state.clipStart = 10; state.clipEnd = 64; }
   if (type === 'article') { state.clipStart = 0; state.clipEnd = 0; }
@@ -377,7 +379,7 @@ const sourceCanvas = () => {
   const canvas = state.sourceType === 'video' ? videoCanvas() : state.sourceType === 'article' ? articleCanvas() : podcastCanvas();
   return `<section class="source-stage">
     <div class="stage-header"><div><span class="eyebrow">Active tab</span><h1>${escapeHTML(source().title)}</h1></div><button class="ghost-button" data-action="toggle-source-input">${icon('link')} Change source</button></div>
-    ${state.showSourceInput ? `<div class="source-input-row"><label for="source-url">Paste a source URL</label><div class="source-input-wrap">${icon('link')}<input id="source-url" data-action="source-url" value="${escapeHTML(state.sourceUrl)}" /><button data-action="load-source" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Load'}</button></div><p>Live resolver: metadata is fetched server-side and kept attached to the original URL.</p></div>` : ''}
+    ${state.showSourceInput ? `<div class="source-input-row"><label for="source-url">Paste a source URL</label><div class="source-input-wrap">${icon('link')}<input id="source-url" data-action="source-url" value="${escapeHTML(state.sourceUrl)}" /><button data-action="load-source" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Load'}</button></div><p>Live resolver: metadata is fetched server-side and kept attached to the original URL.</p>${state.sourceError ? `<p class="source-error" role="alert">${escapeHTML(state.sourceError)}</p>` : ''}</div>` : ''}
     <div class="browser-frame">${browserChrome()}<div class="browser-page">${canvas}</div></div>
     <div class="source-footer"><div><span class="source-pill">${icon(state.sourceType)} ${source().label}</span><span class="source-byline">${escapeHTML(source().author)} <span>·</span> ${escapeHTML(source().date)}</span></div><a href="${escapeHTML(source().url)}" target="_blank" rel="noreferrer" class="source-link">Open original ${icon('external')}</a></div>
   </section>`;
@@ -603,10 +605,12 @@ const loadSource = async () => {
   const url = state.sourceUrl.trim();
   if (!url) { notify('Paste a source URL first.'); return; }
   if (state.serverStatus !== 'online') { notify('Backend unavailable — source resolution is not connected.'); return; }
+  state.sourceError = '';
   state.isResolvingSource = true;
   render();
   try {
     const { source: resolved } = await api.resolveSource(url);
+    if (resolved.error || resolved.processing === 'metadata-unavailable') throw new Error(resolved.error || 'Source metadata could not be loaded.');
     state.customSource = normalizeSource(resolved);
     state.sourceType = resolved.sourceType;
     state.sourceUrl = resolved.sourceUrl;
@@ -618,13 +622,15 @@ const loadSource = async () => {
       state.clipEnd = 60;
     }
     state.showSourceInput = false;
+    state.sourceError = '';
     state.isResolvingSource = false;
     persist();
     notify(`Resolved ${state.customSource.host || 'source'} — ready to annotate.`);
   } catch (error) {
     state.isResolvingSource = false;
+    state.sourceError = error.message || 'Source could not be resolved.';
     render();
-    notify(error.message || 'Source could not be resolved.');
+    notify(`Source could not be resolved: ${state.sourceError}`);
   }
 };
 
@@ -728,7 +734,7 @@ app.addEventListener('click', (event) => {
   if (target.dataset.stopClick === 'true') return;
   if (action === 'set-view') { state.activeView = target.dataset.view; persist(); render(); return; }
   if (action === 'source-type') { setSource(target.dataset.type); return; }
-  if (action === 'toggle-source-input') { state.showSourceInput = !state.showSourceInput; render(); return; }
+  if (action === 'toggle-source-input') { state.showSourceInput = !state.showSourceInput; if (!state.showSourceInput) state.sourceError = ''; render(); return; }
   if (action === 'load-source') { loadSource(); return; }
   if (action === 'commentary-mode') { if (state.isRecording) stopAudioRecording(); state.commentaryMode = target.dataset.mode; persist(); render(); return; }
   if (action === 'toggle-record') { toggleAudioRecording(); return; }
@@ -791,7 +797,7 @@ app.addEventListener('input', (event) => {
   }
   if (action === 'comment-draft') state.commentDraft = event.target.value;
   if (action === 'claim-text') state.claimReason = event.target.value;
-  if (action === 'source-url') { state.sourceUrl = event.target.value; state.customSource = null; }
+  if (action === 'source-url') { state.sourceUrl = event.target.value; state.customSource = null; state.sourceError = ''; }
   if (action === 'clip-start') { state.clipStart = Number(event.target.value); ensureClipBounds(); render(); }
   if (action === 'clip-end') { state.clipEnd = Number(event.target.value); ensureClipBounds(); render(); }
 });

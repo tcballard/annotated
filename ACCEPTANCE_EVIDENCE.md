@@ -8,12 +8,12 @@ production gates are complete.
 
 ## Clean-checkout validation
 
-The following checks passed on `agent/brief-08-acceptance-evidence`:
+The following checks passed on `agent/brief-10-source-errors`:
 
 ```text
 npm ci
 npm run build
-npm test                         # 24 passing tests
+npm test                         # 26 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -44,8 +44,9 @@ The local browser run exercised the user-facing flows below:
   and the empty `0:00` state. Microphone permission and an actual recording
   were not requested in this run.
 - The source-change control accepted a loopback URL; the API rejected it with
-  `That source host is not allowed`. The existing preview stayed on screen, so
-  a visible resolver-failure message is still an acceptance gap.
+  `That source host is not allowed`. The form stayed open and rendered an ARIA
+  `alert` with the resolver error while keeping the existing preview visible.
+  The valid source was restored afterward.
 
 ## Deliberately unverified external gates
 
@@ -63,4 +64,3 @@ evidence are available:
   queue recovery, and service-worker/sidebar lifecycle checks.
 - Multi-user production feed, follow, comment, claims, and moderation evidence.
 - Production observability, deployment, security, and readiness checks.
-
