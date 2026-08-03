@@ -47,3 +47,36 @@ The migration runner applies every ordered SQL file once and records the version
 The local adapter remains the default for `npm run dev:server`, tests, and offline UI work. Do not claim production readiness from a file-backed run.
 
 Production operations should call `/api/ready` after migrations and object-store credentials are loaded. A 200 response proves the latest migration is recorded, the configured repository can query, and the object store can answer a bucket health check; it does not replace a live provider, backup, or browser acceptance run.
+
+## Railway Buckets POC profile
+
+The chosen POC media store is a **private** Railway Storage Bucket. It uses the
+existing S3-compatible adapter; browser uploads still travel to Annotated's API,
+so the browser never receives bucket credentials and no bucket CORS policy is
+needed for uploads.
+
+Create a Railway bucket named `media` in the staging environment, then map its
+Railway-provided variable references to these service variables:
+
+```dotenv
+ANNOTATED_ASSET_STORAGE=s3
+S3_BUCKET=${{media.BUCKET}}
+S3_REGION=${{media.REGION}}
+S3_ENDPOINT=${{media.ENDPOINT}}
+S3_FORCE_PATH_STYLE=false
+S3_ACCESS_KEY_ID=${{media.ACCESS_KEY_ID}}
+S3_SECRET_ACCESS_KEY=${{media.SECRET_ACCESS_KEY}}
+S3_URL_TTL_SECONDS=900
+```
+
+Railway's values currently resolve to `https://storage.railway.app`, virtual
+hosted bucket addressing, and the `auto` region. Keep `S3_PUBLIC_BASE_URL`
+unset: Railway Buckets are private and a request to `/media/:id` redirects to a
+short-lived signed S3 URL instead. This keeps media non-public at rest while
+allowing public annotation pages to play the asset.
+
+Use Railway variable references rather than copying bucket secrets into Git,
+the extension, or browser storage. Run `/api/ready` after deployment; it
+performs an authenticated bucket health check before the staging service is
+considered ready. The generic adapter still supports Cloudflare R2 and other
+S3-compatible providers, but they are not part of this POC deployment.

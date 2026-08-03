@@ -16,10 +16,24 @@ const safeLocalPath = (key) => {
   return candidate;
 };
 
+const cloudflareR2Endpoint = (endpoint) => {
+  if (!endpoint) return null;
+  let url;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw new Error('S3_ENDPOINT must be an absolute URL.');
+  }
+  return /(^|\.)r2\.cloudflarestorage\.com$/i.test(url.hostname) ? url : null;
+};
+
 const assertS3Configuration = () => {
   const required = ['S3_BUCKET', 'S3_REGION', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'];
   const missing = required.filter((name) => !process.env[name]);
   if (missing.length) throw new Error(`ANNOTATED_ASSET_STORAGE=s3 requires ${missing.join(', ')}.`);
+  const r2 = cloudflareR2Endpoint(process.env.S3_ENDPOINT);
+  if (r2 && r2.protocol !== 'https:') throw new Error('Cloudflare R2 requires an HTTPS S3_ENDPOINT.');
+  if (r2 && process.env.S3_REGION !== 'auto') throw new Error('Cloudflare R2 requires S3_REGION=auto.');
 };
 
 class LocalObjectStore {

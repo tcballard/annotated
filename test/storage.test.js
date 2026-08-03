@@ -94,6 +94,27 @@ test('production S3 configuration is validated before serving media', () => {
   for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
 });
 
+test('Cloudflare R2 configuration requires its HTTPS endpoint and auto region', () => {
+  const saved = { ...process.env };
+  Object.assign(process.env, {
+    S3_BUCKET: 'annotated-staging-media',
+    S3_REGION: 'us-east-1',
+    S3_ENDPOINT: 'https://account-id.r2.cloudflarestorage.com',
+    S3_ACCESS_KEY_ID: 'test-key',
+    S3_SECRET_ACCESS_KEY: 'test-secret',
+  });
+  try {
+    assert.throws(() => new S3ObjectStore(), /requires S3_REGION=auto/);
+    process.env.S3_REGION = 'auto';
+    assert.doesNotThrow(() => new S3ObjectStore({ client: { async send() {} } }));
+    process.env.S3_ENDPOINT = 'http://account-id.r2.cloudflarestorage.com';
+    assert.throws(() => new S3ObjectStore(), /requires an HTTPS S3_ENDPOINT/);
+  } finally {
+    for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
+    for (const [name, value] of Object.entries(saved)) process.env[name] = value;
+  }
+});
+
 test('local and S3 object stores expose explicit readiness checks', async () => {
   await new LocalObjectStore().check();
   const saved = { ...process.env };
