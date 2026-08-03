@@ -276,6 +276,16 @@ The local browser run exercised the user-facing flows below:
   30745156997](https://github.com/tcballard/annotated/actions/runs/30745156997),
   [pull-request run
   30745158643](https://github.com/tcballard/annotated/actions/runs/30745158643)).
+- PR47 makes feed sharing card-specific instead of falling back to the
+  currently open annotation, adds a bounded URL helper with unit coverage, and
+  links public annotation bylines to `/u/:handle` profiles. The local build,
+  full suite (72 passing, one explicit production-service skip), syntax checks,
+  and diff check pass. Its hosted push and pull-request workflows both passed
+  Node plus linux/amd64 and linux/arm64 production-image smoke jobs on
+  2026-08-02 ([push run
+  30745677620](https://github.com/tcballard/annotated/actions/runs/30745677620),
+  [pull-request run
+  30745739976](https://github.com/tcballard/annotated/actions/runs/30745739976)).
 
 ## Deliberately unverified external gates
 
