@@ -13,7 +13,7 @@ The following checks passed on `agent/brief-16-source-redirects`:
 ```text
 npm ci
 npm run build
-npm test                         # 47 passing tests
+npm test                         # 49 passing tests
 node --check server/*.js src/*.js extension/*.js test/*.js scripts/*.js
 git diff --check
 ```
@@ -85,6 +85,9 @@ The local browser run exercised the user-facing flows below:
   and author-scoped retry lookup; web and extension drafts preserve the key.
 - Moderation tests cover active-claim deduplication and restricted terminal
   reopening; new claims and status changes append audit records in the store.
+- Deployment tests verify Vite builds before production pruning, the container
+  runs as an unprivileged user, and local state/secrets are excluded from its
+  build context.
 
 ## Deliberately unverified external gates
 

@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+
+test('production image builds before pruning dev dependencies and runs non-root', async () => {
+  const dockerfile = await readFile(new URL('../Dockerfile', import.meta.url), 'utf8');
+  assert.match(dockerfile, /RUN npm ci\n/);
+  assert.match(dockerfile, /RUN npm run build && npm prune --omit=dev/);
+  assert.match(dockerfile, /USER annotated/);
+});
+
+test('docker build context excludes local state and secrets', async () => {
+  const ignore = await readFile(new URL('../.dockerignore', import.meta.url), 'utf8');
+  assert.match(ignore, /^data$/m);
+  assert.match(ignore, /^\.env$/m);
+  assert.match(ignore, /^node_modules$/m);
+});

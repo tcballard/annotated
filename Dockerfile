@@ -6,9 +6,13 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 COPY . .
-RUN npm run build
+RUN npm run build && npm prune --omit=dev
+
+RUN groupadd --system annotated && useradd --system --gid annotated --home-dir /app annotated \
+  && chown -R annotated:annotated /app
+USER annotated
 
 ENV NODE_ENV=production
 ENV PORT=8787
