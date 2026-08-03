@@ -38,6 +38,29 @@ test('article resolution is bounded and preserves the page canonical URL', async
   }
 });
 
+test('article metadata decodes HTML entities in titles, descriptions, excerpts, and canonical links', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    arrayBuffer: async () => Buffer.from(`<html><head>
+      <title>Reading &amp; noticing</title>
+      <meta property="og:title" content="Reading &amp; noticing">
+      <meta property="og:description" content="A &quot;useful&quot; note about attention.">
+      <link rel="canonical" href="https://news.example/story?topic=craft&amp;view=full">
+    </head><body><article><p>This passage contains a &amp; sign and a &quot;quoted&quot; phrase so the public annotation can preserve the original article context.</p></article></body></html>`),
+  });
+  try {
+    const source = await resolveSource('https://news.example/story', { lookup: publicLookup });
+    assert.equal(source.title, 'Reading & noticing');
+    assert.equal(source.description, 'A "useful" note about attention.');
+    assert.equal(source.canonicalUrl, 'https://news.example/story?topic=craft&view=full');
+    assert.match(source.excerpt, /contains a & sign and a "quoted" phrase/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('podcast RSS resolution extracts the first episode, enclosure, and show metadata', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => ({
