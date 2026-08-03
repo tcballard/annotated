@@ -31,6 +31,12 @@ identity and claims boundaries. This is deployed API evidence; it does not
 replace live OAuth consent, docked Chrome, microphone, offline replay, or
 provider fixture/browser playback evidence.
 
+The same deployed API resolved the public YouTube fixture
+`https://www.youtube.com/watch?v=jNQXAC9IVRw` as `video`, `youtube`, and
+`ready-for-range`, and resolved `https://example.com/` as an `article` with
+`text-ready` metadata. The worker transcode, media delivery, and browser
+playback gates remain intentionally unclaimed.
+
 ## Clean-checkout validation
 
 The baseline acceptance checks passed from a fresh clone of the prior stack tip
