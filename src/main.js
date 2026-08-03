@@ -1,6 +1,7 @@
 import './styles.css';
 import { api } from './api.js';
 import { deleteMediaDraft, readMediaDraft, stageMediaDraft } from './media-draft-store.js';
+import { mediaPresentation } from './media-presentation.js';
 
 const app = document.querySelector('#app');
 
@@ -241,6 +242,7 @@ const annotationToFeedItem = (annotation) => {
     slug: annotation.slug,
     url: annotation.url,
     clipUrl: annotation.clipUrl || '',
+    audioUrl: annotation.audioUrl || '',
     mediaStatus: annotation.mediaStatus || 'not-applicable',
     duration: formatTime(Math.max(0, Number(annotation.clipEnd) - Number(annotation.clipStart))),
     quote: annotation.sourceExcerpt || annotation.commentary || 'A moment kept with its context.',
@@ -433,11 +435,19 @@ const captureView = () => `
 
 const feedCard = (item, index) => {
   const sourceHref = escapeHTML(item.sourceUrl || '#');
+  const media = mediaPresentation(item);
+  const fallbackStatus = media.status === 'processing' || media.status === 'queued' ? 'Preparing clip…' : media.status === 'failed' ? 'Clip unavailable' : 'Play after publishing';
+  const videoMedia = media.kind === 'video' && media.src
+    ? `<div class="feed-media feed-video feed-video-live"><video class="feed-video-player" controls preload="metadata" src="${escapeHTML(media.src)}"></video><span class="feed-duration">${escapeHTML(item.duration)}</span></div>`
+    : `<div class="feed-media feed-video"><div class="feed-video-shade"></div><button class="feed-play" aria-label="${escapeHTML(fallbackStatus)}" data-action="play-feed" data-media-status="${escapeHTML(media.status)}">${icon('play')}</button><span class="feed-duration">${escapeHTML(item.duration)}</span><span class="feed-media-status">${escapeHTML(fallbackStatus)}</span></div>`;
+  const audioMedia = media.kind === 'audio' && media.src
+    ? `<div class="feed-media feed-audio feed-audio-live"><div class="feed-audio-art">${icon('podcast')}</div><audio class="feed-audio-player" controls preload="metadata" src="${escapeHTML(media.src)}"></audio><span class="feed-duration">${escapeHTML(item.duration)}</span></div>`
+    : `<div class="feed-media feed-audio"><div class="feed-audio-art">${icon('podcast')}</div><div class="mini-wave">${Array.from({ length: 25 }, (_, i) => `<i style="height:${16 + ((i * 23) % 50)}%"></i>`).join('')}</div><span class="feed-duration">${escapeHTML(item.duration)}</span><span class="feed-media-status">${escapeHTML(fallbackStatus)}</span></div>`;
   return `
   <article class="feed-card ${index === 0 ? 'featured-card' : ''}">
     <div class="feed-card-top"><span class="source-pill">${icon(item.type.toLowerCase())} ${item.label}</span><button class="icon-button" aria-label="More options">${icon('more')}</button></div>
     <div class="feed-source-row"><div class="feed-avatar avatar-${index}">${escapeHTML(item.initials)}</div><div><strong>${escapeHTML(item.author)}</strong><span>${escapeHTML(item.handle)} · ${escapeHTML(item.time)}</span></div>${item.authorId ? `<button class="follow-button ${state.followingIds[item.authorId] ? 'is-following' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>` : ''}</div>
-    ${item.type === 'Video' ? `<div class="feed-media feed-video"><div class="feed-video-shade"></div><button class="feed-play" aria-label="Play clip" data-action="play-feed">${icon('play')}</button><span class="feed-duration">${escapeHTML(item.duration)}</span></div>` : item.type === 'Article' ? `<div class="feed-media feed-quote"><span>“</span><p>${escapeHTML(item.quote)}</p><small>Highlight from ${escapeHTML(item.host)}</small></div>` : `<div class="feed-media feed-audio"><div class="feed-audio-art">${icon('podcast')}</div><div class="mini-wave">${Array.from({ length: 25 }, (_, i) => `<i style="height:${16 + ((i * 23) % 50)}%"></i>`).join('')}</div><span class="feed-duration">${escapeHTML(item.duration)}</span></div>`}
+    ${item.type === 'Video' ? videoMedia : item.type === 'Article' && media.kind !== 'audio' ? `<div class="feed-media feed-quote"><span>“</span><p>${escapeHTML(item.quote)}</p><small>Highlight from ${escapeHTML(item.host)}</small></div>` : audioMedia}
     <h3>${escapeHTML(item.title)}</h3><p class="feed-commentary">${escapeHTML(item.commentary)}</p>
     <div class="feed-source-link"><span>${icon('link')} From ${escapeHTML(item.host)}</span><a href="${sourceHref}" ${item.sourceUrl ? 'target="_blank" rel="noreferrer"' : ''} data-action="open-original">Open source ${icon('external')}</a></div>
     <div class="feed-actions"><button data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" class="feed-action ${item.likedByMe || (state.liked && index === 0) ? 'is-liked' : ''}">${icon('heart')} <span>${item.likes + (state.liked && index === 0 && !item.likedByMe ? 1 : 0)}</span></button><button data-action="focus-comment" class="feed-action">${icon('message')} <span>${item.comments + (index === 0 && !state.feedAnnotations.length ? state.comments - 12 : 0)}</span></button><button class="feed-action share-action" data-action="share">${icon('link')} Share</button></div>
@@ -854,8 +864,8 @@ app.addEventListener('click', (event) => {
   if (action === 'logout') { api.logout().then(() => { state.user = null; notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
   if (action === 'profile') { notify('Profile controls arrive in the next pass.'); return; }
   if (action === 'sidebar-help') { notify('Annotated keeps a source link on every public page.'); return; }
-  if (action === 'toggle-preview') { notify('Preview playback is represented in this prototype.'); return; }
-  if (action === 'play-feed') { notify('Clip playback is represented in this prototype.'); return; }
+  if (action === 'toggle-preview') { notify('The source preview becomes playable after the clip is ready.'); return; }
+  if (action === 'play-feed') { notify(target.dataset.mediaStatus === 'not-applicable' ? 'Publish this clip to make it playable.' : 'This clip is still being prepared.'); return; }
 });
 
 app.addEventListener('input', (event) => {

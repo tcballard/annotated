@@ -259,6 +259,14 @@ The local browser run exercised the user-facing flows below:
   2026-08-02
   ([push run 30743790449](https://github.com/tcballard/annotated/actions/runs/30743790449),
   [pull-request run 30743793770](https://github.com/tcballard/annotated/actions/runs/30743793770)).
+- PR45 replaces feed-card prototype play buttons with native browser video/audio
+  controls whenever a server-backed media URL is ready, renders uploaded audio
+  commentary as playable feed media, and keeps queued, failed, and unsafe URLs
+  visible as explicit non-playable states. The presentation contract has unit
+  coverage. PR45's hosted push and pull-request workflows both passed Node plus
+  linux/amd64 and linux/arm64 production-image smoke jobs on 2026-08-02
+  ([push run 30744374874](https://github.com/tcballard/annotated/actions/runs/30744374874),
+  [pull-request run 30744377907](https://github.com/tcballard/annotated/actions/runs/30744377907)).
 
 ## Deliberately unverified external gates
 
