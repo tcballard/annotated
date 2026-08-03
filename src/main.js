@@ -102,6 +102,9 @@ const normalizeSource = (item = {}) => {
 
 const initialState = {
   activeView: 'capture',
+  profileHandle: '',
+  profileData: null,
+  profileLoading: false,
   sourceType: 'video',
   sourceUrl: sourceData.video.url,
   clipStart: 14,
@@ -251,6 +254,7 @@ const annotationToFeedItem = (annotation) => {
     likes: Number(annotation.likes) || 0,
     comments,
     authorId: annotation.author?.id || annotation.authorId || '',
+    authorHandle: annotation.author?.handle || '',
     likedByMe: Boolean(annotation.likedByMe),
   };
 };
@@ -282,9 +286,14 @@ const hydrateAnnotation = (annotation) => {
 
 const bootstrap = async () => {
   const routeMatch = window.location.pathname.match(/^\/a\/([^/]+)/);
+  const profileMatch = window.location.pathname.match(/^\/u\/([^/]+)/);
   if (routeMatch) {
     state.publishedSlug = decodeURIComponent(routeMatch[1]);
     state.activeView = 'published';
+  }
+  if (profileMatch) {
+    state.profileHandle = decodeURIComponent(profileMatch[1]);
+    state.activeView = 'profile';
   }
   try {
     await api.health();
@@ -299,6 +308,7 @@ const bootstrap = async () => {
       hydrateAnnotation(annotation);
       watchMediaProcessing();
     }
+    if (state.profileHandle) await loadProfile();
     await loadFeed();
   } catch (error) {
     state.serverStatus = 'offline';
@@ -446,7 +456,7 @@ const feedCard = (item, index) => {
   return `
   <article class="feed-card ${index === 0 ? 'featured-card' : ''}">
     <div class="feed-card-top"><span class="source-pill">${icon(item.type.toLowerCase())} ${item.label}</span><button class="icon-button" aria-label="More options">${icon('more')}</button></div>
-    <div class="feed-source-row"><div class="feed-avatar avatar-${index}">${escapeHTML(item.initials)}</div><div><strong>${escapeHTML(item.author)}</strong><span>${escapeHTML(item.handle)} · ${escapeHTML(item.time)}</span></div>${item.authorId ? `<button class="follow-button ${state.followingIds[item.authorId] ? 'is-following' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>` : ''}</div>
+    <div class="feed-source-row"><div class="feed-avatar avatar-${index}">${escapeHTML(item.initials)}</div><div>${item.authorId && item.authorHandle ? `<a class="profile-link" href="/u/${encodeURIComponent(item.authorHandle)}">${escapeHTML(item.author)}</a>` : `<strong>${escapeHTML(item.author)}</strong>`}<span>${escapeHTML(item.handle)} · ${escapeHTML(item.time)}</span></div>${item.authorId && item.authorId !== state.user?.id ? `<button class="follow-button ${state.followingIds[item.authorId] ? 'is-following' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>` : ''}</div>
     ${item.type === 'Video' ? videoMedia : item.type === 'Article' && media.kind !== 'audio' ? `<div class="feed-media feed-quote"><span>“</span><p>${escapeHTML(item.quote)}</p><small>Highlight from ${escapeHTML(item.host)}</small></div>` : audioMedia}
     <h3>${escapeHTML(item.title)}</h3><p class="feed-commentary">${escapeHTML(item.commentary)}</p>
     <div class="feed-source-link"><span>${icon('link')} From ${escapeHTML(item.host)}</span><a href="${sourceHref}" ${item.sourceUrl ? 'target="_blank" rel="noreferrer"' : ''} data-action="open-original">Open source ${icon('external')}</a></div>
@@ -495,6 +505,17 @@ const moderationView = () => {
     }).join('') : `<div class="feed-empty"><span class="eyebrow">Queue clear</span><h3>${state.moderationLoading ? 'Loading claims…' : 'No claims need review.'}</h3><p>New rights reports will appear here with their source and reporter attached.</p></div>`}</main>`;
 };
 
+const profileView = () => {
+  if (state.profileLoading) return `<div class="profile-page"><div class="feed-empty"><span class="eyebrow">Profile</span><h3>Loading profile…</h3><p>Fetching the public annotations and follow state.</p></div></div>`;
+  if (!state.profileData) return `<div class="profile-page"><div class="feed-empty"><span class="eyebrow">Profile unavailable</span><h3>We could not load this profile.</h3><p>${escapeHTML(state.serverError || 'Check the handle and try again.')}</p><button class="ghost-button" data-action="set-view" data-view="feed">Back to discover ${icon('arrow')}</button></div></div>`;
+  const profile = state.profileData;
+  const annotations = (profile.annotations || []).map(annotationToFeedItem);
+  const initials = (profile.displayName || profile.handle || 'A').slice(0, 2).toUpperCase();
+  const isCurrentUser = state.user?.id === profile.id;
+  const following = Boolean(state.followingIds[profile.id] ?? profile.isFollowing);
+  return `<div class="profile-page"><div class="view-head profile-page-head"><div><span class="eyebrow">Public profile</span><h2>${escapeHTML(profile.displayName || profile.handle)}</h2><p>@${escapeHTML(profile.handle)} · ${escapeHTML(profile.bio || 'Keeping the moments worth returning to.')}</p></div><button class="ghost-button" data-action="set-view" data-view="feed">${icon('back')} Discover</button></div><section class="profile-hero"><div class="profile-avatar-large">${escapeHTML(initials)}</div><div class="profile-identity"><span class="eyebrow">Annotated member</span><h3>${escapeHTML(profile.displayName || profile.handle)}</h3><p>@${escapeHTML(profile.handle)}</p></div>${!isCurrentUser ? `<button class="follow-button profile-follow ${following ? 'is-following' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(profile.id)}">${following ? 'Following' : 'Follow'}</button>` : '<span class="profile-self">You</span>'}<div class="profile-metrics"><span><strong>${Number(profile.annotationCount) || annotations.length}</strong> annotations</span><span><strong>${Number(profile.followers) || 0}</strong> followers</span><span><strong>${Number(profile.following) || 0}</strong> following</span></div></section><div class="profile-section-head"><div><span class="eyebrow">Their annotations</span><h3>What they kept.</h3></div></div><main class="profile-annotations">${annotations.length ? annotations.map(feedCard).join('') : `<div class="feed-empty"><span class="eyebrow">No annotations yet</span><h3>This profile is just getting started.</h3><p>Published moments will appear here with their original sources attached.</p></div>`}</main></div>`;
+};
+
 const publishedView = () => {
   const publishedSource = source();
   const publishedComments = state.publishedAnnotation?.comments || [];
@@ -512,7 +533,7 @@ const claimModal = () => `<div class="modal-backdrop" data-action="toggle-claim"
 const toast = () => state.toast ? `<div class="toast" role="status"><span class="toast-icon">${icon('check')}</span>${escapeHTML(state.toast)}</div>` : '';
 
 const render = () => {
-  app.innerHTML = `${appHeader()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : publishedView()}</main></div>${toast()}`;
+  app.innerHTML = `${appHeader()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : state.activeView === 'profile' ? profileView() : publishedView()}</main></div>${toast()}`;
 };
 
 const ensureClipBounds = () => {
@@ -626,6 +647,21 @@ const loadModerationClaims = async () => {
     state.serverError = error.message;
   } finally {
     state.moderationLoading = false;
+  }
+};
+
+const loadProfile = async () => {
+  if (!state.profileHandle || state.serverStatus !== 'online') return;
+  state.profileLoading = true;
+  try {
+    const result = await api.profile(state.profileHandle);
+    state.profileData = result.profile || null;
+    if (state.profileData?.id) state.followingIds[state.profileData.id] = Boolean(state.profileData.isFollowing);
+  } catch (error) {
+    state.profileData = null;
+    state.serverError = error.message;
+  } finally {
+    state.profileLoading = false;
   }
 };
 
@@ -792,6 +828,10 @@ app.addEventListener('click', (event) => {
   if (action === 'set-view') {
     if (target.dataset.view === 'moderation' && !canModerate()) { notify('Moderation access is required.'); return; }
     state.activeView = target.dataset.view;
+    if (state.activeView !== 'profile') {
+      state.profileHandle = '';
+      state.profileData = null;
+    }
     if (state.activeView === 'moderation') loadModerationClaims().then(render);
     persist();
     render();
@@ -850,6 +890,10 @@ app.addEventListener('click', (event) => {
           const result = following ? await api.unfollow(userId) : await api.follow(userId);
           state.followingIds[userId] = result.following;
           state.following = result.following;
+          if (state.profileData?.id === userId) {
+            state.profileData.isFollowing = result.following;
+            state.profileData.followers = Math.max(0, Number(state.profileData.followers || 0) + (result.following ? 1 : -1));
+          }
           render();
         } catch (error) { notify(error.message || 'Follow could not be saved.'); }
       })();

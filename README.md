@@ -19,8 +19,8 @@ Then open the local Vite URL. The Vite dev server proxies `/api` to `http://loca
 - 90-second clip selection for media sources
 - Text annotation and browser-recorded audio commentary with bounded uploads
 - Published annotation page with source citation and visible “File a claim” flow
-- Public discovery feed with bounded server-backed search, follow, like,
-  comment, and share interactions
+- Public discovery feed with bounded server-backed search, public profiles,
+  follow, like, comment, and share interactions
 - Responsive desktop/mobile layouts with reduced-motion support
 - Server-backed local persistence for annotations, comments, and claims in `data/store.json` during development
 - Source URL resolver with URL validation, source classification, metadata extraction, and SSRF-safe host checks

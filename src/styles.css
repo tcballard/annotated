@@ -176,6 +176,25 @@ a { color: inherit; }
 .feed-audio-live { position: relative; }
 .feed-audio-player { min-width: 0; flex: 1; }
 .feed-media-status { position: absolute; right: 11px; bottom: 10px; padding: 4px 6px; background: rgba(17,21,21,.78); color: var(--surface); font-family: var(--mono); font-size: 9px; }
+.profile-page { max-width: 1040px; margin: 0 auto; }
+.profile-page-head { max-width: 900px; margin-right: auto; margin-left: auto; }
+.profile-hero { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px; max-width: 900px; margin: 0 auto 42px; padding: 24px; border: 1px solid var(--line); background: var(--surface); box-shadow: 4px 5px 0 rgba(17,21,21,.07); }
+.profile-avatar-large { display: grid; width: 72px; height: 72px; place-items: center; border-radius: 50%; background: var(--orange); color: var(--ink); font-family: var(--mono); font-size: 18px; }
+.profile-identity h3 { margin: 6px 0 2px; font-family: var(--display); font-size: 28px; letter-spacing: -.07em; }
+.profile-identity p { margin: 0; color: var(--muted); font-family: var(--mono); font-size: 10px; }
+.profile-follow { align-self: start; margin: 3px 0 0; }
+.profile-self { align-self: start; padding: 7px 9px; color: var(--muted); font-family: var(--mono); font-size: 9px; text-transform: uppercase; }
+.profile-hero .profile-metrics { grid-column: 1 / -1; width: 100%; margin: 3px 0 0; }
+.profile-section-head { max-width: 900px; margin: 0 auto 16px; }
+.profile-section-head h3 { margin: 7px 0 0; font-family: var(--display); font-size: 26px; letter-spacing: -.07em; }
+.profile-annotations { display: grid; gap: 20px; max-width: 900px; margin: 0 auto; }
+.profile-link { display: block; color: var(--ink); font-size: 12px; font-weight: 700; text-decoration: none; }
+.profile-link:hover { color: var(--orange-deep); }
+@media (max-width: 620px) {
+  .profile-hero { grid-template-columns: auto 1fr; }
+  .profile-follow, .profile-self { grid-column: 2; justify-self: start; }
+  .profile-hero .profile-metrics { grid-column: 1 / -1; overflow-x: auto; }
+}
 
 @media (max-width: 840px) {
   .moderation-head { display: block; }.moderation-head .ghost-button { margin-top: 20px; }.moderation-source { display: block; }.moderation-source a { display: block; margin-top: 8px; }.moderation-date { text-align: right; }
