@@ -62,6 +62,7 @@ const sourceData = {
     author: 'The Verge · David Pierce',
     date: '2h ago',
     duration: 0,
+    excerpt: 'The most valuable part of a link is often the part that doesn’t fit in the answer.',
     caption: 'A considered argument about what gets lost when every answer arrives pre-packaged.',
   },
   podcast: {
@@ -112,6 +113,7 @@ const initialState = {
   sourceUrl: sourceData.video.url,
   clipStart: 14,
   clipEnd: 62,
+  articleExcerpt: sourceData.article.excerpt,
   commentary: '',
   commentaryMode: 'text',
   isRecording: false,
@@ -160,7 +162,7 @@ const initialState = {
 };
 
 const draftStorageKey = 'annotated-draft-v1';
-const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'commentary', 'commentaryMode', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId', 'clientRequestId'];
+const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'articleExcerpt', 'commentary', 'commentaryMode', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId', 'clientRequestId'];
 
 const saved = (() => {
   try {
@@ -195,6 +197,7 @@ const persist = () => {
       sourceUrl: state.sourceUrl,
       clipStart: state.clipStart,
       clipEnd: state.clipEnd,
+      articleExcerpt: state.articleExcerpt,
       commentary: state.commentary,
       commentaryMode: state.commentaryMode,
       audioAssetId: state.audioAssetId,
@@ -266,7 +269,7 @@ const setSource = (type) => {
   state.sourceError = '';
   if (type === 'video') { state.clipStart = 14; state.clipEnd = 62; }
   if (type === 'podcast') { state.clipStart = 10; state.clipEnd = 64; }
-  if (type === 'article') { state.clipStart = 0; state.clipEnd = 0; }
+  if (type === 'article') { state.clipStart = 0; state.clipEnd = 0; state.articleExcerpt = sourceData.article.excerpt; }
   state.showSourceInput = false;
   persist();
   render();
@@ -315,6 +318,7 @@ const hydrateAnnotation = (annotation) => {
     host: annotation.sourceHost,
     excerpt: annotation.sourceExcerpt,
   });
+  state.articleExcerpt = annotation.sourceExcerpt || '';
   state.clipStart = Number(annotation.clipStart) || 0;
   state.clipEnd = Number(annotation.clipEnd) || 0;
   state.commentary = annotation.commentary || '';
@@ -436,7 +440,7 @@ const articleCanvas = () => `
     <p class="article-dek">We used to browse toward a question. Now the answer arrives first, and the path disappears.</p>
     <div class="article-meta">By David Pierce <span>·</span> 2h ago</div>
     <div class="article-body-lines"><i></i><i></i><i class="short"></i><i></i><i></i><i class="short"></i></div>
-    <blockquote>“The most valuable part of a link is often the part that doesn’t fit in the answer.”</blockquote>
+    <blockquote>“${escapeHTML(articleExcerpt() || sourceData.article.excerpt)}”</blockquote>
     <div class="article-highlight">${icon('text')} Highlighted passage ready to clip</div>
   </div>`;
 
@@ -458,8 +462,13 @@ const sourceCanvas = () => {
   </section>`;
 };
 
+const articleExcerpt = () => String(state.articleExcerpt ?? source().excerpt ?? '').trim();
+
 const timeRange = () => {
-  if (state.sourceType === 'article') return `<div class="highlight-preview"><div class="highlight-mark"></div><p>“${escapeHTML(source().excerpt || 'The most valuable part of a link is often the part that doesn’t fit in the answer.') }”</p><span>Highlight selected · ${source().excerpt ? `${source().excerpt.length} characters` : '126 characters'}</span></div>`;
+  if (state.sourceType === 'article') {
+    const excerpt = articleExcerpt();
+    return `<div class="highlight-preview"><div class="highlight-mark"></div><label for="article-excerpt">Selected passage</label><textarea id="article-excerpt" data-action="article-excerpt" maxlength="2000" aria-describedby="article-excerpt-hint">${escapeHTML(excerpt)}</textarea><span id="article-excerpt-hint">Highlight selected · ${excerpt.length} characters · edit before publishing</span></div>`;
+  }
   const max = MAX_CLIP_SECONDS;
   const length = Math.max(0, state.clipEnd - state.clipStart);
   return `<div class="clip-editor">
@@ -530,7 +539,7 @@ const annotationHero = () => {
   const clipUrl = state.publishedAnnotation?.clipUrl || state.clipUrl;
   const audioUrl = state.publishedAnnotation?.audioUrl || state.audioUrl;
   const status = state.mediaStatus === 'failed' ? 'Clip unavailable — source adapter required.' : state.mediaStatus === 'processing' ? 'Preparing a 240p clip…' : 'Clip queued for processing…';
-  if (state.sourceType === 'article') return `<div class="annotation-article-text"><span class="quote-mark">“</span><p>${escapeHTML(source().excerpt || 'The most valuable part of a link is often the part that doesn’t fit in the answer.')}</p><span>Highlighted passage</span></div>`;
+  if (state.sourceType === 'article') return `<div class="annotation-article-text"><span class="quote-mark">“</span><p>${escapeHTML(articleExcerpt() || sourceData.article.excerpt)}</p><span>Highlighted passage</span></div>`;
   if (state.sourceType === 'video') return clipUrl
     ? `<video class="annotation-video-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></video>`
     : `<div class="annotation-video-bg"><div class="video-silhouette small"></div><span class="media-status">${status}</span></div><button class="annotation-play" data-action="toggle-preview">${icon('play')}</button><span class="annotation-clip-time">${formatTime(state.clipStart)} — ${formatTime(state.clipEnd)}</span>`;
@@ -778,6 +787,7 @@ const loadSource = async () => {
     state.customSource = normalizeSource(resolved);
     state.sourceType = resolved.sourceType;
     state.sourceUrl = resolved.sourceUrl;
+    state.articleExcerpt = resolved.sourceType === 'article' ? (resolved.excerpt || '') : '';
     state.clientRequestId = globalThis.crypto?.randomUUID?.() || `capture-${Date.now()}`;
     if (state.sourceType === 'article') {
       state.clipStart = 0;
@@ -807,6 +817,7 @@ const publishAnnotation = async () => {
   }
   if (requestSignIn('publish this annotation')) return;
   if (state.sourceType !== 'article' && state.clipEnd - state.clipStart > 90) { notify('Keep the clip under 90 seconds.'); return; }
+  if (state.sourceType === 'article' && !articleExcerpt()) { notify('Select a passage before publishing.'); return; }
   if (state.commentaryMode === 'text' && !state.commentary.trim()) { notify('Add a note before publishing.'); return; }
   if (state.commentaryMode === 'audio' && !state.audioAssetId) { notify('Finish uploading the audio note before publishing.'); return; }
   if (state.serverStatus !== 'online') { notify('Backend unavailable — this draft has not been published.'); return; }
@@ -820,7 +831,7 @@ const publishAnnotation = async () => {
       sourceType: state.sourceType,
       sourceTitle: currentSource.title,
       sourceHost: currentSource.host,
-      sourceExcerpt: currentSource.excerpt || (state.sourceType === 'article' ? 'The most valuable part of a link is often the part that does not fit in the answer.' : ''),
+      sourceExcerpt: state.sourceType === 'article' ? articleExcerpt() : currentSource.excerpt || '',
       canonicalUrl: currentSource.canonicalUrl || state.sourceUrl,
       clipStart: state.clipStart,
       clipEnd: state.clipEnd,
@@ -1023,6 +1034,12 @@ app.addEventListener('input', (event) => {
   if (action === 'comment-draft') state.commentDraft = event.target.value;
   if (action === 'claim-text') state.claimReason = event.target.value;
   if (action === 'source-url') { state.sourceUrl = event.target.value; state.customSource = null; state.sourceError = ''; }
+  if (action === 'article-excerpt') {
+    state.articleExcerpt = event.target.value.slice(0, 2000);
+    const hint = event.target.closest('.highlight-preview')?.querySelector('#article-excerpt-hint');
+    if (hint) hint.textContent = `Highlight selected · ${state.articleExcerpt.trim().length} characters · edit before publishing`;
+    persist();
+  }
   if (action === 'clip-start') { setClipBoundary('start', event.target.value); persist(); refreshClipControls(); }
   if (action === 'clip-end') { setClipBoundary('end', event.target.value); persist(); refreshClipControls(); }
 });

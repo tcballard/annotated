@@ -127,6 +127,7 @@ test('local API serves the acceptance-critical health, identity, publish, social
     sourceUrl: 'https://example.com/acceptance-source',
     sourceType: 'article',
     sourceTitle: 'Acceptance source',
+    sourceExcerpt: 'A selected passage from the acceptance article.',
     commentaryMode: 'text',
     commentary: 'A durable publish should be safe to retry.',
     clientRequestId: 'acceptance-publish-1',

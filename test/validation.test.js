@@ -30,6 +30,14 @@ test('rejects private and non-http source URLs', () => {
   assert.ok(validateAnnotation(mediaAnnotation({ sourceUrl: 'file:///tmp/video.mp4' })).errors.length);
 });
 
+test('requires and bounds a selected article passage', () => {
+  const article = mediaAnnotation({ sourceType: 'article', sourceExcerpt: 'A selected passage.' });
+  assert.deepEqual(validateAnnotation(article).errors, []);
+  assert.equal(validateAnnotation(article).normalized.sourceExcerpt, 'A selected passage.');
+  assert.ok(validateAnnotation({ ...article, sourceExcerpt: '' }).errors.includes('An article passage is required.'));
+  assert.ok(validateAnnotation({ ...article, sourceExcerpt: 'x'.repeat(2001) }).errors.includes('sourceExcerpt must be text of 2,000 characters or fewer.'));
+});
+
 test('requires a server-owned audio asset for audio commentary', () => {
   const result = validateAnnotation(mediaAnnotation({ commentaryMode: 'audio', commentary: '' }));
   assert.ok(result.errors.includes('An uploaded audio asset is required.'));

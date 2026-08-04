@@ -78,6 +78,13 @@ comment persistence, and idempotent like/unlike counts. This proves the local
 social interaction contract; OAuth-backed multi-user and deployed evidence
 remain external.
 
+Article capture now has an editable, persisted selected-passage field in the
+web desk, and the extension refuses to publish an article until page text is
+selected. The server bounds `sourceExcerpt` at 2,000 characters and requires
+it for article annotations; validation and extension contract tests pass.
+This closes the local selection contract while real-page selection evidence
+remains external.
+
 The claim-surface deployment also serves the feed/profile card contract from
 the same PostgreSQL-backed staging service. The claim action preserves the
 selected annotation slug and submits through the persisted claim endpoint;

@@ -79,6 +79,7 @@ test('side panel keeps hidden states hidden and uses a coherent icon language', 
   assert.match(runtime, /recordIcon\.hidden\s*=\s*isRecording/);
   assert.match(runtime, /stopIcon\.hidden\s*=\s*!isRecording/);
   assert.match(runtime, /button\.setAttribute\('aria-pressed', String\(active\)\)/);
+  assert.match(runtime, /currentTab\.sourceType === 'article' && !selectedText\.trim\(\)/);
 });
 
 test('Chrome Web Store record covers every manifest permission and the privacy gate', async () => {
