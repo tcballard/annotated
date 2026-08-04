@@ -186,6 +186,12 @@ ledger, and never accepts an ambiguous database name. It does not delete or
 repoint a database, and it does not copy object bytes; use the provider's
 versioned/retained bucket or an isolated copy for media recovery.
 
+Hosted CI also exercises the artifact path against ephemeral PostgreSQL and
+MinIO: it runs `pg_dump`, inventories the real S3-compatible bucket, writes the
+manifest, and runs `npm run backup:verify` with `pg_restore --list`. This proves
+the command boundary and artifact shape; it is not a scheduled production
+backup or an isolated live recovery.
+
 The PostgreSQL rate-limit ledger stores only a SHA-256 bucket key, the fixed
 window count, and expiry. Audio uploads, publishing, follows, comments, likes,
 claims, moderation changes, and OAuth starts use the same atomic bucket
