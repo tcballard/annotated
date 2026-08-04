@@ -10,7 +10,13 @@ test('staging media smoke is guarded, uses production boundaries, and cleans its
   assert.match(script, /annotated-staging\.up\.railway\.app/);
   assert.match(script, /samplelib\.com\/lib\/preview\/mp3/);
   assert.match(script, /redirect: 'manual'/);
+  assert.match(script, /runMediaCommand\('ffprobe'/);
+  assert.match(script, /validateMediaProbe\(fixture\.sourceType, probe\)/);
+  assert.match(script, /durationSeconds: Number\(inspected\.duration\.toFixed\(3\)\)/);
+  assert.match(script, /videoHeight: videoStream \? Number\(videoStream\.height\) : null/);
+  assert.match(script, /hasAudio: probe\.streams\.some/);
   assert.match(script, /removeStoredMedia\(media\)/);
+  assert.match(script, /rm\(probeDirectory, \{ recursive: true, force: true \}\)/);
   assert.match(script, /mediaJobs: \(store\.mediaJobs \|\| \[\]\)\.filter/);
   assert.match(script, /closeStore\(\)/);
 });

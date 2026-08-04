@@ -3,8 +3,36 @@
 Last run: 2026-08-04
 
 This record supplements [`BRIEF_ACCEPTANCE.md`](./BRIEF_ACCEPTANCE.md). It is
-evidence from the current stacked branch, not a claim that the external
-production gates are complete.
+evidence from merged `main`, hosted CI, and the named staging deployments—not
+a claim that the external production gates are complete.
+
+## Non-browser closeout refresh
+
+PR #89 passed CI without review threads and was squash-merged to `main` as
+`d276f4c`. Railway deployment
+`8a15f3d9-6bc2-463d-953c-f319b17eba75` deployed that merged tree and passed
+the public staging suite with PostgreSQL persistence, a ready media runtime,
+X enabled and Google disabled, PKCE start/cancellation redirects, all three
+source preflights, public app/privacy/feed responses, and the expected `401`
+identity/claims boundaries.
+
+The guarded production-shaped media smoke then passed for direct audio and
+video. The private signed audio object returned HTTP 200 as `audio/webm`, was
+10,037 bytes, measured 1.008 seconds, contained audio, and contained no video.
+The private signed video object returned HTTP 200 as `video/mp4`, was 15,897
+bytes, measured 1.003 seconds at 428×240, and contained audio. The enhanced
+smoke downloads each delivered object, runs FFprobe and `validateMediaProbe`
+against the delivered bytes, and removes its temporary database records,
+objects, and probe files. The guarded PostgreSQL limiter also passed with
+`shared: true`, `allowed: [true, true, false]`, and a positive `Retry-After`,
+then deleted its temporary bucket.
+
+The remaining product-validation items are collected as a browser-only
+checklist in [`ACCEPTANCE_GAP_AUDIT_2026-08-04.md`](./ACCEPTANCE_GAP_AUDIT_2026-08-04.md).
+Separate release-infrastructure gates remain explicit: deployed YouTube
+extraction needs an approved proxy/cookie boundary, Railway Buckets reject
+versioning, and no retained archive destination or scheduler is configured.
+Those are not Chrome tasks and are not represented as completed.
 
 ## Railway staging acceptance
 
