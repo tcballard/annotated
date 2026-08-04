@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import {
+  archiveBackupFiles,
   buildBackupManifest,
   listObjectManifest,
   normalizeBackupConfig,
@@ -26,6 +30,26 @@ test('backup configuration requires explicit production adapters and credentials
   assert.equal(config.outputDir, '/tmp/annotated-backup-test');
   assert.equal(config.createdAt, '2026-08-04T12:00:00.000Z');
   assert.equal(config.maxObjects, 100000);
+});
+
+test('backup archive configuration requires a distinct bucket and creates a dated prefix', () => {
+  assert.throws(() => normalizeBackupConfig({ env: { ...productionEnv, BACKUP_ARCHIVE_REQUIRED: 'true' } }), /BACKUP_ARCHIVE_BUCKET/);
+  assert.throws(() => normalizeBackupConfig({ env: { ...productionEnv, BACKUP_ARCHIVE_BUCKET: productionEnv.S3_BUCKET } }), /must differ/);
+  const config = normalizeBackupConfig({
+    env: { ...productionEnv, BACKUP_ARCHIVE_REQUIRED: 'true', BACKUP_ARCHIVE_BUCKET: 'annotated-backups', BACKUP_ARCHIVE_PREFIX: 'daily' },
+    now: new Date('2026-08-04T12:00:00.000Z'),
+  });
+  assert.deepEqual(config.archive, {
+    bucket: 'annotated-backups',
+    region: 'auto',
+    endpoint: undefined,
+    forcePathStyle: false,
+    accessKeyId: 'access-key',
+    secretAccessKey: 'secret-key',
+    prefix: 'daily/2026-08-04T12-00-00-000Z/',
+    requireVersioning: false,
+    requireLifecycle: false,
+  });
 });
 
 test('object manifest paginates, normalizes metadata, and totals bytes', async () => {
@@ -84,6 +108,32 @@ test('backup manifest records restore commands and object inventory without secr
   assert.equal(manifest.database.dump.sha256.length, 64);
   assert.match(manifest.recovery.restoreDatabaseWith, /pg_restore/);
   assert.equal(manifest.objectStore.objectCount, 1);
+  assert.equal(manifest.archive, null);
   assert.equal(JSON.stringify(manifest).includes('secret-key'), false);
   assert.equal(JSON.stringify(manifest).includes('backup-user'), false);
+});
+
+test('backup archive uploads only the three verified artifacts', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'annotated-backup-archive-'));
+  const calls = [];
+  try {
+    for (const name of ['postgres.dump', 'objects.json', 'manifest.json']) await writeFile(path.join(directory, name), name);
+    const result = await archiveBackupFiles({
+      outputDir: directory,
+      archive: { bucket: 'annotated-backups', prefix: 'daily/run-1/' },
+      client: { async send(command) { calls.push(command.input); command.input.Body.destroy(); } },
+    });
+    assert.deepEqual(result, {
+      bucket: 'annotated-backups',
+      prefix: 'daily/run-1/',
+      files: ['daily/run-1/postgres.dump', 'daily/run-1/objects.json', 'daily/run-1/manifest.json'],
+    });
+    assert.deepEqual(calls.map(({ Bucket, Key, ContentType }) => ({ Bucket, Key, ContentType })), [
+      { Bucket: 'annotated-backups', Key: 'daily/run-1/postgres.dump', ContentType: 'application/octet-stream' },
+      { Bucket: 'annotated-backups', Key: 'daily/run-1/objects.json', ContentType: 'application/json' },
+      { Bucket: 'annotated-backups', Key: 'daily/run-1/manifest.json', ContentType: 'application/json' },
+    ]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

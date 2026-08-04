@@ -62,6 +62,7 @@ const sourceData = {
     author: 'The Verge · David Pierce',
     date: '2h ago',
     duration: 0,
+    excerpt: 'The most valuable part of a link is often the part that doesn’t fit in the answer.',
     caption: 'A considered argument about what gets lost when every answer arrives pre-packaged.',
   },
   podcast: {
@@ -112,6 +113,7 @@ const initialState = {
   sourceUrl: sourceData.video.url,
   clipStart: 14,
   clipEnd: 62,
+  articleExcerpt: sourceData.article.excerpt,
   commentary: '',
   commentaryMode: 'text',
   isRecording: false,
@@ -125,6 +127,8 @@ const initialState = {
   recordingSeconds: 0,
   clipUrl: '',
   mediaStatus: 'not-applicable',
+  mediaError: '',
+  isRetryingMedia: false,
   published: false,
   liked: false,
   following: false,
@@ -160,7 +164,7 @@ const initialState = {
 };
 
 const draftStorageKey = 'annotated-draft-v1';
-const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'commentary', 'commentaryMode', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId', 'clientRequestId'];
+const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'articleExcerpt', 'commentary', 'commentaryMode', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId', 'clientRequestId'];
 
 const saved = (() => {
   try {
@@ -195,6 +199,7 @@ const persist = () => {
       sourceUrl: state.sourceUrl,
       clipStart: state.clipStart,
       clipEnd: state.clipEnd,
+      articleExcerpt: state.articleExcerpt,
       commentary: state.commentary,
       commentaryMode: state.commentaryMode,
       audioAssetId: state.audioAssetId,
@@ -266,10 +271,10 @@ const setSource = (type) => {
   state.sourceError = '';
   if (type === 'video') { state.clipStart = 14; state.clipEnd = 62; }
   if (type === 'podcast') { state.clipStart = 10; state.clipEnd = 64; }
-  if (type === 'article') { state.clipStart = 0; state.clipEnd = 0; }
+  if (type === 'article') { state.clipStart = 0; state.clipEnd = 0; state.articleExcerpt = sourceData.article.excerpt; }
   state.showSourceInput = false;
   persist();
-  render();
+  renderCapture();
 };
 
 const source = () => state.customSource || sourceData[state.sourceType];
@@ -315,6 +320,7 @@ const hydrateAnnotation = (annotation) => {
     host: annotation.sourceHost,
     excerpt: annotation.sourceExcerpt,
   });
+  state.articleExcerpt = annotation.sourceExcerpt || '';
   state.clipStart = Number(annotation.clipStart) || 0;
   state.clipEnd = Number(annotation.clipEnd) || 0;
   state.commentary = annotation.commentary || '';
@@ -326,6 +332,8 @@ const hydrateAnnotation = (annotation) => {
   state.audioDraftId = '';
   state.clipUrl = annotation.clipUrl || '';
   state.mediaStatus = annotation.mediaStatus || 'not-applicable';
+  state.mediaError = String(annotation.mediaError || '').slice(0, 280);
+  state.isRetryingMedia = false;
 };
 
 const bootstrap = async () => {
@@ -436,7 +444,7 @@ const articleCanvas = () => `
     <p class="article-dek">We used to browse toward a question. Now the answer arrives first, and the path disappears.</p>
     <div class="article-meta">By David Pierce <span>·</span> 2h ago</div>
     <div class="article-body-lines"><i></i><i></i><i class="short"></i><i></i><i></i><i class="short"></i></div>
-    <blockquote>“The most valuable part of a link is often the part that doesn’t fit in the answer.”</blockquote>
+    <blockquote>“${escapeHTML(articleExcerpt() || sourceData.article.excerpt)}”</blockquote>
     <div class="article-highlight">${icon('text')} Highlighted passage ready to clip</div>
   </div>`;
 
@@ -448,8 +456,10 @@ const podcastCanvas = () => `
     <div class="media-player"><span class="player-time">${formatTime(state.clipStart)}</span><div class="player-line"><span class="player-progress" style="width: 24%"></span></div><span class="player-time">46:04</span></div>
   </div>`;
 
+const sourceCanvasMarkup = () => state.sourceType === 'video' ? videoCanvas() : state.sourceType === 'article' ? articleCanvas() : podcastCanvas();
+
 const sourceCanvas = () => {
-  const canvas = state.sourceType === 'video' ? videoCanvas() : state.sourceType === 'article' ? articleCanvas() : podcastCanvas();
+  const canvas = sourceCanvasMarkup();
   return `<section class="source-stage source-spine-stage">
     <div class="stage-header"><div><span class="eyebrow">Source</span><h1>${escapeHTML(source().title)}</h1></div><button class="ghost-button" data-action="toggle-source-input">${icon('link')} Change</button></div>
     ${state.showSourceInput ? `<div class="source-input-row"><label for="source-url">Paste a source URL</label><div class="source-input-wrap">${icon('link')}<input id="source-url" data-action="source-url" value="${escapeHTML(state.sourceUrl)}" /><button data-action="load-source" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Load'}</button></div><p>Metadata stays attached to the original link.</p>${state.sourceError ? `<p class="source-error" role="alert">${escapeHTML(state.sourceError)}</p>` : ''}</div>` : ''}
@@ -458,8 +468,13 @@ const sourceCanvas = () => {
   </section>`;
 };
 
+const articleExcerpt = () => String(state.articleExcerpt ?? source().excerpt ?? '').trim();
+
 const timeRange = () => {
-  if (state.sourceType === 'article') return `<div class="highlight-preview"><div class="highlight-mark"></div><p>“${escapeHTML(source().excerpt || 'The most valuable part of a link is often the part that doesn’t fit in the answer.') }”</p><span>Highlight selected · ${source().excerpt ? `${source().excerpt.length} characters` : '126 characters'}</span></div>`;
+  if (state.sourceType === 'article') {
+    const excerpt = articleExcerpt();
+    return `<div class="highlight-preview"><div class="highlight-mark"></div><label for="article-excerpt">Selected passage</label><textarea id="article-excerpt" data-action="article-excerpt" maxlength="2000" aria-describedby="article-excerpt-hint">${escapeHTML(excerpt)}</textarea><span id="article-excerpt-hint">Highlight selected · ${excerpt.length} characters · edit before publishing</span></div>`;
+  }
   const max = MAX_CLIP_SECONDS;
   const length = Math.max(0, state.clipEnd - state.clipStart);
   return `<div class="clip-editor">
@@ -529,12 +544,13 @@ const feedView = () => {
 const annotationHero = () => {
   const clipUrl = state.publishedAnnotation?.clipUrl || state.clipUrl;
   const audioUrl = state.publishedAnnotation?.audioUrl || state.audioUrl;
-  const status = state.mediaStatus === 'failed' ? 'Clip unavailable — source adapter required.' : state.mediaStatus === 'processing' ? 'Preparing a 240p clip…' : 'Clip queued for processing…';
-  if (state.sourceType === 'article') return `<div class="annotation-article-text"><span class="quote-mark">“</span><p>${escapeHTML(source().excerpt || 'The most valuable part of a link is often the part that doesn’t fit in the answer.')}</p><span>Highlighted passage</span></div>`;
+  const status = state.mediaStatus === 'failed' ? 'Clip unavailable.' : state.mediaStatus === 'cancelled' ? 'Clip processing was cancelled.' : state.mediaStatus === 'processing' ? 'Preparing a 240p clip…' : 'Clip queued for processing…';
+  const mediaRecovery = state.mediaStatus === 'failed' ? `<div class="media-recovery"><span>${escapeHTML(state.mediaError || 'The source could not be prepared.')}</span><button data-action="retry-media" ${state.isRetryingMedia ? 'disabled' : ''}>${state.isRetryingMedia ? 'Retrying…' : 'Retry clip'}</button></div>` : '';
+  if (state.sourceType === 'article') return `<div class="annotation-article-text"><span class="quote-mark">“</span><p>${escapeHTML(articleExcerpt() || sourceData.article.excerpt)}</p><span>Highlighted passage</span></div>`;
   if (state.sourceType === 'video') return clipUrl
     ? `<video class="annotation-video-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></video>`
-    : `<div class="annotation-video-bg"><div class="video-silhouette small"></div><span class="media-status">${status}</span></div><button class="annotation-play" data-action="toggle-preview">${icon('play')}</button><span class="annotation-clip-time">${formatTime(state.clipStart)} — ${formatTime(state.clipEnd)}</span>`;
-  return `<div class="annotation-audio"><div class="podcast-orbit small"><span></span><span></span><span></span></div>${clipUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></audio>` : audioUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : icon('play')}<div class="mini-wave large">${Array.from({ length: 34 }, (_, i) => `<i style="height:${16 + ((i * 19) % 58)}%"></i>`).join('')}</div>${clipUrl && audioUrl ? `<audio class="commentary-audio" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : !clipUrl ? `<span class="media-status">${status}</span>` : ''}</div>`;
+    : `<div class="annotation-video-bg"><div class="video-silhouette small"></div><span class="media-status">${status}</span>${mediaRecovery}</div><button class="annotation-play" data-action="toggle-preview">${icon('play')}</button><span class="annotation-clip-time">${formatTime(state.clipStart)} — ${formatTime(state.clipEnd)}</span>`;
+  return `<div class="annotation-audio"><div class="podcast-orbit small"><span></span><span></span><span></span></div>${clipUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></audio>` : audioUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : icon('play')}<div class="mini-wave large">${Array.from({ length: 34 }, (_, i) => `<i style="height:${16 + ((i * 19) % 58)}%"></i>`).join('')}</div>${clipUrl && audioUrl ? `<audio class="commentary-audio" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : !clipUrl ? `<span class="media-status">${status}</span>${mediaRecovery}` : ''}</div>`;
 };
 
 const moderationView = () => {
@@ -582,6 +598,67 @@ const toast = () => state.toast ? `<div class="toast" role="status"><span class=
 
 const render = () => {
   app.innerHTML = `${appHeader()}${authStateView()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : state.activeView === 'profile' ? profileView() : publishedView()}</main></div>${toast()}`;
+};
+
+const elementFromMarkup = (markup) => {
+  const template = document.createElement('template');
+  template.innerHTML = markup.trim();
+  return template.content.firstElementChild;
+};
+
+const renderCapture = () => {
+  if (state.activeView !== 'capture') {
+    render();
+    return;
+  }
+
+  const sourceStage = app.querySelector('.source-spine-stage');
+  const sidebar = app.querySelector('.source-spine-note');
+  if (!sourceStage || !sidebar) {
+    render();
+    return;
+  }
+
+  // Keep the shell, grid, and scroll context in place. Replacing the entire
+  // app for a source-tab click causes a visible blank paint in Chrome while
+  // the large preview is reconstructed. Only the source-specific regions
+  // need to change here; delegated event listeners continue to work.
+  const sourceTitle = sourceStage.querySelector('.stage-header h1');
+  if (sourceTitle) sourceTitle.textContent = source().title;
+
+  const sourceInput = sourceStage.querySelector('.source-input-row');
+  if (!state.showSourceInput && sourceInput) sourceInput.remove();
+  if (state.showSourceInput && !sourceInput) {
+    render();
+    return;
+  }
+
+  const browser = sourceStage.querySelector('.browser-chrome');
+  const nextBrowser = elementFromMarkup(browserChrome());
+  if (browser && nextBrowser) browser.replaceWith(nextBrowser);
+
+  const browserPage = sourceStage.querySelector('.browser-page');
+  if (browserPage) browserPage.innerHTML = sourceCanvasMarkup();
+
+  const nextStage = elementFromMarkup(sourceCanvas());
+  const currentFooter = sourceStage.querySelector('.source-spine-footer');
+  const nextFooter = nextStage?.querySelector('.source-spine-footer');
+  if (currentFooter && nextFooter) currentFooter.replaceWith(nextFooter);
+
+  sidebar.querySelectorAll('.source-type').forEach((buttonElement) => {
+    const active = buttonElement.dataset.type === state.sourceType;
+    buttonElement.classList.toggle('is-active', active);
+    buttonElement.setAttribute('aria-pressed', String(active));
+  });
+  const currentRange = sidebar.querySelector('.clip-editor, .highlight-preview');
+  const nextRange = elementFromMarkup(timeRange());
+  if (currentRange && nextRange) currentRange.replaceWith(nextRange);
+
+  const railSource = app.querySelector('.rail-source');
+  const railGlyph = railSource?.querySelector('.source-glyph');
+  const railHost = railSource?.querySelector('span:last-child');
+  if (railGlyph) railGlyph.innerHTML = icon(state.sourceType);
+  if (railHost) railHost.textContent = source().host;
 };
 
 const setClipBoundary = (boundary, value) => {
@@ -748,7 +825,14 @@ const loadFeed = async ({ append = false } = {}) => {
     const result = await api.feed(params.toString());
     state.feedAnnotations = append ? [...state.feedAnnotations, ...(result.annotations || [])] : (result.annotations || []);
     state.feedCursor = result.nextCursor || null;
-  } catch { /* the capture flow should remain usable when feed loading fails */ }
+  } catch (error) {
+    if (state.feedFollowing && error?.status === 401) {
+      state.feedFollowing = false;
+      state.feedCursor = null;
+      recoverAuthError(error, 'Sign in to see the people you follow.');
+    }
+    /* the capture flow should remain usable when feed loading fails */
+  }
 };
 
 const watchMediaProcessing = () => {
@@ -778,6 +862,7 @@ const loadSource = async () => {
     state.customSource = normalizeSource(resolved);
     state.sourceType = resolved.sourceType;
     state.sourceUrl = resolved.sourceUrl;
+    state.articleExcerpt = resolved.sourceType === 'article' ? (resolved.excerpt || '') : '';
     state.clientRequestId = globalThis.crypto?.randomUUID?.() || `capture-${Date.now()}`;
     if (state.sourceType === 'article') {
       state.clipStart = 0;
@@ -807,6 +892,7 @@ const publishAnnotation = async () => {
   }
   if (requestSignIn('publish this annotation')) return;
   if (state.sourceType !== 'article' && state.clipEnd - state.clipStart > 90) { notify('Keep the clip under 90 seconds.'); return; }
+  if (state.sourceType === 'article' && !articleExcerpt()) { notify('Select a passage before publishing.'); return; }
   if (state.commentaryMode === 'text' && !state.commentary.trim()) { notify('Add a note before publishing.'); return; }
   if (state.commentaryMode === 'audio' && !state.audioAssetId) { notify('Finish uploading the audio note before publishing.'); return; }
   if (state.serverStatus !== 'online') { notify('Backend unavailable — this draft has not been published.'); return; }
@@ -820,7 +906,7 @@ const publishAnnotation = async () => {
       sourceType: state.sourceType,
       sourceTitle: currentSource.title,
       sourceHost: currentSource.host,
-      sourceExcerpt: currentSource.excerpt || (state.sourceType === 'article' ? 'The most valuable part of a link is often the part that does not fit in the answer.' : ''),
+      sourceExcerpt: state.sourceType === 'article' ? articleExcerpt() : currentSource.excerpt || '',
       canonicalUrl: currentSource.canonicalUrl || state.sourceUrl,
       clipStart: state.clipStart,
       clipEnd: state.clipEnd,
@@ -927,7 +1013,14 @@ app.addEventListener('click', (event) => {
   if (action === 'toggle-record') { toggleAudioRecording(); return; }
   if (action === 'retry-audio') { retryStagedAudio(); return; }
   if (action === 'publish') { publishAnnotation(); return; }
-  if (action === 'feed-filter') { state.feedFollowing = target.dataset.following === 'true'; state.feedCursor = null; loadFeed().then(render); return; }
+  if (action === 'feed-filter') {
+    const following = target.dataset.following === 'true';
+    if (following && requestSignIn('see the people you follow')) return;
+    state.feedFollowing = following;
+    state.feedCursor = null;
+    loadFeed().then(render);
+    return;
+  }
   if (action === 'search') { state.showFeedSearch = !state.showFeedSearch; render(); if (state.showFeedSearch) document.querySelector('#feed-search')?.focus(); return; }
   if (action === 'clear-feed-search') { state.feedQuery = ''; state.feedCursor = null; loadFeed().then(() => { render(); document.querySelector('#feed-search')?.focus(); }); return; }
   if (action === 'feed-more') { loadFeed({ append: true }).then(render); return; }
@@ -989,6 +1082,25 @@ app.addEventListener('click', (event) => {
     } else { state.following = !state.following; render(); }
     return;
   }
+  if (action === 'retry-media') {
+    if (!state.publishedSlug || state.serverStatus !== 'online' || state.isRetryingMedia) return;
+    if (requestSignIn('retry this clip')) return;
+    state.isRetryingMedia = true;
+    render();
+    (async () => {
+      try {
+        const result = await api.retryMedia(state.publishedSlug);
+        hydrateAnnotation(result.annotation);
+        watchMediaProcessing();
+        notify('Clip retry queued.');
+      } catch (error) {
+        if (!recoverAuthError(error, 'Sign in to retry this clip.')) notify(error.message || 'Clip retry could not be queued.');
+        state.isRetryingMedia = false;
+        render();
+      }
+    })();
+    return;
+  }
   if (action === 'focus-comment') { document.querySelector('[data-action="comment-draft"]')?.focus(); return; }
   if (action === 'share') { copyPublicLink(target.dataset.shareUrl || ''); return; }
   if (action === 'copy-link') { copyPublicLink(); return; }
@@ -1023,6 +1135,12 @@ app.addEventListener('input', (event) => {
   if (action === 'comment-draft') state.commentDraft = event.target.value;
   if (action === 'claim-text') state.claimReason = event.target.value;
   if (action === 'source-url') { state.sourceUrl = event.target.value; state.customSource = null; state.sourceError = ''; }
+  if (action === 'article-excerpt') {
+    state.articleExcerpt = event.target.value.slice(0, 2000);
+    const hint = event.target.closest('.highlight-preview')?.querySelector('#article-excerpt-hint');
+    if (hint) hint.textContent = `Highlight selected · ${state.articleExcerpt.trim().length} characters · edit before publishing`;
+    persist();
+  }
   if (action === 'clip-start') { setClipBoundary('start', event.target.value); persist(); refreshClipControls(); }
   if (action === 'clip-end') { setClipBoundary('end', event.target.value); persist(); refreshClipControls(); }
 });

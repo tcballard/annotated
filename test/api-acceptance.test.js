@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import { tmpdir as systemTmpdir } from 'node:os';
 import path from 'node:path';
@@ -53,6 +53,45 @@ const request = async (baseUrl, pathname, { method = 'GET', body, origin } = {})
 test('local API serves the acceptance-critical health, identity, publish, social, and moderation paths', async (t) => {
   const port = await freePort();
   const dataDirectory = await mkdtemp(path.join(systemTmpdir(), 'annotated-api-'));
+  await writeFile(path.join(dataDirectory, 'store.json'), JSON.stringify({
+    users: [
+      { id: 'local-tom', handle: 'tcballard', displayName: 'Tom Ballard', role: 'owner' },
+      { id: 'reader-1', handle: 'reader', displayName: 'Avid Reader', role: 'member' },
+    ],
+    annotations: [{
+      id: 'failed-annotation',
+      slug: 'failed-clip',
+      status: 'published',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      authorId: 'local-tom',
+      sourceUrl: 'https://example.com/failed-video-source',
+      canonicalUrl: 'https://example.com/failed-video-source',
+      sourceTitle: 'Failed video fixture',
+      sourceHost: 'example.com',
+      sourceType: 'video',
+      mediaStatus: 'failed',
+      mediaError: 'Provider request was rate limited.',
+      clipStart: 0,
+      clipEnd: 1,
+      commentaryMode: 'text',
+      commentary: 'A failed media job remains retryable by its owner.',
+    }],
+    mediaJobs: [{
+      id: 'failed-job',
+      annotationId: 'failed-annotation',
+      sourceUrl: 'https://example.com/failed-video-source',
+      sourceType: 'video',
+      sourceMediaUrl: 'https://example.com/failed-video.mp4',
+      mediaUrl: 'https://example.com/failed-video.mp4',
+      provider: 'youtube',
+      clipStart: 0,
+      clipEnd: 1,
+      attempts: 3,
+      status: 'failed',
+      error: 'Provider request was rate limited.',
+      createdAt: '2026-08-01T00:00:00.000Z',
+    }],
+  }));
   const allowedOrigin = 'http://127.0.0.1:5173';
   const baseUrl = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ['server/index.js'], {
@@ -66,6 +105,7 @@ test('local API serves the acceptance-critical health, identity, publish, social
       ANNOTATED_STORAGE: 'file',
       ANNOTATED_ASSET_STORAGE: 'local',
       ANNOTATED_DATA_DIR: dataDirectory,
+      MEDIA_WORKER_CONCURRENCY: '0',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -121,6 +161,7 @@ test('local API serves the acceptance-critical health, identity, publish, social
     sourceUrl: 'https://example.com/acceptance-source',
     sourceType: 'article',
     sourceTitle: 'Acceptance source',
+    sourceExcerpt: 'A selected passage from the acceptance article.',
     commentaryMode: 'text',
     commentary: 'A durable publish should be safe to retry.',
     clientRequestId: 'acceptance-publish-1',
@@ -144,20 +185,82 @@ test('local API serves the acceptance-critical health, identity, publish, social
 
   const feed = await request(baseUrl, '/api/feed?limit=10');
   assert.equal(feed.response.status, 200);
-  assert.equal(feed.payload.annotations.length, 1);
-  assert.equal(feed.payload.annotations[0].sourceUrl, annotationPayload.sourceUrl);
-  assert.equal(feed.payload.annotations[0].canonicalUrl, annotationPayload.sourceUrl);
+  assert.equal(feed.payload.annotations.length, 2);
+  const publishedFeedItem = feed.payload.annotations.find((item) => item.sourceUrl === annotationPayload.sourceUrl);
+  assert.ok(publishedFeedItem);
+  assert.equal(publishedFeedItem.canonicalUrl, annotationPayload.sourceUrl);
+
+  const firstFeedPage = await request(baseUrl, '/api/feed?limit=1');
+  assert.equal(firstFeedPage.response.status, 200);
+  assert.equal(firstFeedPage.payload.annotations.length, 1);
+  assert.equal(firstFeedPage.payload.nextCursor, '1');
+  const secondFeedPage = await request(baseUrl, `/api/feed?limit=1&cursor=${firstFeedPage.payload.nextCursor}`);
+  assert.equal(secondFeedPage.response.status, 200);
+  assert.equal(secondFeedPage.payload.annotations.length, 1);
+  assert.equal(secondFeedPage.payload.nextCursor, null);
+  assert.notEqual(secondFeedPage.payload.annotations[0].id, firstFeedPage.payload.annotations[0].id);
+
+  const searchedFeed = await request(baseUrl, '/api/feed?limit=invalid&cursor=invalid&q=durable%20publish');
+  assert.equal(searchedFeed.response.status, 200);
+  assert.equal(searchedFeed.payload.query, 'durable publish');
+  assert.equal(searchedFeed.payload.annotations.length, 1);
+  assert.equal(searchedFeed.payload.annotations[0].id, published.payload.annotation.id);
 
   const profile = await request(baseUrl, '/api/profiles/tcballard');
   assert.equal(profile.response.status, 200);
   assert.equal(profile.payload.profile.handle, 'tcballard');
-  assert.equal(profile.payload.profile.annotationCount, 1);
-  assert.equal(profile.payload.profile.annotations.length, 1);
+  assert.equal(profile.payload.profile.annotationCount, 2);
+  assert.equal(profile.payload.profile.annotations.length, 2);
   assert.equal('email' in profile.payload.profile, false);
+
+  const readerBeforeFollow = await request(baseUrl, '/api/profiles/reader');
+  assert.equal(readerBeforeFollow.response.status, 200);
+  assert.equal(readerBeforeFollow.payload.profile.isFollowing, false);
+  assert.equal(readerBeforeFollow.payload.profile.followers, 0);
+
+  const followed = await request(baseUrl, '/api/users/reader-1/follow', { method: 'POST' });
+  assert.equal(followed.response.status, 200);
+  assert.equal(followed.payload.following, true);
+
+  const readerAfterFollow = await request(baseUrl, '/api/profiles/reader');
+  assert.equal(readerAfterFollow.payload.profile.isFollowing, true);
+  assert.equal(readerAfterFollow.payload.profile.followers, 1);
+
+  const followingFeed = await request(baseUrl, '/api/feed?following=true');
+  assert.equal(followingFeed.response.status, 200);
+  assert.equal(followingFeed.payload.annotations.length, 2);
+  assert.ok(followingFeed.payload.annotations.every((item) => item.authorId === 'local-tom'));
+
+  const unfollowed = await request(baseUrl, '/api/users/reader-1/unfollow', { method: 'POST' });
+  assert.equal(unfollowed.response.status, 200);
+  assert.equal(unfollowed.payload.following, false);
 
   const comment = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}/comments`, { method: 'POST', body: { body: 'The retry boundary is covered.' } });
   assert.equal(comment.response.status, 201);
   assert.equal(comment.payload.annotation.comments.length, 1);
+
+  const liked = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}/like`, { method: 'POST' });
+  assert.equal(liked.response.status, 200);
+  assert.equal(liked.payload.annotation.likes, 1);
+  assert.equal(liked.payload.annotation.likedByMe, true);
+
+  const duplicateLike = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}/like`, { method: 'POST' });
+  assert.equal(duplicateLike.response.status, 200);
+  assert.equal(duplicateLike.payload.annotation.likes, 1);
+
+  const unliked = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}/unlike`, { method: 'POST' });
+  assert.equal(unliked.response.status, 200);
+  assert.equal(unliked.payload.annotation.likes, 0);
+  assert.equal(unliked.payload.annotation.likedByMe, false);
+
+  const retry = await request(baseUrl, '/api/annotations/failed-clip/media/retry', { method: 'POST' });
+  assert.equal(retry.response.status, 202);
+  assert.equal(retry.payload.annotation.mediaStatus, 'queued');
+  assert.equal(retry.payload.annotation.mediaError, null);
+  assert.equal(retry.payload.job.status, 'queued');
+
+  const duplicateRetry = await request(baseUrl, '/api/annotations/failed-clip/media/retry', { method: 'POST' });
+  assert.equal(duplicateRetry.response.status, 409);
 
   const claimPath = `/api/annotations/${published.payload.annotation.slug}/claims`;
   const claim = await request(baseUrl, claimPath, { method: 'POST', body: { reason: 'Acceptance test claim.' } });
@@ -235,8 +338,8 @@ test('local API serves the acceptance-critical health, identity, publish, social
 
     const filteredFeed = await request(baseUrl, `/api/feed?sourceType=${fixture.sourceType}`);
     assert.equal(filteredFeed.response.status, 200);
-    assert.equal(filteredFeed.payload.annotations.length, 1);
-    assert.equal(filteredFeed.payload.annotations[0].sourceUrl, fixture.sourceUrl);
-    assert.equal(filteredFeed.payload.annotations[0].canonicalUrl, fixture.sourceUrl);
+    const filteredItem = filteredFeed.payload.annotations.find((item) => item.sourceUrl === fixture.sourceUrl);
+    assert.ok(filteredItem);
+    assert.equal(filteredItem.canonicalUrl, fixture.sourceUrl);
   }
 });

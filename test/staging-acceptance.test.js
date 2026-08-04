@@ -13,7 +13,11 @@ test('staging acceptance command verifies only public, non-mutating boundaries',
   assert.match(script, /\/privacy\.html/);
   assert.match(script, /\/api\/me/);
   assert.match(script, /\/api\/claims/);
-  assert.doesNotMatch(script, /POST|PUT|PATCH|DELETE/);
+  assert.match(script, /\/api\/sources\/resolve/);
+  assert.match(script, /jNQXAC9IVRw/);
+  assert.match(script, /sample-3s\.mp3/);
+  assert.match(script, /text-ready/);
+  assert.doesNotMatch(script, /method:\s*['"](?:PUT|PATCH|DELETE)['"]/);
 });
 
 test('staging rate-limit smoke is guarded, shared, and cleans its bucket', async () => {
@@ -24,4 +28,15 @@ test('staging rate-limit smoke is guarded, shared, and cleans its bucket', async
   assert.match(script, /result\.shared/);
   assert.match(script, /DELETE FROM annotated_rate_limit_buckets/);
   assert.match(script, /closeRateLimitStore/);
+});
+
+test('staging media smoke covers audio and video delivery with cleanup', async () => {
+  const script = await readFile(new URL('../scripts/accept-staging-media.mjs', import.meta.url), 'utf8');
+  assert.match(script, /ACCEPTANCE_MEDIA_SMOKE/);
+  assert.match(script, /sample-3s\.mp3/);
+  assert.match(script, /media\.w3\.org\/2010\/05\/sintel\/trailer\.mp4/);
+  assert.match(script, /audio\\\/webm/);
+  assert.match(script, /video\\\/mp4/);
+  assert.match(script, /removeStoredMedia/);
+  assert.match(script, /media worker did not reach ready/);
 });

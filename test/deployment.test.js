@@ -57,6 +57,7 @@ test('deployment documents the shared production rate-limit ledger', async () =>
 
 test('deployment documents the non-destructive production backup audit', async () => {
   const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
+  const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const backup = await readFile(new URL('../scripts/backup-production.mjs', import.meta.url), 'utf8');
   const verifier = await readFile(new URL('../scripts/verify-backup.mjs', import.meta.url), 'utf8');
@@ -73,6 +74,25 @@ test('deployment documents the non-destructive production backup audit', async (
   assert.match(backup, /Refusing to overwrite existing backup file/);
   assert.match(verifier, /annotated_recovery/);
   assert.match(verifier, /runPgRestoreList/);
+  assert.match(workflow, /Exercise production backup artifact/);
+  assert.match(workflow, /npm run backup:production/);
+  assert.match(workflow, /BACKUP_DIR=\"\$BACKUP_OUTPUT_DIR\" npm run backup:verify/);
+  assert.match(workflow, /CREATE DATABASE annotated_recovery_ci/);
+  assert.match(workflow, /RUN_RECOVERY_DRILL=true/);
+  assert.match(workflow, /RECOVERY_DATABASE_URL:\s+postgresql:\/\/annotated:annotated@127\.0\.0\.1:5432\/annotated_recovery_ci/);
+});
+
+test('operator backup archive requires a distinct retained archive bucket', async () => {
+  const backup = await readFile(new URL('../scripts/backup-production.mjs', import.meta.url), 'utf8');
+  const env = await readFile(new URL('../.env.example', import.meta.url), 'utf8');
+  assert.match(backup, /BACKUP_ARCHIVE_REQUIRED/);
+  assert.match(backup, /BACKUP_ARCHIVE_BUCKET must differ from S3_BUCKET/);
+  assert.match(backup, /BACKUP_ARCHIVE_REQUIRE_OBJECT_VERSIONING/);
+  assert.match(backup, /BACKUP_ARCHIVE_REQUIRE_OBJECT_LIFECYCLE/);
+  assert.match(backup, /archiveBackupFiles/);
+  assert.match(env, /BACKUP_ARCHIVE_REQUIRED=true/);
+  assert.match(env, /BACKUP_ARCHIVE_BUCKET=annotated-backups/);
+  assert.match(env, /BACKUP_ARCHIVE_REQUIRE_OBJECT_VERSIONING=true/);
 });
 
 test('deployment documents the private Railway Buckets POC profile', async () => {

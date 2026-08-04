@@ -84,12 +84,46 @@ jobs:
         run: |
           package_version="$(node -p 'require("./extension/manifest.json").version')"
           package_path="annotated-extension-v${package_version}.zip"
-          test "$(unzip -Z1 "$package_path" | wc -l | tr -d ' ')" = 17
+          test "$(unzip -Z1 "$package_path" | wc -l | tr -d ' ')" = 18
           test "$(unzip -Z1 "$package_path" | grep -c '^clip-range.js$')" = 1
           if unzip -Z1 "$package_path" | grep -E '(^|/)(\.env|data/|node_modules/|dist/)'; then
             echo "runtime extension package contains development files" >&2
             exit 1
           fi
+      - name: Exercise production backup artifact
+        shell: bash
+        env:
+          NODE_ENV: production
+          ANNOTATED_STORAGE: postgres
+          ANNOTATED_ASSET_STORAGE: s3
+          BACKUP_OUTPUT_DIR: ${{ runner.temp }}/annotated-backup
+          BACKUP_MAX_OBJECTS: 1000
+        run: |
+          set -eu
+          pg_dump --version
+          pg_restore --version
+          npm run backup:production
+          BACKUP_DIR="$BACKUP_OUTPUT_DIR" npm run backup:verify
+          test -s "$BACKUP_OUTPUT_DIR/postgres.dump"
+          test -s "$BACKUP_OUTPUT_DIR/objects.json"
+          test -s "$BACKUP_OUTPUT_DIR/manifest.json"
+      - name: Restore backup into an isolated recovery database
+        shell: bash
+        env:
+          BACKUP_OUTPUT_DIR: ${{ runner.temp }}/annotated-backup
+          RECOVERY_DATABASE_URL: postgresql://annotated:annotated@127.0.0.1:5432/annotated_recovery_ci
+        run: |
+          set -eu
+          PGPASSWORD=annotated psql \
+            --host=127.0.0.1 \
+            --port=5432 \
+            --username=annotated \
+            --dbname=postgres \
+            --command='CREATE DATABASE annotated_recovery_ci'
+          BACKUP_DIR="$BACKUP_OUTPUT_DIR" \
+            RUN_RECOVERY_DRILL=true \
+            RECOVERY_DATABASE_URL="$RECOVERY_DATABASE_URL" \
+            npm run backup:verify
       - name: Stop S3-compatible service
         if: always()
         run: docker stop annotated-minio 2>/dev/null || true

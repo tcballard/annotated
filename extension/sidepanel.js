@@ -462,6 +462,7 @@ audioRetry.addEventListener('click', async () => {
 
 document.querySelector('#publish').addEventListener('click', async () => {
   error.hidden = true;
+  if (currentTab.sourceType === 'article' && !selectedText.trim()) { showError('Select a passage from the article before publishing.'); return; }
   if (commentaryMode === 'text' && !note.value.trim()) { note.focus(); showError('Add a text annotation before publishing.'); return; }
   if (commentaryMode === 'audio' && !audioAssetId) {
     if (audioDraftId) {

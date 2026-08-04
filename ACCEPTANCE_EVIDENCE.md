@@ -66,11 +66,66 @@ The current workstation has neither a `pg_dump` binary nor a running Docker
 daemon, so no custom-format staging dump was claimed; run the backup command
 from a trusted PostgreSQL-client runner before the next migration.
 
+PR #83's hosted Node job
+[30880966114](https://github.com/tcballard/annotated/actions/runs/30880966114)
+now exercises this boundary against ephemeral PostgreSQL and MinIO. The job
+reported `pg_dump (PostgreSQL) 16.14` and `pg_restore (PostgreSQL) 16.14`,
+created an 8,625-byte custom-format dump, captured the `004_rate_limit_buckets`
+migration ledger and collection snapshot, and produced the manifest checksum
+`6845be5df0329a0ddc9b410b2fff434363fa07b5d43e083851b095fe87e199c0`.
+`npm run backup:verify` returned `status: verified` with the same checksum and
+`objectCount: 0`. This is hosted artifact and restore-list evidence; it is not
+a scheduled production backup, provider retention policy, object-byte recovery,
+or isolated live restore.
+
+The recovery-drill branch extends the same hosted job with an explicitly named
+`annotated_recovery_ci` database. CI creates that empty target, runs
+`RUN_RECOVERY_DRILL=true`, restores with `pg_restore --exit-on-error`, and
+checks the restored migration ledger against the backup manifest. This proves
+the isolated database-recovery path without pointing `pg_restore` at the source
+database; scheduled production snapshots, provider retention, object-byte
+recovery, and deployed-service recovery remain external.
+
+PR #84's passing hosted Node job
+[30881337135](https://github.com/tcballard/annotated/actions/runs/30881337135)
+created `annotated_recovery_ci` and restored the custom-format dump with
+`pg_restore --exit-on-error`. The verifier reported `recovery.status: restored`
+and `latestMigration: 004_rate_limit_buckets`, matching the source manifest;
+the restore target was separate from the source database. This is hosted
+isolated database-recovery evidence, not a scheduled production backup,
+provider retention policy, object-byte recovery, or deployed-service recovery.
+
+The operator-run archive contract requires a distinct archive bucket, checks
+archive versioning and lifecycle before upload, archives the three verified
+artifacts under a dated prefix, and supports a follow-up `npm run backup:verify`.
+No recurring production scheduler is enabled; the owner must authorize the
+scheduler, secret scope, and destination before a live run is counted.
+
 The source-citation acceptance contract now publishes article, video, and
 podcast fixtures and verifies that both `sourceUrl` and `canonicalUrl` survive
 publish, public detail, and source-type-filtered feed responses. The API test
 passed locally; deployed browser evidence that each public surface follows the
 source link remains external.
+
+The same API acceptance test now seeds a second local profile and verifies
+follow/unfollow persistence, follower counts, the following-feed filter,
+comment persistence, and idempotent like/unlike counts. This proves the local
+social interaction contract; OAuth-backed multi-user and deployed evidence
+remain external.
+
+Article capture now has an editable, persisted selected-passage field in the
+web desk, and the extension refuses to publish an article until page text is
+selected. The server bounds `sourceExcerpt` at 2,000 characters and requires
+it for article annotations; validation and extension contract tests pass.
+This closes the local selection contract while real-page selection evidence
+remains external.
+
+Failed media jobs now retain an explicit bounded error and expose an
+owner-scoped retry endpoint. The public landing page renders the error and a
+`Retry clip` action; retrying supersedes the failed job before queueing a fresh
+attempt, and duplicate retries are rejected. The API acceptance fixture and
+media-policy tests cover this recovery contract; deployed provider recovery
+remains external.
 
 The claim-surface deployment also serves the feed/profile card contract from
 the same PostgreSQL-backed staging service. The claim action preserves the
@@ -272,6 +327,53 @@ The local browser run exercised the user-facing flows below:
   page keeps its existing claim card. The same branch is deployed to Railway
   staging and passed `npm run acceptance:staging`; live authenticated browser
   interaction remains an external gate.
+- The 2026-08-04 feed contract tests verify that malformed `limit`/`cursor`
+  values fall back safely, limits remain bounded, cursor pages advance without
+  duplicates, and normalized search matches source and commentary context.
+  This is local API evidence; deployed multi-user and browser feed evidence
+  remains an external gate.
+- The extension settings surface now uses the supplied mark, keeps the API
+  origin form keyboard-accessible with explicit local/production guidance, and
+  exposes save, validation, reset, and failure states. Static extension tests
+  cover the page contract; an installed packaged-browser review remains an
+  external gate.
+- The following-feed contract now rejects anonymous requests when production
+  authentication is required, while the web filter asks the user to sign in
+  before changing views and recovers expired sessions visibly. Local feed-auth
+  and UI contract tests cover the boundary; multi-user browser evidence remains
+  external.
+- Railway staging deployment `eca36a58-963e-4744-a142-1de7064d36eb` built the
+  current stack tip and passed the guarded public smoke. A direct deployed
+  request to `/api/feed?following=true` returned HTTP 401 with the expected
+  sign-in error; the public feed remained readable and empty. This is deployed
+  API evidence, not authenticated OAuth/browser proof.
+- The same deployment passed the guarded media smoke from inside the Railway
+  service: a direct podcast fixture reached a ready worker job, the private
+  media redirect produced a signed object URL, and the object returned HTTP
+  200 as `audio/webm` with 10,037 bytes. Cleanup removed the temporary
+  annotation, job, and object; this does not prove deployed YouTube extraction.
+- PR #80 deployment `26e9e2af-b371-4d42-a38b-de291115ed33` passed the expanded
+  service-side smoke with both direct audio and direct video fixtures. The
+  podcast output reached `ready` and delivered `audio/webm` (10,037 bytes); the
+  Sintel MP4 output reached `ready` and delivered `video/mp4` (15,897 bytes).
+  Both private media routes returned signed Railway Bucket objects and cleanup
+  removed each temporary annotation, job, and object. The worker's existing
+  FFprobe gate therefore ran in the deployed container for the video 240p/
+  90-second contract; YouTube extraction and browser playback remain external.
+- PR #81 deployment `665c9c5e-4f1c-4554-8393-d7aa5fb8cac5` passed the expanded
+  non-mutating public acceptance command. Its source preflight classified the
+  YouTube fixture as `video`/`youtube`/`ready-for-range`, the article fixture as
+  `article`/`text-ready` with the submitted canonical URL preserved, and the
+  direct podcast fixture as `podcast`/`ready-for-range` with its media URL
+  preserved. The first run exposed a missing article canonical fallback;
+  `f65ea06` fixes it and adds a regression test. This is deployed source
+  resolution evidence, not YouTube extraction or browser playback evidence.
+- PR #82's guarded retention command was deployed to Railway staging and failed
+  closed without changing the bucket. `PutBucketVersioning` returned
+  `BucketAlreadyExists`/HTTP 409, while `PutBucketLifecycleConfiguration`
+  reports that the provider only accepts expiration rules. The command now
+  emits a bounded capability diagnosis and the runbook explicitly says not to
+  count Railway's current bucket as durable versioned-retention evidence.
 - Deployment tests verify Vite builds before production pruning, the container
   runs as an unprivileged user, local state/secrets are excluded from its build
   context, and the Dockerfile pins the official yt-dlp 2026.06.09 amd64/arm64

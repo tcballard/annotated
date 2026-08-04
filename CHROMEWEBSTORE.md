@@ -41,7 +41,8 @@ The extension reads the URL, title, and selected text from the active page so it
 PERMISSIONS
 • Active-page access — needed to show the current source, read a selected passage, and let you choose a media range from any site you visit.
 • Storage — needed to preserve bounded drafts, retry metadata, and the temporary sign-in session.
-• Identity — needed to complete the optional Google or X sign-in handoff.
+• Identity — needed to complete the configured X sign-in handoff (the Google
+  adapter remains available for a future release).
 • Alarms — needed to retry queued captures when the browser service resumes.
 
 SUPPORT
@@ -88,7 +89,7 @@ production integrations are available.
 | `tabs` | permissions | Reads the active tab's URL and title, detects tab changes, and supplies the tab context required for selected-text capture. |
 | `scripting` | permissions | Reads the user's current text selection from the active page when the sidebar is open. |
 | `storage` | permissions | Stores bounded drafts, API configuration, retry metadata, compact published-result metadata, and the temporary browser session. It never stores media Blobs in key/value storage. |
-| `identity` | permissions | Opens the configured Google or X sign-in handoff and receives the one-time extension callback. |
+| `identity` | permissions | Opens the configured X sign-in handoff and receives the one-time extension callback; the Google adapter remains available for a future release. |
 | `alarms` | permissions | Wakes the extension periodically to retry queued captures without relying on a persistent background page. |
 | `http://*/*` | host_permissions | Supports local HTTP development and lets the sidebar read a source page selected by the user. Production API origins are separately restricted to HTTPS in settings. |
 | `https://*/*` | host_permissions | The product is intentionally source-agnostic: it must read the active page and selected passage on any HTTPS site the user chooses. It does not inject code until the user opens the sidebar and does not publish without an explicit action. |
@@ -154,7 +155,7 @@ remain external gates.
 
 - Screenshots, promo artwork, public privacy-policy URL verification, and monitored publisher email are still required before submission. The supplied mark is preserved at `assets/brand/annotated-mark-source.jpg`, with square derivatives in `assets/brand/` and deterministic copies produced by `scripts/generate-extension-icons.mjs`; the policy source is included in `public/privacy.html` and copied into `dist/` by the Vite build.
 - The extension requires a configured Annotated backend. Local development uses `http://localhost:8787`; deployed API origins must be HTTPS.
-- Google/X OAuth, PostgreSQL/S3 media delivery, real provider fixture extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates. Queued captures now remain visible when authentication expires and can be retried after sign-in. The production image now includes a pinned, SHA-256-verified `yt-dlp` runtime, but that does not replace a real provider fixture run.
+- X OAuth, PostgreSQL/S3 media delivery, real provider fixture extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates. Google is intentionally disabled for this POC. Queued captures now remain visible when authentication expires and can be retried after sign-in. The production image now includes a pinned, SHA-256-verified `yt-dlp` runtime, but that does not replace a real provider fixture run.
 - The broad page host permissions are intentional because the product works on the user-selected active page, but the sidebar only reads and publishes data after an explicit user action.
 - If Google sign-in is enabled for the extension, update the OAuth client with the Chrome Web Store-assigned extension ID after publishing.
 

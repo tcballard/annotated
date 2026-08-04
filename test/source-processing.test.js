@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { classifySource, parseSourceUrl, resolveSource } from '../server/source-resolver.js';
 import { resolveInput, validatePlayableInput } from '../server/media-worker.js';
-import { matchesFeedQuery, normalizeFeedQuery } from '../server/feed.js';
+import { followingFeedRequiresAuth, matchesFeedQuery, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery } from '../server/feed.js';
 import { findIdempotentAnnotation } from '../server/idempotency.js';
 import { findActiveClaim, validateClaimTransition } from '../server/moderation.js';
 
@@ -56,6 +56,22 @@ test('article metadata decodes HTML entities in titles, descriptions, excerpts, 
     assert.equal(source.description, 'A "useful" note about attention.');
     assert.equal(source.canonicalUrl, 'https://news.example/story?topic=craft&view=full');
     assert.match(source.excerpt, /contains a & sign and a "quoted" phrase/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('article resolution falls back to the submitted URL when no canonical tag exists', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    arrayBuffer: async () => Buffer.from('<html><head><title>Example Domain</title></head><body><main><p>This page has no canonical link, so the submitted URL remains the source citation.</p></main></body></html>'),
+  });
+  try {
+    const source = await resolveSource('https://news.example/story', { lookup: publicLookup });
+    assert.equal(source.canonicalUrl, 'https://news.example/story');
+    assert.equal(source.processing, 'text-ready');
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -184,6 +200,27 @@ test('feed search matches source and author context with a bounded query', () =>
   assert.equal(matchesFeedQuery(annotation, users, 'unrelated'), false);
   assert.equal(normalizeFeedQuery('  one   two '), 'one two');
   assert.equal(normalizeFeedQuery('x'.repeat(100)).length, 80);
+});
+
+test('feed pagination bounds reject malformed values without producing invalid slices', () => {
+  assert.equal(normalizeFeedLimit(undefined), 20);
+  assert.equal(normalizeFeedLimit(''), 20);
+  assert.equal(normalizeFeedLimit('bad'), 20);
+  assert.equal(normalizeFeedLimit('0'), 1);
+  assert.equal(normalizeFeedLimit('500'), 50);
+  assert.equal(normalizeFeedLimit('2.5'), 20);
+  assert.equal(normalizeFeedCursor(undefined), 0);
+  assert.equal(normalizeFeedCursor('bad'), 0);
+  assert.equal(normalizeFeedCursor('-4'), 0);
+  assert.equal(normalizeFeedCursor('3'), 3);
+  assert.equal(normalizeFeedCursor('2.5'), 0);
+});
+
+test('following feed requires identity only when requested in an authenticated deployment', () => {
+  assert.equal(followingFeedRequiresAuth({ requested: true, required: true, viewer: null }), true);
+  assert.equal(followingFeedRequiresAuth({ requested: true, required: true, viewer: { id: 'reader-1' } }), false);
+  assert.equal(followingFeedRequiresAuth({ requested: false, required: true, viewer: null }), false);
+  assert.equal(followingFeedRequiresAuth({ requested: true, required: false, viewer: null }), false);
 });
 
 test('idempotent annotation lookup is scoped to the author and request ID', () => {

@@ -27,6 +27,7 @@ export const api = {
   resolveSource: (url) => apiRequest('/api/sources/resolve', { method: 'POST', body: JSON.stringify({ url }) }),
   createAnnotation: (payload) => apiRequest('/api/annotations', { method: 'POST', body: JSON.stringify(payload) }),
   getAnnotation: (slug) => apiRequest(`/api/annotations/${encodeURIComponent(slug)}`),
+  retryMedia: (slug) => apiRequest(`/api/annotations/${encodeURIComponent(slug)}/media/retry`, { method: 'POST' }),
   addComment: (slug, body) => apiRequest(`/api/annotations/${encodeURIComponent(slug)}/comments`, { method: 'POST', body: JSON.stringify({ body }) }),
   like: (slug) => apiRequest(`/api/annotations/${encodeURIComponent(slug)}/like`, { method: 'POST' }),
   unlike: (slug) => apiRequest(`/api/annotations/${encodeURIComponent(slug)}/unlike`, { method: 'POST' }),

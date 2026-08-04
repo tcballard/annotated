@@ -274,6 +274,7 @@ const runJob = async (job) => {
   } catch (error) {
     if (storedAsset) await removeStoredMedia(storedAsset).catch(() => {});
     await removeMediaFile(outputPath);
+    const boundedError = String(error?.message || 'Media processing failed.').slice(0, 500);
     const latest = await readStore();
     if (shouldAbortMediaJob(job, latest)) {
       cancelledJobs.delete(job.id);
@@ -287,8 +288,8 @@ const runJob = async (job) => {
       recordedFailure = true;
       return {
         ...store,
-        annotations: store.annotations.map((item) => item.id === job.annotationId ? { ...item, mediaStatus: retry ? 'queued' : 'failed', mediaError: retry ? `Retrying media processing (${attempts}/${maxAttempts}).` : error.message } : item),
-        mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: retry ? 'queued' : 'failed', workerId: null, leaseUntil: null, attempts, error: error.message, retryAt: retry ? new Date(Date.now() + retryDelayMs * attempts).toISOString() : null, completedAt: retry ? null : new Date().toISOString() } : item),
+        annotations: store.annotations.map((item) => item.id === job.annotationId ? { ...item, mediaStatus: retry ? 'queued' : 'failed', mediaError: retry ? `Retrying media processing (${attempts}/${maxAttempts}).` : boundedError } : item),
+        mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: retry ? 'queued' : 'failed', workerId: null, leaseUntil: null, attempts, error: boundedError, retryAt: retry ? new Date(Date.now() + retryDelayMs * attempts).toISOString() : null, completedAt: retry ? null : new Date().toISOString() } : item),
       };
     });
     if (!recordedFailure) {
@@ -310,6 +311,48 @@ const drain = () => {
 export async function enqueueMediaJob(input) {
   const job = { id: randomUUID(), ...input, attempts: 0, status: 'queued', createdAt: new Date().toISOString() };
   await updateStore((store) => ({ ...store, mediaJobs: [...(store.mediaJobs || []), job], annotations: store.annotations.map((annotation) => annotation.id === input.annotationId ? { ...annotation, mediaStatus: 'queued', mediaError: null } : annotation) }));
+  queue.push(job);
+  drain();
+  return job;
+}
+
+export const canRetryMediaJob = (job, annotation, userId) => Boolean(
+  job
+  && annotation
+  && job.annotationId === annotation.id
+  && job.status === 'failed'
+  && annotation.authorId === userId
+);
+
+export async function retryMediaJobForAnnotation(annotationId, userId) {
+  let job = null;
+  await updateStore((store) => {
+    const annotation = (store.annotations || []).find((item) => item.id === annotationId);
+    const failed = [...(store.mediaJobs || [])]
+      .reverse()
+      .find((item) => canRetryMediaJob(item, annotation, userId));
+    if (!failed) return store;
+    job = {
+      id: randomUUID(),
+      annotationId: failed.annotationId,
+      sourceUrl: failed.sourceUrl,
+      sourceType: failed.sourceType,
+      sourceMediaUrl: failed.sourceMediaUrl,
+      mediaUrl: failed.mediaUrl,
+      provider: failed.provider,
+      clipStart: failed.clipStart,
+      clipEnd: failed.clipEnd,
+      attempts: 0,
+      status: 'queued',
+      createdAt: new Date().toISOString(),
+    };
+    return {
+      ...store,
+      annotations: store.annotations.map((item) => item.id === annotationId ? { ...item, mediaStatus: 'queued', mediaError: null } : item),
+      mediaJobs: [...(store.mediaJobs || []).map((item) => item.id === failed.id ? { ...item, status: 'superseded', completedAt: new Date().toISOString() } : item), job],
+    };
+  });
+  if (!job) return null;
   queue.push(job);
   drain();
   return job;
