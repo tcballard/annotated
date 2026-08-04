@@ -9,6 +9,7 @@ const end = document.querySelector('#end');
 const startNumber = document.querySelector('#startNumber');
 const endNumber = document.querySelector('#endNumber');
 const clipLength = document.querySelector('#clipLength');
+const selectedDuration = document.querySelector('#selectedDuration');
 const trackFill = document.querySelector('#trackFill');
 const note = document.querySelector('#note');
 const noteCount = document.querySelector('#noteCount');
@@ -302,6 +303,9 @@ function syncRange({ save = true } = {}) {
   start.value = startNumber.value = from;
   end.value = endNumber.value = to;
   clipLength.textContent = format(to - from);
+  selectedDuration.textContent = format(to - from);
+  start.setAttribute('aria-valuetext', format(from));
+  end.setAttribute('aria-valuetext', format(to));
   trackFill.style.left = `${from / 90 * 100}%`;
   trackFill.style.width = `${(to - from) / 90 * 100}%`;
   if (save) saveDraft();

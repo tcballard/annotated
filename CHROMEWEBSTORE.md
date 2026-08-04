@@ -148,7 +148,7 @@ remain external gates.
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.1.0 | 2026-08-02 | Initial sidebar capture plus bounded retry queue, session-expiry recovery, selected-text capture, media controls, written/audio notes, and source-backed publishing flow. | Draft |
+| 0.1.0 | 2026-08-04 | Initial sidebar capture plus bounded retry queue, session-expiry recovery, selected-text capture, the light chronograph range control shared with the web capture desk, written/audio notes, and source-backed publishing flow. | Draft |
 
 ## Review Notes
 

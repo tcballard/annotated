@@ -31,8 +31,12 @@
       </section>
       <section class="clip-card">
         <div class="card-heading"><span>Select a moment</span><b><span id="clipLength">0:48</span> / 1:30 max</b></div>
-        <div class="track"><span id="trackFill"></span><input id="start" type="range" min="0" max="90" value="14" aria-label="Clip start" /><input id="end" type="range" min="0" max="90" value="62" aria-label="Clip end" /></div>
-        <div class="time-fields"><label>Start <input id="startNumber" type="number" min="0" max="90" value="14" /></label><span>→</span><label>End <input id="endNumber" type="number" min="0" max="90" value="62" /></label></div>
+        <div class="range-console">
+          <div class="range-console-meta" aria-hidden="true"><span>Source time</span><span>90 sec window</span></div>
+          <div class="track"><span id="trackFill"></span><input id="start" type="range" min="0" max="90" value="14" aria-label="Clip start" aria-valuetext="0:14" /><input id="end" type="range" min="0" max="90" value="62" aria-label="Clip end" aria-valuetext="1:02" /></div>
+          <div class="range-scale" aria-hidden="true"><span>0:00</span><span>0:30</span><span>1:00</span><span>1:30</span></div>
+          <div class="time-fields"><label><span>In</span><input id="startNumber" type="number" min="0" max="90" inputmode="numeric" value="14" aria-label="Clip start seconds" /></label><span class="time-selection" aria-hidden="true"><span>Selected</span><strong id="selectedDuration">0:48</strong></span><label><span>Out</span><input id="endNumber" type="number" min="0" max="90" inputmode="numeric" value="62" aria-label="Clip end seconds" /></label></div>
+        </div>
       </section>
       <section class="note-card">
         <div class="card-heading"><span>Your annotation</span><div class="modes" role="group" aria-label="Annotation type">

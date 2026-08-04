@@ -43,3 +43,159 @@
 .track input#start { z-index: 2; }
 .track input#end { z-index: 1; }
 .track input:focus { z-index: 3; outline: none; }
+
+/* Match the light chronograph used by the deployed capture desk. */
+.range-console {
+  --range-surface: var(--color-surface);
+  --range-surface-raised: var(--color-bg);
+  --range-ink: var(--color-text);
+  --range-muted: var(--color-muted);
+  --range-line: var(--color-line);
+  --range-tick: rgba(33, 33, 33, .30);
+  --range-tick-strong: rgba(33, 33, 33, .16);
+  --range-selection: rgba(193, 90, 69, .20);
+  overflow: hidden;
+  margin-top: 13px;
+  border: 1px solid var(--range-line);
+  border-radius: 6px;
+  background: var(--range-surface);
+  color: var(--range-ink);
+  box-shadow: 0 5px 12px rgba(33, 33, 33, .07);
+}
+
+.range-console-meta {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 11px 7px;
+  color: var(--range-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.range-console .track {
+  height: 62px;
+  margin: 0;
+  border-top: 1px solid var(--range-line);
+  border-bottom: 1px solid var(--range-line);
+  background:
+    repeating-linear-gradient(90deg, var(--range-tick) 0 1px, transparent 1px 6px) 0 100% / 100% 18px no-repeat,
+    repeating-linear-gradient(90deg, var(--range-tick-strong) 0 1px, transparent 1px 30px) 0 100% / 100% 31px no-repeat,
+    linear-gradient(var(--range-surface), var(--range-surface-raised));
+}
+
+.range-console .track::before {
+  top: auto;
+  right: 0;
+  bottom: 17px;
+  left: 0;
+  height: 1px;
+  background: var(--range-tick-strong);
+}
+
+.range-console .track > span {
+  top: 0;
+  z-index: 0;
+  height: 62px;
+  border-right: 1px solid var(--color-accent);
+  border-left: 1px solid var(--color-accent);
+  background:
+    repeating-linear-gradient(90deg, rgba(145, 71, 55, .34) 0 1px, transparent 1px 6px) 0 100% / 100% 18px no-repeat,
+    var(--range-selection);
+}
+
+.range-console .track input { height: 62px; }
+
+.range-console .track input::-webkit-slider-thumb {
+  width: 5px;
+  height: 62px;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--range-surface);
+}
+
+.range-console .track input::-moz-range-thumb {
+  width: 5px;
+  height: 62px;
+  border: 0;
+  border-radius: 0;
+  background: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--range-surface);
+}
+
+.range-console .track input:focus-visible {
+  z-index: 3;
+  outline: 2px solid var(--range-ink);
+  outline-offset: -3px;
+}
+
+.range-scale {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 10px 0;
+  color: var(--range-muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.range-console .time-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 9px 10px 11px;
+}
+
+.range-console .time-fields label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+}
+
+.range-console .time-fields label > span,
+.time-selection > span {
+  color: var(--range-muted);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.range-console .time-fields input {
+  min-height: 44px;
+  padding: 6px 8px;
+  border-color: var(--range-line);
+  background: var(--range-surface-raised);
+  color: var(--range-ink);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.range-console .time-fields input:hover { border-color: var(--range-muted); }
+.range-console .time-fields input:focus { border-color: var(--color-accent); }
+
+.time-selection {
+  display: grid;
+  min-width: 54px;
+  justify-items: center;
+  align-content: center;
+  gap: 2px;
+}
+
+.time-selection strong {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+@media (max-width: 320px) {
+  .range-console { border-radius: 3px; }
+  .range-console .time-fields label { grid-template-columns: 1fr; }
+  .range-console .time-fields input { text-align: left; }
+}
