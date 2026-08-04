@@ -37,6 +37,16 @@ user, and context boundary are also covered by static tests.
 
 The local browser run exercised the user-facing flows below:
 
+- On 2026-08-03 the capture desk received a focused scroll pass in the local
+  Vite app. The duplicate web-shell branding and repeated source block were
+  removed from the note rail, the publish action now sits in a compact sticky
+  rail on desktop, and the source preview height responds to short viewports
+  without introducing a nested scroll region. A DOM/layout probe at 1280×720
+  measured one document scroll (`scrollHeight` 989, no element-level vertical
+  overflow); the 390px mobile probe had no horizontal overflow. Article and
+  Podcast mode switches were also exercised after the layout change. This is
+  rendered local evidence, not docked-extension or deployed-browser proof.
+
 - Capture desk loaded with the local API, Article mode selected, and a
   highlighted passage visible for a `theverge.com` source.
 - A text annotation was published. The public page showed a stable `/a/:slug`

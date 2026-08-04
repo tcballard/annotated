@@ -18,6 +18,10 @@ else stays legible but quiet.
 - **Responsive rule:** desktop keeps source and note side by side; tablet
   reduces the rail; mobile becomes one ordered capture path with 44px-safe
   controls and no hidden primary action.
+- **Scroll rule:** the capture desk uses one document scroll. On desktop the
+  note rail stays beneath the header once it reaches the viewport and is
+  compact enough to keep the publish action in view; mobile remains a single
+  linear flow with no nested scroll region.
 - **Recovery:** loading, offline, validation, audio retry, empty feed, empty
   published page, and moderation states use the same quiet surfaces and always
   name the next action.

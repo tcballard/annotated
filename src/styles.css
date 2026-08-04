@@ -519,3 +519,54 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     animation-iteration-count: 1 !important;
   }
 }
+
+/* UX pass: keep the capture desk in one calm, viewport-aware flow. The web
+   shell already names the product, so the capture controls start at the
+   decision that matters: what to keep and what to say about it. */
+.sidebar-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (min-width: 841px) {
+  .capture-layout > .extension-sidebar {
+    top: 88px;
+    padding: 20px;
+  }
+
+  .capture-layout > .extension-sidebar .source-type-grid {
+    margin-top: 16px;
+    margin-bottom: 10px;
+  }
+
+  .capture-layout > .extension-sidebar .sidebar-source {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .capture-layout > .extension-sidebar .sidebar-source-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .capture-layout > .extension-sidebar .clip-editor,
+  .capture-layout > .extension-sidebar .highlight-preview,
+  .capture-layout > .extension-sidebar .commentary-editor {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+
+  .capture-layout > .extension-sidebar .commentary-editor textarea {
+    min-height: 92px;
+    margin-top: 12px;
+  }
+
+  /* A shorter viewport should reveal the publish action without creating a
+     second scroll region. Large windows keep the more generous source view. */
+  .browser-page,
+  .media-canvas,
+  .podcast-canvas {
+    min-height: clamp(340px, calc(100vh - 414px), 422px);
+  }
+}
