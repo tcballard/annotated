@@ -53,5 +53,7 @@ test('clip timer presents an instrument-style ruler without replacing native ran
   assert.match(mainSource, /type="range"[^>]*data-action="clip-end"/u);
   assert.match(styles, /\.range-console \.range-track \{/u);
   assert.match(styles, /repeating-linear-gradient/u);
+  assert.match(styles, /--range-surface: var\(--surface\)/u);
+  assert.match(styles, /background: var\(--range-surface\)/u);
   assert.match(styles, /\.range-console \.range-track input:focus-visible/u);
 });

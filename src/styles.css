@@ -1428,20 +1428,28 @@ body {
    borrowing the reference's ruler and selected-time window while retaining
    Annotated's ink, paper, and signal-orange language. */
 .range-console {
+  --range-surface: var(--surface);
+  --range-surface-raised: var(--paper);
+  --range-ink: var(--ink);
+  --range-muted: var(--muted);
+  --range-line: var(--line);
+  --range-tick: rgba(17, 21, 21, .30);
+  --range-tick-strong: rgba(17, 21, 21, .16);
+  --range-selection: rgba(180, 95, 73, .20);
   overflow: hidden;
   margin-top: 13px;
-  border: 1px solid #303735;
+  border: 1px solid var(--range-line);
   border-radius: var(--radius-md);
-  background: #171b1a;
-  color: #f7f4ed;
-  box-shadow: 0 6px 14px rgba(17, 21, 21, .12);
+  background: var(--range-surface);
+  color: var(--range-ink);
+  box-shadow: 0 5px 12px rgba(17, 21, 21, .07);
 }
 
 .range-console-meta {
   display: flex;
   justify-content: space-between;
   padding: 9px 11px 7px;
-  color: #a8b0ac;
+  color: var(--range-muted);
   font-family: var(--mono);
   font-size: 9px;
   letter-spacing: .08em;
@@ -1451,12 +1459,12 @@ body {
 .range-console .range-track {
   height: 62px;
   margin: 0;
-  border-top: 1px solid #2c3331;
-  border-bottom: 1px solid #2c3331;
+  border-top: 1px solid var(--range-line);
+  border-bottom: 1px solid var(--range-line);
   background:
-    repeating-linear-gradient(90deg, rgba(222, 227, 223, .48) 0 1px, transparent 1px 6px) 0 100% / 100% 18px no-repeat,
-    repeating-linear-gradient(90deg, rgba(222, 227, 223, .24) 0 1px, transparent 1px 30px) 0 100% / 100% 31px no-repeat,
-    linear-gradient(#171b1a, #1d2221);
+    repeating-linear-gradient(90deg, var(--range-tick) 0 1px, transparent 1px 6px) 0 100% / 100% 18px no-repeat,
+    repeating-linear-gradient(90deg, var(--range-tick-strong) 0 1px, transparent 1px 30px) 0 100% / 100% 31px no-repeat,
+    linear-gradient(var(--range-surface), var(--range-surface-raised));
 }
 
 .range-console .range-track::before {
@@ -1466,19 +1474,19 @@ body {
   left: 0;
   height: 1px;
   border-radius: 0;
-  background: rgba(222, 227, 223, .22);
+  background: var(--range-tick-strong);
 }
 
 .range-console .range-fill {
   top: 0;
   z-index: 0;
   height: 62px;
-  border-right: 1px solid rgba(255, 190, 165, .72);
-  border-left: 1px solid rgba(255, 190, 165, .72);
+  border-right: 1px solid var(--orange-deep);
+  border-left: 1px solid var(--orange-deep);
   border-radius: 0;
   background:
-    repeating-linear-gradient(90deg, rgba(255, 222, 209, .42) 0 1px, transparent 1px 6px) 0 100% / 100% 18px no-repeat,
-    rgba(180, 95, 73, .43);
+    repeating-linear-gradient(90deg, rgba(145, 71, 55, .34) 0 1px, transparent 1px 6px) 0 100% / 100% 18px no-repeat,
+    var(--range-selection);
 }
 
 .range-console .range-track input {
@@ -1491,7 +1499,7 @@ body {
   border: 0;
   border-radius: 0;
   background: var(--orange);
-  box-shadow: 0 0 0 1px rgba(17, 21, 21, .48);
+  box-shadow: 0 0 0 1px var(--range-surface);
 }
 
 .range-console .range-track input::-moz-range-thumb {
@@ -1500,11 +1508,11 @@ body {
   border: 0;
   border-radius: 0;
   background: var(--orange);
-  box-shadow: 0 0 0 1px rgba(17, 21, 21, .48);
+  box-shadow: 0 0 0 1px var(--range-surface);
 }
 
 .range-console .range-track input:focus-visible {
-  outline: 2px solid #fffdf9;
+  outline: 2px solid var(--range-ink);
   outline-offset: -3px;
 }
 
@@ -1512,7 +1520,7 @@ body {
   display: flex;
   justify-content: space-between;
   padding: 5px 10px 0;
-  color: #8e9893;
+  color: var(--range-muted);
   font-family: var(--mono);
   font-size: 8px;
   font-variant-numeric: tabular-nums;
@@ -1532,7 +1540,7 @@ body {
 
 .range-console .time-fields label > span,
 .time-selection > span {
-  color: #9ca5a1;
+  color: var(--range-muted);
   font-family: var(--mono);
   font-size: 8px;
   letter-spacing: .08em;
@@ -1544,16 +1552,16 @@ body {
   min-width: 0;
   min-height: 44px;
   padding: 6px 8px;
-  border-color: #3b4340;
-  background: #202524;
-  color: #fffdf9;
+  border-color: var(--range-line);
+  background: var(--range-surface-raised);
+  color: var(--range-ink);
   font-family: var(--mono);
   font-size: 15px;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
-.range-console .time-fields input:hover { border-color: #69736e; }
+.range-console .time-fields input:hover { border-color: var(--range-muted); }
 .range-console .time-fields input:focus { border-color: var(--orange); }
 
 .time-selection {
@@ -1565,7 +1573,7 @@ body {
 }
 
 .time-selection strong {
-  color: var(--orange);
+  color: var(--orange-deep);
   font-family: var(--mono);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
