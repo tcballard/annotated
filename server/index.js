@@ -20,6 +20,8 @@ import { metricsSnapshot, recordRequest } from './observability.js';
 import { findIdempotentAnnotation } from './idempotency.js';
 import { findActiveClaim, validateClaimTransition } from './moderation.js';
 import { resolveCorsOrigin } from './cors.js';
+import { renderCard } from './og-render.js';
+import { injectPermalinkMeta, permalinkCardData } from './permalink.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
@@ -399,6 +401,34 @@ const serveMedia = async (response, id) => {
   return serveStoredMedia(response, media);
 };
 
+const publicAnnotation = async (identifier) => {
+  const store = await readStore();
+  const annotation = store.annotations.find((item) => item.status === 'published' && (item.id === identifier || item.slug === identifier));
+  if (!annotation) return null;
+  return { annotation, author: (store.users || []).find((user) => user.id === annotation.authorId) || null };
+};
+
+const servePermalink = async (response, slug) => {
+  const found = await publicAnnotation(slug);
+  if (!found) return false;
+  const shell = await readFile(path.join(projectRoot, 'dist/index.html'), 'utf8');
+  response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...securityHeaders() });
+  response.end(injectPermalinkMeta(shell, found.annotation, found.author, publicOrigin));
+  return true;
+};
+
+const serveOgImage = async (response, identifier) => {
+  const found = await publicAnnotation(identifier);
+  if (!found) return notFound(response);
+  const png = await renderCard(permalinkCardData(found.annotation, found.author));
+  response.writeHead(200, {
+    'content-type': 'image/png',
+    'cache-control': 'public, max-age=86400, s-maxage=604800',
+    ...securityHeaders(),
+  });
+  response.end(png);
+};
+
 const serveStatic = async (request, response, pathname) => {
   const relative = pathname === '/' ? 'dist/index.html' : pathname.replace(/^\//, '');
   const candidate = path.resolve(projectRoot, relative.startsWith('dist/') ? relative : `dist/${relative}`);
@@ -436,6 +466,12 @@ const server = http.createServer(async (request, response) => {
       const result = await handleApi(request, response, url.pathname);
       if (result !== null) return;
     }
+    const permalinkMatch = url.pathname.match(/^\/a\/([^/]+)$/);
+    if (request.method === 'GET' && permalinkMatch) {
+      if (await servePermalink(response, decodeURIComponent(permalinkMatch[1]))) return;
+    }
+    const ogImageMatch = url.pathname.match(/^\/og\/([^/]+)\.png$/);
+    if (request.method === 'GET' && ogImageMatch) return serveOgImage(response, decodeURIComponent(ogImageMatch[1]));
     if (request.method === 'GET') return serveStatic(request, response, url.pathname);
     return notFound(response);
   } catch (error) {

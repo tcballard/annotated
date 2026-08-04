@@ -16,6 +16,7 @@ test('production image builds before pruning dev dependencies and runs non-root'
   assert.match(dockerfile, /\/usr\/local\/bin\/yt-dlp --version/);
   assert.match(dockerfile, /ENV YTDLP_BIN=\/usr\/local\/bin\/yt-dlp/);
   assert.match(dockerfile, /ENV YTDLP_JS_RUNTIME=node/);
+  assert.match(dockerfile, /ENV OG_FONT_DIR=\/app\/server\/fonts/);
 });
 
 test('docker build context excludes local state and secrets', async () => {

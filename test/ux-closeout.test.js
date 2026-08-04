@@ -13,10 +13,8 @@ test('contextual authentication prompts clear when the user changes views', () =
   assert.match(mainSource, /document\.querySelector\('\.nav-link\.is-active'\)\?\.focus\(\)/u);
 });
 
-test('unavailable capture and published media do not present fake play buttons', () => {
-  const videoCanvas = mainSource.match(/const videoCanvas = \(\) => `[\s\S]*?`;/u)?.[0] || '';
-  assert.match(videoCanvas, /class="preview-unavailable" role="status"/u);
-  assert.doesNotMatch(videoCanvas, /data-action="toggle-preview"/u);
+test('capture does not render a mock browser or fake media player', () => {
+  assert.doesNotMatch(mainSource, /browser-chrome|media-canvas|preview-unavailable/u);
   assert.doesNotMatch(mainSource, /if \(action === 'toggle-preview'\)/u);
 });
 
@@ -31,29 +29,27 @@ test('claim dialog has modal isolation, keyboard escape, focus trapping, and res
 });
 
 test('anonymous timeline copy does not masquerade as a local profile', () => {
-  assert.match(mainSource, /class="aside-card profile-card signed-out-card"/u);
-  assert.match(mainSource, /Build your public library\./u);
-  assert.doesNotMatch(mainSource, /profile-stamp">\$\{state\.user \? 'SIGNED IN' : 'LOCAL'\}/u);
+  assert.match(mainSource, /Build your public library/u);
+  assert.match(mainSource, /Capture now\. Sign in with X when you are ready/u);
+  assert.doesNotMatch(mainSource, />LOCAL</u);
+  assert.match(mainSource, /state\.activeView === 'published' && !state\.user/u);
 });
 
-test('mobile capture compresses the preview and keeps primary targets at least 44px', () => {
-  assert.match(mainSource, /class="mobile-source-summary"/u);
-  assert.match(mainSource, /aria-expanded="\$\{state\.showMobileSourcePreview\}"/u);
-  assert.match(styles, /\.browser-frame \{ display: none; \}/u);
-  assert.match(styles, /\.browser-frame\.is-mobile-expanded \{ display: block; \}/u);
-  assert.match(styles, /\.brand-mark \{ min-width: 44px; min-height: 44px; \}/u);
-  assert.match(styles, /\.nav-link \{ min-width: 44px; min-height: 44px;/u);
+test('the chrome and capture form keep practical mobile targets', () => {
+  assert.match(mainSource, /class="chrome-search"/u);
+  assert.match(mainSource, /class="tabstrip"/u);
+  assert.match(styles, /\.nav-link/u);
+  assert.match(styles, /\.tabstrip/u);
 });
 
-test('clip timer presents an instrument-style ruler without replacing native range inputs', () => {
-  assert.match(mainSource, /class="range-console"/u);
-  assert.match(mainSource, /class="range-scale"/u);
+test('clip timer presents a full-duration scrubber with mm:ss fields', () => {
+  assert.match(mainSource, /class="moment-track"/u);
+  assert.match(mainSource, /class="ticks"/u);
+  assert.match(mainSource, /class="moment-fields"/u);
   assert.match(mainSource, /data-range-duration/u);
   assert.match(mainSource, /type="range"[^>]*data-action="clip-start"/u);
   assert.match(mainSource, /type="range"[^>]*data-action="clip-end"/u);
-  assert.match(styles, /\.range-console \.range-track \{/u);
-  assert.match(styles, /repeating-linear-gradient/u);
-  assert.match(styles, /--range-surface: var\(--surface\)/u);
-  assert.match(styles, /background: var\(--range-surface\)/u);
-  assert.match(styles, /\.range-console \.range-track input:focus-visible/u);
+  assert.match(mainSource, /data-action="clip-start-time"/u);
+  assert.match(mainSource, /data-action="clip-end-time"/u);
+  assert.match(styles, /\.moment-track/u);
 });

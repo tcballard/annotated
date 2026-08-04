@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('the supplied mark is wired into the web and extension entry points', async () => {
+test('the supplied mark remains available to browser and extension entry points', async () => {
   const [index, main, panel] = await Promise.all([
     read('index.html'),
     read('src/main.js'),
@@ -12,8 +12,8 @@ test('the supplied mark is wired into the web and extension entry points', async
   ]);
   assert.match(index, /\/brand\/favicon\.svg/);
   assert.match(index, /\/brand\/favicon-16\.png/);
-  assert.match(main, /src="\/brand\/app-icon-light-128\.png"/);
-  assert.match(main, /class="empty-symbol" src="\/brand\/app-icon-light-128\.png"/);
+  assert.match(main, /class="brand-name">annotated<span class="brand-dot">\.<\/span>/);
+  assert.match(main, /class="brand-dot"/);
   assert.match(panel, /src="icons\/icon-128\.png"/);
 });
 

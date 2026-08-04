@@ -35,6 +35,7 @@ ENV PORT=8787
 ENV HOST=0.0.0.0
 ENV YTDLP_BIN=/usr/local/bin/yt-dlp
 ENV YTDLP_JS_RUNTIME=node
+ENV OG_FONT_DIR=/app/server/fonts
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD node --input-type=module -e "const r=await fetch('http://127.0.0.1:8787/api/ready'); process.exit(r.ok?0:1)"
 CMD ["npm", "start"]

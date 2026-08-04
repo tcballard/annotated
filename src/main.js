@@ -1,7 +1,6 @@
 import './styles.css';
 import { api } from './api.js';
 import { deleteMediaDraft, readMediaDraft, stageMediaDraft } from './media-draft-store.js';
-import { mediaPresentation } from './media-presentation.js';
 import { publicAnnotationUrl } from './share-links.js';
 import { authNoticeFromSearch, enabledProviders, oauthStartUrl, providerLabel } from './auth-ui.js';
 import { MAX_CLIP_SECONDS, moveClipBoundary, normalizeClipRange } from './clip-range.js';
@@ -41,6 +40,15 @@ const formatTime = (seconds) => {
   const mins = Math.floor(seconds / 60);
   const secs = Math.max(0, Math.round(seconds % 60)).toString().padStart(2, '0');
   return `${mins}:${secs}`;
+};
+
+const parseTime = (value) => {
+  const parts = String(value || '').trim().split(':');
+  if (parts.length !== 2 || parts.some((part) => !/^\d{1,3}$/.test(part))) return null;
+  const minutes = Number(parts[0]);
+  const seconds = Number(parts[1]);
+  if (seconds > 59) return null;
+  return minutes * 60 + seconds;
 };
 
 const sourceData = {
@@ -83,6 +91,9 @@ const canModerate = () => Boolean(state.user && ['owner', 'admin', 'moderator'].
 const normalizeSource = (item = {}) => {
   const type = item.sourceType || item.type || 'article';
   const url = item.sourceUrl || item.url || '';
+  const sourceAuthor = typeof item.author === 'string'
+    ? item.author
+    : item.sourceAuthor || item.sourceChannel || '';
   let host = item.host || item.sourceHost || '';
   if (!host && url) {
     try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { host = ''; }
@@ -93,9 +104,9 @@ const normalizeSource = (item = {}) => {
     url,
     canonicalUrl: item.canonicalUrl || url,
     title: item.title || item.sourceTitle || 'Untitled source',
-    author: item.author || host || 'Unknown source',
+    author: sourceAuthor || host || 'Unknown source',
     date: item.date || 'Just now',
-    duration: Number(item.duration) || 0,
+    duration: Number(item.sourceDuration ?? item.duration) || 0,
     caption: item.description || item.excerpt || 'A source ready to annotate.',
     excerpt: item.excerpt || item.sourceExcerpt || '',
     imageUrl: item.imageUrl || item.thumbnailUrl || null,
@@ -105,7 +116,7 @@ const normalizeSource = (item = {}) => {
 };
 
 const initialState = {
-  activeView: 'capture',
+  activeView: 'feed',
   profileHandle: '',
   profileData: null,
   profileLoading: false,
@@ -353,7 +364,7 @@ const bootstrap = async () => {
   const profileMatch = window.location.pathname.match(/^\/u\/([^/]+)/);
   if (routeMatch) {
     state.publishedSlug = decodeURIComponent(routeMatch[1]);
-    state.activeView = 'published';
+    state.activeView = 'permalink';
   }
   if (profileMatch) {
     state.profileHandle = decodeURIComponent(profileMatch[1]);
@@ -366,6 +377,7 @@ const bootstrap = async () => {
     state.authProviders = providers.providers || {};
     state.authRequired = Boolean(providers.required);
     state.user = await api.me().then((result) => result.user).catch(() => null);
+    if (state.activeView === 'published' && !state.user) state.activeView = 'feed';
     if (canModerate()) await loadModerationClaims();
     if (state.publishedSlug) {
       const { annotation } = await api.getAnnotation(state.publishedSlug);
@@ -397,85 +409,35 @@ const authControls = () => state.user
 
 const appHeader = () => `
   <header class="app-header">
-    <div class="brand-lockup">
-      <button class="brand-mark" data-action="set-view" data-view="capture" aria-label="Go to capture"><img src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /></button>
-      <div>
-        <div class="brand-name">annotated<span class="brand-dot">.</span></div>
-        <div class="brand-caption">source-first notes</div>
-      </div>
-    </div>
+    <button class="brand-lockup" data-action="set-view" data-view="feed" aria-label="Go to timeline"><span class="brand-name">annotated<span class="brand-dot">.</span></span></button>
     <nav class="primary-nav" aria-label="Primary navigation">
-      ${button('Capture', 'set-view', `nav-link ${state.activeView === 'capture' ? 'is-active' : ''}`, 'data-view="capture"')}
       ${button('Timeline', 'set-view', `nav-link ${state.activeView === 'feed' ? 'is-active' : ''}`, 'data-view="feed"')}
+      ${button('Capture', 'set-view', `nav-link ${state.activeView === 'capture' ? 'is-active' : ''}`, 'data-view="capture"')}
       ${button('Published', 'set-view', `nav-link ${state.activeView === 'published' ? 'is-active' : ''}`, 'data-view="published"')}
       ${canModerate() ? button('Moderation', 'set-view', `nav-link ${state.activeView === 'moderation' ? 'is-active' : ''}`, 'data-view="moderation"') : ''}
     </nav>
     <div class="header-actions">
-      <span class="connection-status"><span class="status-dot ${state.serverStatus === 'offline' ? 'is-offline' : ''}"></span> ${state.serverStatus === 'online' ? 'Live backend' : state.serverStatus === 'checking' ? 'Connecting…' : 'Backend offline'}</span>
-      ${authControls()}
+      <input class="chrome-search" aria-label="Search annotations" placeholder="Search annotations" />
+      <span class="chrome-auth">${state.user ? `Signed in as <b>@${escapeHTML(state.user.handle || state.user.displayName || 'member')}</b> <button class="link-button" data-action="logout">Sign out</button>` : authLinks('chrome-sign-in') || 'Sign in unavailable'}</span>
     </div>
   </header>`;
 
 const appRail = () => `
-  <aside class="app-rail" aria-label="Workspace summary">
-    <div class="rail-kicker">Your library</div>
-    <div class="rail-stat"><strong>${state.published ? '01' : '00'}</strong><span>published<br>annotations</span></div>
-    <div class="rail-rule"></div>
-    <div class="rail-kicker">The rule</div>
-    <p class="rail-note">Every clip keeps a live link to where it came from.</p>
-    <div class="rail-source"><span class="source-glyph">${icon(state.sourceType)}</span><span>${source().host}</span></div>
-    <div class="rail-bottom">source-first notes<br>Chrome sidebar-first</div>
+  <aside class="leftnav" aria-label="Workspace navigation">
+    <nav><button class="${state.activeView === 'feed' ? 'on' : ''}" data-action="set-view" data-view="feed">Timeline</button><button class="${state.activeView === 'capture' ? 'on' : ''}" data-action="set-view" data-view="capture">Capture a moment</button><button class="${state.activeView === 'published' ? 'on' : ''}" data-action="set-view" data-view="published">My library</button>${state.user ? '<button data-action="feed-filter" data-following="true">Following</button>' : ''}<a href="/" data-action="open-original">Get the sidebar</a></nav>
+    <p class="hint">${state.activeView === 'capture' ? 'Max 90 seconds. The source link is retained on every clip.' : 'Every clip keeps a live link to where it came from.'}</p>
   </aside>`;
 
-const browserChrome = () => `
-  <div class="browser-chrome">
-    <div class="traffic-lights"><i></i><i></i><i></i></div>
-    <div class="browser-tabs"><span class="browser-tab is-active"><span class="tab-favicon">${state.sourceType === 'video' ? '▶' : state.sourceType === 'article' ? 'V' : '◉'}</span><span class="browser-tab-host">${escapeHTML(source().host)}</span></span><span class="browser-tab muted">new tab</span></div>
-    <div class="browser-toolbar"><span>‹</span><span>›</span><span>↻</span><div class="address-bar">${escapeHTML(state.sourceUrl)}</div><span>☆</span><span>⋮</span></div>
-  </div>`;
-
-const videoCanvas = () => `
-  <div class="media-canvas video-canvas" data-source-canvas="video" ${state.sourceType === 'video' ? '' : 'hidden'}>
-    <div class="video-backdrop"><div class="video-silhouette"></div><div class="video-shelf shelf-one"></div><div class="video-shelf shelf-two"></div><div class="video-window"></div></div>
-    <div class="media-overline"><span>${icon('video')} VIDEO ESSAY</span><span>J-CAL CONVERSATIONS</span></div>
-    <div class="preview-unavailable" role="status"><span class="preview-unavailable-icon" aria-hidden="true">${icon('video')}</span><span><strong>Preview after publish</strong><small>Open the original to confirm exact timing.</small></span></div>
-    <div class="media-caption"><span>“The future is built by people who keep asking why.”</span><small>06:08</small></div>
-    <div class="media-player"><span class="player-time">${formatTime(state.clipStart)}</span><div class="player-line"><span class="player-progress" style="width: 24%"></span></div><span class="player-time">06:08</span></div>
-  </div>`;
-
-const articleCanvas = () => `
-  <div class="media-canvas article-canvas" data-source-canvas="article" ${state.sourceType === 'article' ? '' : 'hidden'}>
-    <div class="article-topline"><span>${icon('article')} THE VERGE</span><span>TECH · OPINION</span></div>
-    <h3>The internet is becoming a place you can’t search</h3>
-    <p class="article-dek">We used to browse toward a question. Now the answer arrives first, and the path disappears.</p>
-    <div class="article-meta">By David Pierce <span>·</span> 2h ago</div>
-    <div class="article-body-lines"><i></i><i></i><i class="short"></i><i></i><i></i><i class="short"></i></div>
-    <blockquote>“${escapeHTML(articleExcerpt() || sourceData.article.excerpt)}”</blockquote>
-    <div class="article-highlight">${icon('text')} Highlighted passage ready to clip</div>
-  </div>`;
-
-const podcastCanvas = () => `
-  <div class="media-canvas podcast-canvas" data-source-canvas="podcast" ${state.sourceType === 'podcast' ? '' : 'hidden'}>
-    <div class="podcast-orbit"><span></span><span></span><span></span></div>
-    <div class="podcast-copy"><div class="media-overline"><span>${icon('podcast')} DECODER RING</span><span>EPISODE 142</span></div><h3>The quiet advantage of paying attention</h3><p>A small moment from a long conversation, pulled out because it stayed with you.</p></div>
-    <div class="waveform" aria-hidden="true">${Array.from({ length: 42 }, (_, i) => `<i style="height:${18 + ((i * 17) % 54)}%"></i>`).join('')}</div>
-    <div class="media-player"><span class="player-time">${formatTime(state.clipStart)}</span><div class="player-line"><span class="player-progress" style="width: 24%"></span></div><span class="player-time">46:04</span></div>
-  </div>`;
-
-// Keep all three previews mounted. Source switching becomes a state change on
-// stable elements instead of tearing down and rebuilding the largest painted
-// region in the capture desk.
-const sourceCanvasMarkup = () => `${videoCanvas()}${articleCanvas()}${podcastCanvas()}`;
+const appFooter = () => `<footer class="app-footer"><span><a href="/">About</a><a href="/privacy.html">Privacy</a><button class="link-button" data-action="toggle-claim">Rights &amp; claims</button><a href="/">Terms</a></span><span>annotated © 2026 · source-first notes</span></footer>`;
 
 const sourceCanvas = () => {
-  const canvas = sourceCanvasMarkup();
-  return `<section class="source-stage source-spine-stage">
-    <div class="stage-header"><div><span class="eyebrow">Source</span><h1>${escapeHTML(source().title)}</h1></div><button class="ghost-button" data-action="toggle-source-input">${icon('link')} Change</button></div>
-    ${state.showSourceInput ? `<div class="source-input-row"><label for="source-url">Paste a source URL</label><div class="source-input-wrap">${icon('link')}<input id="source-url" data-action="source-url" value="${escapeHTML(state.sourceUrl)}" /><button data-action="load-source" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Load'}</button></div><p>Metadata stays attached to the original link.</p>${state.sourceError ? `<p class="source-error" role="alert">${escapeHTML(state.sourceError)}</p>` : ''}</div>` : ''}
-    <div class="mobile-source-summary"><span>${icon(state.sourceType)} ${escapeHTML(source().label)} · ${escapeHTML(source().host)}</span><button data-action="toggle-mobile-source" aria-expanded="${state.showMobileSourcePreview}">${state.showMobileSourcePreview ? 'Hide preview' : 'Show preview'}</button></div>
-    <div class="browser-frame ${state.showMobileSourcePreview ? 'is-mobile-expanded' : ''}">${browserChrome()}<div class="browser-page">${canvas}</div></div>
-    <div class="source-footer source-spine-footer"><div><span class="source-pill">${icon(state.sourceType)} ${source().label}</span><span class="source-byline">${escapeHTML(source().author)} <span>·</span> ${escapeHTML(source().date)}</span></div><a href="${escapeHTML(source().url)}" target="_blank" rel="noreferrer" class="source-link">Open original ${icon('external')}</a></div>
-  </section>`;
+  const current = source();
+  const duration = current.duration ? formatTime(current.duration) : 'article';
+  return `<tr><td class="lbl"><label for="source-url">Source</label></td><td>
+    <div class="source-input-wrap"><input id="source-url" data-action="source-url" value="${escapeHTML(state.sourceUrl)}" aria-label="Source URL" /><button class="btn" data-action="load-source" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Resolve'}</button></div>
+    <div class="srcprev"><div class="source-thumb">${escapeHTML(current.label.toUpperCase())}</div><div><strong>${escapeHTML(current.title)}</strong><p>${escapeHTML(current.host)} · ${escapeHTML(current.author)} · ${duration} · published ${escapeHTML(current.date)}</p><a href="${escapeHTML(current.url)}" target="_blank" rel="noreferrer">Open original</a><span> · </span><button class="link-button" data-action="toggle-source-input">Change source</button></div></div>
+    ${state.sourceError ? `<p class="source-error" role="alert">${escapeHTML(state.sourceError)}</p>` : ''}
+  </td></tr>`;
 };
 
 const articleExcerpt = () => String(state.articleExcerpt ?? source().excerpt ?? '').trim();
@@ -485,58 +447,34 @@ const timeRange = () => {
   const excerpt = articleExcerpt();
   const max = sourceRangeMax();
   const length = Math.max(0, state.clipEnd - state.clipStart);
-  return `<div class="clip-editor" ${state.sourceType === 'article' ? 'hidden' : ''}>
-    <div class="clip-editor-head"><span class="clip-editor-label"><span class="clip-editor-icon">${icon(state.sourceType)}</span><span>Select a moment</span></span><strong class="duration-badge ${length > 90 ? 'is-warning' : ''}" role="status" aria-live="polite"><span>${formatTime(length)}</span><span aria-hidden="true">/</span><span>1:30 max</span></strong></div>
-    <div class="range-console">
-      <div class="range-console-meta" aria-hidden="true"><span>Source time</span><span>90 sec window</span></div>
-      <div class="range-track"><span class="range-fill" style="left:${(state.clipStart / max) * 100}%; width:${((state.clipEnd - state.clipStart) / max) * 100}%"></span><input aria-label="Clip start" aria-valuetext="${formatTime(state.clipStart)}" type="range" min="0" max="${max}" value="${state.clipStart}" data-action="clip-start" /><input aria-label="Clip end" aria-valuetext="${formatTime(state.clipEnd)}" type="range" min="0" max="${max}" value="${state.clipEnd}" data-action="clip-end" /></div>
-      <div class="range-scale" aria-hidden="true"><span>0:00</span><span>${formatTime(max / 3)}</span><span>${formatTime(max * 2 / 3)}</span><span>${formatTime(max)}</span></div>
-      <div class="time-fields"><label><span>In</span><input type="number" min="0" max="604800" inputmode="numeric" value="${state.clipStart}" data-action="clip-start-number" aria-label="Clip start seconds" /></label><span class="time-selection" aria-hidden="true"><span>Selected</span><strong data-range-duration>${formatTime(length)}</strong></span><label><span>Out</span><input type="number" min="0" max="604800" inputmode="numeric" value="${state.clipEnd}" data-action="clip-end-number" aria-label="Clip end seconds" /></label></div>
-    </div>
-  </div><div class="highlight-preview" ${state.sourceType === 'article' ? '' : 'hidden'}><div class="highlight-mark"></div><label for="article-excerpt">Selected passage</label><textarea id="article-excerpt" data-action="article-excerpt" maxlength="2000" aria-describedby="article-excerpt-hint">${escapeHTML(excerpt)}</textarea><span id="article-excerpt-hint">Highlight selected · ${excerpt.length} characters · edit before publishing</span></div>`;
+  return state.sourceType === 'article'
+    ? `<div class="highlight-preview"><label for="article-excerpt">Selected passage</label><textarea id="article-excerpt" data-action="article-excerpt" maxlength="2000" aria-describedby="article-excerpt-hint">${escapeHTML(excerpt)}</textarea><span id="article-excerpt-hint">Highlight selected · ${excerpt.length} characters · edit before publishing</span></div>`
+    : `<div class="clip-editor"><div class="moment-track"><span class="moment-fill" style="left:${(state.clipStart / max) * 100}%;width:${((state.clipEnd - state.clipStart) / max) * 100}%"></span><span class="moment-handle" style="left:${(state.clipStart / max) * 100}%"></span><span class="moment-handle" style="left:${(state.clipEnd / max) * 100}%"></span><input aria-label="Clip start" aria-valuetext="${formatTime(state.clipStart)}" type="range" min="0" max="${max}" value="${state.clipStart}" data-action="clip-start" /><input aria-label="Clip end" aria-valuetext="${formatTime(state.clipEnd)}" type="range" min="0" max="${max}" value="${state.clipEnd}" data-action="clip-end" /></div><div class="ticks" aria-hidden="true"><span>0:00</span><span>${formatTime(max / 4)}</span><span>${formatTime(max / 2)}</span><span>${formatTime(max * .75)}</span><span>${formatTime(max)}</span></div><div class="moment-fields"><label>IN <input type="text" inputmode="numeric" value="${formatTime(state.clipStart)}" data-action="clip-start-time" aria-label="Clip start, minutes and seconds" /></label><span>to</span><label>OUT <input type="text" inputmode="numeric" value="${formatTime(state.clipEnd)}" data-action="clip-end-time" aria-label="Clip end, minutes and seconds" /></label><strong class="chip" data-range-duration>${formatTime(length)} selected</strong><span class="formnote">1:30 max</span></div><p class="formnote">Open the original to confirm exact timing before you publish.</p></div>`;
 };
 
 const commentaryEditor = () => `
   <div class="commentary-editor">
-    <div class="commentary-head"><span>Your annotation</span><div class="mode-switch" role="group" aria-label="Commentary type">${button(`${icon('text')} Text`, 'commentary-mode', state.commentaryMode === 'text' ? 'mode-button is-active' : 'mode-button', 'data-mode="text"')}${button(`${icon('mic')} Audio`, 'commentary-mode', state.commentaryMode === 'audio' ? 'mode-button is-active' : 'mode-button', 'data-mode="audio"')}</div></div>
+    <div class="modetoggle" role="group" aria-label="Commentary type">${button('Text', 'commentary-mode', state.commentaryMode === 'text' ? 'link-button is-active' : 'link-button', 'data-mode="text"')}<span> · </span>${button('Audio', 'commentary-mode', state.commentaryMode === 'audio' ? 'link-button is-active' : 'link-button', 'data-mode="audio"')}</div>
     ${state.commentaryMode === 'text' ? `<textarea data-action="commentary" aria-label="Your annotation" placeholder="What did you notice?">${escapeHTML(state.commentary)}</textarea><div class="editor-foot"><span>${state.commentary.length}/280</span><span>Public after publish</span></div>` : `<div class="audio-recorder ${state.isRecording ? 'is-recording' : ''} ${state.isUploadingAudio ? 'is-uploading' : ''}"><button class="record-button" data-action="toggle-record" aria-label="${state.isRecording ? 'Stop recording' : 'Start recording'}" ${state.isUploadingAudio ? 'disabled' : ''}>${icon(state.isRecording ? 'pause' : 'mic')}</button><div><strong>${state.isRecording ? 'Recording your take…' : state.isUploadingAudio ? 'Uploading your take…' : state.recordedAudio ? 'Audio note ready' : state.audioDraftId ? 'Audio note saved locally' : 'Record a 90-second take'}</strong><span>${state.isRecording ? 'Tap to stop · max 1:30' : state.isUploadingAudio ? 'The browser is sending your note' : state.recordedAudio ? 'You can replace it before publishing' : state.audioDraftId ? 'It will retry when the backend is available' : 'Say the thing you want to remember'}</span></div><span class="audio-duration">${formatTime(state.isRecording ? state.recordingSeconds : state.audioDuration)}</span>${state.audioDraftId && !state.recordedAudio && !state.isUploadingAudio ? `<button class="audio-retry" data-action="retry-audio">Retry upload</button>` : ''}</div>`}
   </div>`;
 
 const sidebar = () => `
-  <aside class="extension-sidebar source-spine-note" aria-label="Annotated capture sidebar">
-    <div class="sidebar-heading"><div><span class="eyebrow">Your note</span><h2>Leave your context.</h2></div><div class="sidebar-heading-actions"><span class="capture-number">STEP 01</span><button class="icon-button" data-action="sidebar-help" aria-label="Sidebar help">${icon('more')}</button></div></div>
-    <div class="source-type-grid" role="group" aria-label="Source type">${sourceTypeButton('video')}${sourceTypeButton('article')}${sourceTypeButton('podcast')}</div>
-    ${timeRange()}
-    ${commentaryEditor()}
-    <button class="publish-button" data-action="publish" ${state.isPublishing ? 'disabled' : ''}>${state.isPublishing ? 'Publishing…' : state.published ? `${icon('check')} Published` : 'Publish annotation'}<span>${state.isPublishing ? '…' : state.published ? '↗' : icon('arrow')}</span></button>
-    <p class="privacy-note"><span class="status-dot"></span> ${state.published ? 'Published with a permanent source link.' : 'Nothing is published until you choose to publish.'}</p>
-  </aside>`;
+  <div class="module capture-module"><h2>Capture a moment</h2><div class="tabstrip" role="group" aria-label="Source type">${sourceTypeButton('video')}${sourceTypeButton('article')}${sourceTypeButton('podcast')}</div><div class="module-body"><table class="formtable"><tbody>${sourceCanvas()}<tr><td class="lbl">Moment</td><td>${timeRange()}</td></tr><tr><td class="lbl">Your note</td><td>${commentaryEditor()}</td></tr><tr><td class="lbl"></td><td><button class="btn publish-button" data-action="publish" ${state.isPublishing ? 'disabled' : ''}>${state.isPublishing ? 'Publishing…' : 'Publish annotation'}</button><p class="formnote">Nothing is published until you choose to publish.</p></td></tr></tbody></table></div></div>`;
 
 const captureView = () => `
-  <div class="view-head"><div><span class="eyebrow">Capture desk</span><h2>Capture a moment.</h2><p class="view-dek">Choose the source, set the moment, and leave your context.</p></div><span class="view-index">01 / 03</span></div>
-  <div class="capture-layout source-spine-layout">${sourceCanvas()}${sidebar()}</div>
-  <div class="capture-footnote"><span>Choose the exact moment. Add your context.</span><span>Max 90 seconds · source link retained</span></div>`;
+  <div class="capture-layout">${sidebar()}<aside class="rail"><div class="module"><h2>How capture works</h2><div class="module-body"><ol class="steps"><li>Paste a source URL, or start from the page you are reading with the sidebar.</li><li>Set the moment — up to 90 seconds of it.</li><li>Leave your context, then publish when you are ready.</li></ol></div></div><div class="module"><h2>The annotated rule</h2><div class="module-body"><p class="rule">A clip without its source is just a rumour.</p><p class="small">Every public page points back to the original. Context travels with the moment.</p></div></div><div class="module"><h2>Sidebar-first</h2><div class="module-body"><p class="small">Capturing from the page you are on is faster in the Chrome sidebar.</p><a href="/" data-action="open-original">Get the extension →</a></div></div></aside></div>`;
 
 const feedCard = (item, index) => {
   const sourceHref = escapeHTML(item.sourceUrl || '#');
-  const media = mediaPresentation(item);
-  const fallbackStatus = media.status === 'processing' || media.status === 'queued' ? 'Preparing clip…' : media.status === 'failed' ? 'Clip unavailable' : 'Play after publishing';
-  const videoMedia = media.kind === 'video' && media.src
-    ? `<div class="feed-media feed-video feed-video-live"><video class="feed-video-player" controls preload="metadata" src="${escapeHTML(media.src)}"></video><span class="feed-duration">${escapeHTML(item.duration)}</span></div>`
-    : `<div class="feed-media feed-video"><div class="feed-video-shade"></div><span class="feed-preview-state" aria-hidden="true">${icon('video')}</span><span class="feed-duration">${escapeHTML(item.duration)}</span><span class="feed-media-status" role="status">${escapeHTML(fallbackStatus)}</span></div>`;
-  const audioMedia = media.kind === 'audio' && media.src
-    ? `<div class="feed-media feed-audio feed-audio-live"><div class="feed-audio-art">${icon('podcast')}</div><audio class="feed-audio-player" controls preload="metadata" src="${escapeHTML(media.src)}"></audio><span class="feed-duration">${escapeHTML(item.duration)}</span></div>`
-    : `<div class="feed-media feed-audio"><div class="feed-audio-art">${icon('podcast')}</div><div class="mini-wave">${Array.from({ length: 25 }, (_, i) => `<i style="height:${16 + ((i * 23) % 50)}%"></i>`).join('')}</div><span class="feed-duration">${escapeHTML(item.duration)}</span><span class="feed-media-status">${escapeHTML(fallbackStatus)}</span></div>`;
+  const moment = item.type === 'Article' ? '¶' : item.duration;
   return `
-  <article class="feed-card ${index === 0 ? 'featured-card' : ''}">
-    <span class="feed-spine-marker" aria-hidden="true"></span>
-    <div class="feed-card-top"><span class="source-pill">${icon(item.type.toLowerCase())} ${item.label}</span><button class="icon-button" aria-label="More options">${icon('more')}</button></div>
-    <div class="feed-source-row"><div class="feed-avatar avatar-${index}">${escapeHTML(item.initials)}</div><div>${item.authorId && item.authorHandle ? `<a class="profile-link" href="/u/${encodeURIComponent(item.authorHandle)}">${escapeHTML(item.author)}</a>` : `<strong>${escapeHTML(item.author)}</strong>`}<span>${escapeHTML(item.handle)} · ${escapeHTML(item.time)}</span></div>${item.authorId && item.authorId !== state.user?.id ? `<button class="follow-button ${state.followingIds[item.authorId] ? 'is-following' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>` : ''}</div>
-    ${item.type === 'Video' ? videoMedia : item.type === 'Article' && media.kind !== 'audio' ? `<div class="feed-media feed-quote"><span>“</span><p>${escapeHTML(item.quote)}</p><small>Highlight from ${escapeHTML(item.host)}</small></div>` : audioMedia}
-    <h3>${escapeHTML(item.title)}</h3><p class="feed-commentary">${escapeHTML(item.commentary)}</p>
-    <div class="feed-source-link"><span>${icon('link')} From ${escapeHTML(item.host)}</span><div class="feed-source-actions"><a href="${sourceHref}" ${item.sourceUrl ? 'target="_blank" rel="noreferrer"' : ''} data-action="open-original">Open source ${icon('external')}</a><button class="feed-claim-link" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug || '')}" data-claim-title="${escapeHTML(item.title || 'this annotation')}">File a claim</button></div></div>
-    <div class="feed-actions"><button data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" class="feed-action ${item.likedByMe || (state.liked && index === 0) ? 'is-liked' : ''}">${icon('heart')} <span>${item.likes + (state.liked && index === 0 && !item.likedByMe ? 1 : 0)}</span></button><button data-action="focus-comment" class="feed-action">${icon('message')} <span>${item.comments + (index === 0 && !state.feedAnnotations.length ? state.comments - 12 : 0)}</span></button><button class="feed-action share-action" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(item, window.location.origin))}" aria-label="Share annotation">${icon('link')} Share</button></div>
-    ${index === 0 ? `<form class="comment-row" data-action="comment-form"><input aria-label="Add a comment" placeholder="Add a considered comment…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" /><button aria-label="Post comment">${icon('arrow')}</button></form>` : ''}
+  <article class="post">
+    <div class="post-avatar">${escapeHTML(item.initials)}</div><div class="post-content">
+      <p class="post-byline"><a href="/u/${encodeURIComponent(item.authorHandle || '')}"><b>${escapeHTML(item.handle)}</b></a> <span>annotated</span> <a href="${sourceHref}" target="_blank" rel="noreferrer">${escapeHTML(item.title)}</a> <span>· ${escapeHTML(item.type.toLowerCase())} · ${escapeHTML(item.time)}</span></p>
+      <blockquote class="post-quote">“${escapeHTML(item.quote)}”</blockquote>
+      <p class="post-note"><span class="chip">${escapeHTML(moment)}</span>${escapeHTML(item.commentary)}</p>
+      <p class="post-actions"><a href="${sourceHref}" target="_blank" rel="noreferrer" data-action="open-original">Open original</a> · <button class="link-button" data-action="focus-comment">Comment${item.comments ? ` (${item.comments})` : ''}</button>${item.authorId && item.authorId !== state.user?.id ? ` · <button class="link-button" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${state.followingIds[item.authorId] ? 'Following' : `Follow ${escapeHTML(item.handle)}`}</button>` : ''}</p>
+    </div>
   </article>`;
 };
 
@@ -544,16 +482,10 @@ const feedView = () => {
   const visibleItems = state.feedAnnotations.map(annotationToFeedItem);
   const emptyMessage = state.feedQuery ? `No annotations match “${escapeHTML(state.feedQuery)}”.` : state.feedFollowing ? 'No annotations from followed users yet.' : 'No public annotations yet.';
   const emptyDescription = state.feedQuery ? 'Try a different source, author, or phrase.' : state.feedFollowing ? 'Follow someone whose context you want to keep up with.' : 'Publish the first source-backed moment and it will appear here.';
-  const profileName = state.user?.displayName || state.user?.handle || '';
-  const profileHandle = state.user?.handle || '';
-  const profileAction = profileHandle ? `<a class="dark-button" href="/u/${encodeURIComponent(profileHandle)}">View your profile ${icon('arrow')}</a>` : `<button class="dark-button" data-action="set-view" data-view="capture">Open capture desk ${icon('arrow')}</button>`;
-  const profileCard = state.user
-    ? `<div class="aside-card profile-card"><div class="profile-top"><div class="profile-avatar">${escapeHTML((profileName || 'A').slice(0, 2).toUpperCase())}</div><span class="profile-stamp">SIGNED IN</span></div><h3>${escapeHTML(profileName)}</h3><p>Your source-backed moments will live here.</p>${profileAction}</div>`
-    : `<div class="aside-card profile-card signed-out-card"><span class="eyebrow">Signed out</span><h3>Build your public library.</h3><p>Capture now. Sign in with X when you are ready to publish, follow, or respond.</p>${profileAction}</div>`;
   return `
-  <div class="view-head feed-head"><div><span class="eyebrow">Timeline</span><h2>What people kept.</h2><p>Moments with enough context to be worth opening.</p></div><div class="feed-controls"><button class="filter-button ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true">Following</button><button class="filter-button ${state.feedFollowing ? '' : 'is-active'}" data-action="feed-filter" data-following="false">For you</button><button class="search-button" data-action="search" aria-label="Search timeline" aria-expanded="${state.showFeedSearch}">${icon('search')}</button></div></div>
+  <div class="module feed-head"><div class="module-body"><h1>What people kept</h1><span class="feed-controls"><button class="link-button ${state.feedFollowing ? '' : 'is-active'}" data-action="feed-filter" data-following="false">Recent</button>${state.user ? `<button class="link-button ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true">Following</button>` : ''}<button class="link-button" data-action="search" aria-label="Search timeline" aria-expanded="${state.showFeedSearch}">Search</button></span></div></div>
   ${state.showFeedSearch ? `<form class="feed-search-row" data-action="feed-search-form"><label for="feed-search">Search annotations</label><div><input id="feed-search" data-action="feed-search" value="${escapeHTML(state.feedQuery)}" placeholder="Try a source, author, or idea" maxlength="80" /><button class="dark-button" type="submit">Search ${icon('arrow')}</button>${state.feedQuery ? '<button class="ghost-button" type="button" data-action="clear-feed-search">Clear</button>' : ''}</div></form>` : ''}
-  <div class="feed-layout"><main class="feed-list">${visibleItems.length ? visibleItems.map(feedCard).join('') : `<div class="feed-empty"><span class="eyebrow">Nothing found</span><h3>${emptyMessage}</h3><p>${emptyDescription}</p>${state.feedQuery ? '<button class="ghost-button" data-action="clear-feed-search">Clear search</button>' : '<button class="dark-button feed-empty-action" data-action="set-view" data-view="capture">Open capture desk ' + icon('arrow') + '</button>'}</div>`}${state.feedCursor ? '<button class="ghost-button" data-action="feed-more">Load more</button>' : ''}</main><aside class="feed-aside">${profileCard}<div class="aside-card rule-card"><span class="eyebrow">The annotated rule</span><h3>A clip without its source is just a rumour.</h3><div class="rule-line"></div><p>Every public page points back to the original. Context travels with the moment.</p></div></aside></div>`;
+  <div class="feed-layout"><main class="module timeline-module"><h2>Timeline</h2>${visibleItems.length ? visibleItems.map(feedCard).join('') : `<div class="module-body feed-empty"><h3>${emptyMessage}</h3><p>${emptyDescription}</p><button class="btn" data-action="set-view" data-view="capture">Capture a moment</button></div>`}${state.feedCursor ? '<button class="link-button module-body" data-action="feed-more">Load more</button>' : ''}</main><aside class="rail">${state.user ? `<div class="module"><h2>Your library</h2><div class="module-body"><p>Capture a moment, then keep its public source attached.</p><button class="btn" data-action="set-view" data-view="published">My library</button></div></div>` : `<div class="module"><h2>Build your public library</h2><div class="module-body"><p>Capture now. Sign in with X when you are ready to publish, follow, or respond.</p>${authLinks('btn') || ''}</div></div>`}<div class="module"><h2>The annotated rule</h2><div class="module-body"><p class="rule">A clip without its source is just a rumour.</p><p class="small">Every public page points back to the original. Context travels with the moment.</p></div></div><div class="module"><h2>Sidebar-first</h2><div class="module-body"><p class="small">Start with the page you are already reading. The Chrome sidebar does the rest.</p></div></div></aside></div>`;
 };
 
 const annotationHero = () => {
@@ -594,17 +526,47 @@ const profileView = () => {
 };
 
 const publishedView = () => {
-  const publishedSource = source();
-  const publishedComments = state.publishedAnnotation?.comments || [];
-  const publicUrl = state.publishedAnnotation?.url || (state.publishedSlug ? `${window.location.origin}/a/${encodeURIComponent(state.publishedSlug)}` : '');
-  const publicLabel = publicUrl ? publicUrl.replace(/^https?:\/\//, '') : 'annotation link unavailable';
-  const authorHandle = state.publishedAnnotation?.author?.handle || '';
-  const authorName = state.publishedAnnotation?.author?.displayName || 'Tom Ballard';
-  const hasNote = Boolean((state.publishedAnnotation?.commentary || state.commentary).trim()) || state.recordedAudio;
-  return `
-    <div class="view-head published-head"><div><span class="eyebrow">Published</span><h2>${state.published ? 'The moment, with your note.' : 'Your first annotation is waiting.'}</h2><p>${state.published ? 'A permanent link back to the source, with the context only you could add.' : 'Capture something from the page you are on, then publish it here.'}</p></div>${state.published ? `<button class="ghost-button" data-action="set-view" data-view="capture">${icon('back')} Capture another</button>` : ''}</div>
-    ${state.published ? `<div class="annotation-layout"><article class="annotation-page"><div class="annotation-page-bar"><span class="source-pill">${icon(state.sourceType)} ${publishedSource.label}</span><span>Published just now</span></div><div class="annotation-hero ${state.sourceType}">${annotationHero()}</div><div class="annotation-body"><div class="annotation-byline"><div class="feed-avatar avatar-0">TB</div><div>${authorHandle ? `<a class="profile-link" href="/u/${encodeURIComponent(authorHandle)}">${escapeHTML(authorName)}</a>` : `<strong>${escapeHTML(authorName)}</strong>`}<span>@${escapeHTML(authorHandle || 'tcballard')} · just now</span></div><button class="icon-button" aria-label="More options">${icon('more')}</button></div><h3>${escapeHTML(publishedSource.title)}</h3>${hasNote ? `<p class="annotation-copy">${state.publishedAnnotation?.commentary ? escapeHTML(state.publishedAnnotation.commentary) : state.commentary ? escapeHTML(state.commentary) : 'An audio annotation attached to this moment.'}</p>` : '<p class="annotation-copy empty-copy">No commentary added.</p>'}<div class="source-citation"><span>${icon('link')} Source</span><a href="${escapeHTML(publishedSource.url)}" target="_blank" rel="noreferrer">${escapeHTML(publishedSource.host)} ${icon('external')}</a></div></div><div class="annotation-actions"><button data-action="toggle-like" data-slug="${escapeHTML(state.publishedSlug)}" class="feed-action ${state.publishedAnnotation?.likedByMe || state.liked ? 'is-liked' : ''}">${icon('heart')} ${state.publishedAnnotation?.likedByMe || state.liked ? 'Liked' : 'Like'}</button><button class="feed-action" data-action="focus-comment">${icon('message')} ${publishedComments.length} comments</button><button class="feed-action" data-action="share">${icon('link')} Copy link</button></div><div class="annotation-comments">${publishedComments.length ? publishedComments.map((comment) => `<div class="commenter-avatar">TB</div><p><strong>@${escapeHTML(comment.author?.handle || comment.authorId)}</strong> ${escapeHTML(comment.body)}</p>`).join('') : '<p class="empty-copy">No comments yet. Add the first considered response.</p>'}</div><form class="comment-row annotation-comment-row" data-action="comment-form"><input aria-label="Add a comment" placeholder="Add a considered comment…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" /><button aria-label="Post comment">${icon('arrow')}</button></form></article><aside class="annotation-aside"><div class="claim-card"><span class="eyebrow">Source & rights</span><h3>Something wrong with this annotation?</h3><p>Every page keeps the source visible. If this clip misuses your work, file a claim and we’ll review it.</p><button class="claim-button" data-action="toggle-claim">File a claim ${icon('arrow')}</button></div><div class="share-card"><span class="eyebrow">Share this page</span><div class="share-url"><strong>${escapeHTML(publicLabel)}</strong><button data-action="copy-link" aria-label="Copy page link">${icon('link')}</button></div><p>It opens with the clip, the source, and the note.</p></div></aside></div>` : `<div class="empty-published"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h3>Nothing published yet.</h3><p>Start with the page you are already reading. The sidebar will do the rest.</p><button class="dark-button" data-action="set-view" data-view="capture">Open capture desk ${icon('arrow')}</button></div>`}
-    `;
+  const currentUser = state.user || {};
+  const ownItems = [state.publishedAnnotation, ...state.feedAnnotations.filter((item) => item.author?.id === currentUser.id)].filter(Boolean);
+  const uniqueItems = [...new Map(ownItems.map((item) => [item.slug || item.id, item])).values()];
+  const handle = currentUser.handle || currentUser.displayName || 'member';
+  const initials = handle.slice(0, 1).toUpperCase();
+  const libraryRow = (annotation) => {
+    const item = annotationToFeedItem(annotation);
+    const moment = item.type === 'Article' ? '¶' : `${formatTime(Number(annotation.clipStart) || 0)}–${formatTime(Number(annotation.clipEnd) || 0)}`;
+    const pageUrl = publicAnnotationUrl(annotation, window.location.origin);
+    return `<article class="library-row"><p><span class="chip">${escapeHTML(moment)}</span><a href="${escapeHTML(pageUrl)}"><b>${escapeHTML(item.title)}</b></a><span> · ${escapeHTML(item.type.toLowerCase())} · published ${escapeHTML(item.time)}</span></p><blockquote>${escapeHTML(item.quote)}</blockquote><p class="library-note">${escapeHTML(item.commentary)}</p><p class="library-stats">${item.comments || 'No'} comments · ${item.likes || 0} opens of the original</p><p class="library-actions"><a href="${escapeHTML(pageUrl)}">View public page</a> · <button class="link-button" data-action="set-view" data-view="capture">Edit note</button> · <button class="link-button quiet" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug || '')}" data-claim-title="${escapeHTML(item.title)}">Unpublish</button></p></article>`;
+  };
+  const profileUrl = `${window.location.origin}/u/${encodeURIComponent(currentUser.handle || handle)}`;
+  return `<div class="library-layout"><main><section class="module"><div class="module-body profile"><div class="profile-avatar">${escapeHTML(initials)}</div><div><h1>@${escapeHTML(handle)}</h1><p>Annotated member · signed in with X</p><a href="${escapeHTML(profileUrl)}">View public profile</a> · <button class="link-button" data-action="set-view" data-view="capture">Capture a moment</button></div></div></section><section class="module"><h2>Published <span>(${uniqueItems.length})</span></h2>${uniqueItems.length ? uniqueItems.map(libraryRow).join('') : '<div class="module-body"><p>No published annotations yet. Capture a moment when you are ready.</p><button class="btn" data-action="set-view" data-view="capture">Capture a moment</button></div>'}</section></main><aside class="rail"><section class="module"><h2>Your library</h2><div class="module-body"><table class="info-table"><tbody><tr><td>Published</td><td>${uniqueItems.length}</td></tr><tr><td>Sources</td><td>${new Set(uniqueItems.map((item) => item.sourceHost)).size}</td></tr><tr><td>Followers</td><td>—</td></tr><tr><td>Comments received</td><td>${uniqueItems.reduce((total, item) => total + (item.comments?.length || 0), 0)}</td></tr><tr><td>Opens of originals</td><td>—</td></tr></tbody></table></div></section><section class="module"><h2>Share your library</h2><div class="module-body"><p class="small">Your public profile shows everything here, each moment linked to its original.</p><code class="urlbox">${escapeHTML(profileUrl.replace(/^https?:\/\//, ''))}</code><button class="btn" data-action="copy-profile-link" data-copy-url="${escapeHTML(profileUrl)}">Copy link</button></div></section><section class="module"><h2>Rights &amp; claims</h2><div class="module-body"><p class="small">Own a source and want a moment reviewed? <button class="link-button" data-action="toggle-claim">File a claim</button>.</p></div></section></aside></div>`;
+};
+
+const deepLink = (url, start) => {
+  try {
+    const parsed = new URL(url);
+    if (/youtu\.be|youtube\.com/u.test(parsed.hostname)) parsed.searchParams.set('t', `${Math.max(0, Number(start) || 0)}s`);
+    return parsed.href;
+  } catch { return url || '#'; }
+};
+
+const permalinkView = () => {
+  const annotation = state.publishedAnnotation;
+  if (!annotation) return '<section class="module"><h2>Annotation</h2><div class="module-body"><p>Loading this annotation…</p></div></section>';
+  const item = annotationToFeedItem(annotation);
+  const sourceInfo = normalizeSource({ ...annotation, title: annotation.sourceTitle, host: annotation.sourceHost, excerpt: annotation.sourceExcerpt });
+  const start = Number(annotation.clipStart) || 0;
+  const end = Number(annotation.clipEnd) || start;
+  const moment = sourceInfo.label === 'Article' ? '¶' : `${formatTime(start)}–${formatTime(end)}`;
+  const original = deepLink(sourceInfo.url, start);
+  const originalMoment = sourceInfo.label === 'Article' ? '' : ` <span>at ${formatTime(start)}</span>`;
+  const originalHint = sourceInfo.label === 'Article'
+    ? `Opens ${sourceInfo.host} at the selected passage.`
+    : `Opens ${sourceInfo.host} at the selected moment.`;
+  const comments = annotation.comments || [];
+  const author = annotation.author || {};
+  const authorHandle = author.handle || annotation.authorId || 'user';
+  const more = state.feedAnnotations.filter((entry) => entry.author?.id === author.id && entry.slug !== annotation.slug).slice(0, 2).map(annotationToFeedItem);
+  return `<div class="permalink-grid"><main><section class="module permalink-hero"><h2>Annotation <span>${escapeHTML(sourceInfo.host)} · ${escapeHTML(sourceInfo.label.toLowerCase())}${sourceInfo.duration ? ` · ${formatTime(sourceInfo.duration)}` : ''}</span></h2><div class="module-body"><div class="permalink-byline"><div class="post-avatar">${escapeHTML((author.displayName || authorHandle).slice(0, 1).toUpperCase())}</div><p><a href="/u/${encodeURIComponent(authorHandle)}"><b>@${escapeHTML(authorHandle)}</b></a> annotated <a href="${escapeHTML(sourceInfo.url)}" target="_blank" rel="noreferrer">${escapeHTML(sourceInfo.title)}</a><br><span>public</span></p>${author.id && author.id !== state.user?.id ? `<button class="link-button" data-action="toggle-follow" data-user-id="${escapeHTML(author.id)}">Follow @${escapeHTML(authorHandle)}</button>` : ''}</div><blockquote class="permalink-quote">“${escapeHTML(annotation.sourceExcerpt || item.quote)}”<small>— ${escapeHTML(sourceInfo.author)} · ${escapeHTML(sourceInfo.label.toLowerCase())}${sourceInfo.label === 'Article' ? '' : ` · at ${formatTime(start)}`}</small></blockquote><div class="permalink-note"><p><span class="chip">${escapeHTML(moment)}</span><b>@${escapeHTML(authorHandle)}:</b></p><p>${escapeHTML(annotation.commentary || 'An audio annotation attached to this moment.')}</p></div><div class="permalink-cta"><a class="btn" href="${escapeHTML(original)}" target="_blank" rel="noreferrer">Open the original${originalMoment}</a><small>${escapeHTML(originalHint)}</small><span><button class="link-button" data-action="share">Share this page</button> · <button class="link-button" data-action="copy-link">Copy link</button></span></div></div></section><section class="module"><h2>Responses <span>(${comments.length})</span></h2>${comments.map((comment) => `<div class="response-row"><div class="post-avatar">${escapeHTML((comment.author?.handle || comment.authorId || 'A').slice(0, 1).toUpperCase())}</div><p><b>@${escapeHTML(comment.author?.handle || comment.authorId || 'user')}</b><br>${escapeHTML(comment.body)}</p></div>`).join('') || '<div class="module-body"><p>No responses yet.</p></div>'}<div class="response-prompt">${state.user ? `<form data-action="comment-form"><input aria-label="Add a response" data-action="comment-draft" value="${escapeHTML(state.commentDraft)}" placeholder="Add a considered response…" /><button class="btn">Respond</button></form>` : `${authLinks('chrome-sign-in') || 'Sign in'} to add a considered response.`}</div></section><section class="module"><h2>More from @${escapeHTML(authorHandle)}</h2>${more.length ? more.map((entry) => `<div class="more-row"><span class="chip">${escapeHTML(entry.type === 'Article' ? '¶' : entry.duration)}</span><b>${escapeHTML(entry.title)}</b> <span>· ${escapeHTML(entry.type.toLowerCase())}</span><p>“${escapeHTML(entry.quote)}”</p></div>`).join('') : '<div class="module-body"><p>More annotations will appear here.</p></div>'}</section></main><aside class="rail"><section class="module"><h2>Where this comes from</h2><div class="module-body"><table class="provenance-table"><tbody><tr><td>Source</td><td><a href="${escapeHTML(sourceInfo.url)}">${escapeHTML(sourceInfo.host)}</a></td></tr><tr><td>Channel</td><td><b>${escapeHTML(sourceInfo.author)}</b></td></tr><tr><td>Type</td><td>${escapeHTML(sourceInfo.label)}${sourceInfo.duration ? ` · ${formatTime(sourceInfo.duration)}` : ''}</td></tr><tr><td>Moment</td><td><b>${escapeHTML(moment)}</b></td></tr><tr><td>Captured</td><td>Recently</td></tr></tbody></table><p class="small">${sourceInfo.label === 'Article' ? 'This page links to the original selected passage.' : 'The clip is not re-hosted. This page links to the original at the selected moment.'}</p></div></section><section class="module"><h2>Annotated by</h2><div class="module-body"><div class="annotated-by"><div class="post-avatar">${escapeHTML((author.displayName || authorHandle).slice(0, 1).toUpperCase())}</div><p><b>@${escapeHTML(authorHandle)}</b><br><span>Annotated member</span></p></div>${author.id && author.id !== state.user?.id ? `<button class="btn" data-action="toggle-follow" data-user-id="${escapeHTML(author.id)}">Follow on annotated</button>` : ''}<p class="small"><a href="/u/${encodeURIComponent(authorHandle)}">View public library →</a></p></div></section><section class="module"><h2>The annotated rule</h2><div class="module-body"><p class="rule">A clip without its source is just a rumour.</p><p class="small">Every public page points back to the original. Context travels with the moment.</p></div></section><section class="module"><h2>Rights</h2><div class="module-body"><p class="small">Own this source? <button class="link-button" data-action="toggle-claim" data-claim-slug="${escapeHTML(annotation.slug || '')}" data-claim-title="${escapeHTML(sourceInfo.title)}">File a claim</button>.</p></div></section></aside></div>`;
 };
 
 const claimModal = () => `<div class="modal-backdrop" data-action="close-claim">
@@ -622,7 +584,9 @@ const claimModal = () => `<div class="modal-backdrop" data-action="close-claim">
 const toast = () => state.toast ? `<div class="toast" role="status"><span class="toast-icon">${icon('check')}</span>${escapeHTML(state.toast)}</div>` : '';
 
 const render = () => {
-  app.innerHTML = `${appHeader()}${authStateView()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : state.activeView === 'profile' ? profileView() : publishedView()}</main></div>${state.claimOpen ? claimModal() : ''}${toast()}`;
+  const isPermalink = state.activeView === 'permalink';
+  const content = state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : state.activeView === 'profile' ? profileView() : isPermalink ? permalinkView() : publishedView();
+  app.innerHTML = `${appHeader()}${authStateView()}<div class="app-body ${isPermalink ? 'permalink-body' : ''}">${isPermalink ? '' : appRail()}<main class="main-content">${content}</main></div>${appFooter()}${state.claimOpen ? claimModal() : ''}${toast()}`;
   for (const element of app.querySelectorAll('.app-header, .auth-notice, .auth-prompt, .app-body')) {
     element.inert = state.claimOpen;
     if (state.claimOpen) element.setAttribute('aria-hidden', 'true');
@@ -630,77 +594,7 @@ const render = () => {
 };
 
 const renderCapture = () => {
-  if (state.activeView !== 'capture') {
-    render();
-    return;
-  }
-
-  const sourceStage = app.querySelector('.source-spine-stage');
-  const sidebar = app.querySelector('.source-spine-note');
-  if (!sourceStage || !sidebar) {
-    render();
-    return;
-  }
-
-  // Keep the shell, previews, controls, and scroll context in place. Source
-  // changes only update text, attributes, and visibility on mounted elements.
-  const sourceTitle = sourceStage.querySelector('.stage-header h1');
-  if (sourceTitle) sourceTitle.textContent = source().title;
-
-  const sourceInput = sourceStage.querySelector('.source-input-row');
-  if (!state.showSourceInput && sourceInput) sourceInput.remove();
-  if (state.showSourceInput && !sourceInput) {
-    render();
-    return;
-  }
-
-  const favicon = sourceStage.querySelector('.tab-favicon');
-  const browserTabHost = sourceStage.querySelector('.browser-tab-host');
-  const addressBar = sourceStage.querySelector('.address-bar');
-  if (favicon) favicon.textContent = state.sourceType === 'video' ? '▶' : state.sourceType === 'article' ? 'V' : '◉';
-  if (browserTabHost) browserTabHost.textContent = source().host;
-  if (addressBar) addressBar.textContent = state.sourceUrl;
-  const mobileSourceSummary = sourceStage.querySelector('.mobile-source-summary > span');
-  if (mobileSourceSummary) mobileSourceSummary.innerHTML = `${icon(state.sourceType)} ${escapeHTML(source().label)} · ${escapeHTML(source().host)}`;
-
-  sourceStage.querySelectorAll('[data-source-canvas]').forEach((canvas) => {
-    canvas.hidden = canvas.dataset.sourceCanvas !== state.sourceType;
-  });
-  const activePlayerTime = sourceStage.querySelector(`[data-source-canvas="${state.sourceType}"] .media-player .player-time`);
-  if (activePlayerTime) activePlayerTime.textContent = formatTime(state.clipStart);
-  const articleQuote = sourceStage.querySelector('[data-source-canvas="article"] blockquote');
-  if (articleQuote) articleQuote.textContent = `“${articleExcerpt() || sourceData.article.excerpt}”`;
-
-  const footer = sourceStage.querySelector('.source-spine-footer');
-  const footerPill = footer?.querySelector('.source-pill');
-  const footerByline = footer?.querySelector('.source-byline');
-  const footerLink = footer?.querySelector('.source-link');
-  if (footerPill) footerPill.innerHTML = `${icon(state.sourceType)} ${escapeHTML(source().label)}`;
-  if (footerByline) footerByline.innerHTML = `${escapeHTML(source().author)} <span>·</span> ${escapeHTML(source().date)}`;
-  if (footerLink) footerLink.href = source().url;
-
-  sidebar.querySelectorAll('.source-type').forEach((buttonElement) => {
-    const active = buttonElement.dataset.type === state.sourceType;
-    buttonElement.classList.toggle('is-active', active);
-    buttonElement.setAttribute('aria-pressed', String(active));
-  });
-  const clipEditor = sidebar.querySelector('.clip-editor');
-  const highlightPreview = sidebar.querySelector('.highlight-preview');
-  if (clipEditor) clipEditor.hidden = state.sourceType === 'article';
-  if (highlightPreview) highlightPreview.hidden = state.sourceType !== 'article';
-  const clipEditorIcon = sidebar.querySelector('.clip-editor-icon');
-  if (clipEditorIcon) clipEditorIcon.innerHTML = icon(state.sourceType);
-  const excerptField = highlightPreview?.querySelector('[data-action="article-excerpt"]');
-  const excerptHint = highlightPreview?.querySelector('#article-excerpt-hint');
-  if (excerptField) excerptField.value = articleExcerpt();
-  if (excerptHint) excerptHint.textContent = `Highlight selected · ${articleExcerpt().length} characters · edit before publishing`;
-  refreshClipControls();
-
-  const railSource = app.querySelector('.rail-source');
-  const railGlyph = railSource?.querySelector('.source-glyph');
-  const railHost = railSource?.querySelector('span:last-child');
-  if (railGlyph) railGlyph.innerHTML = icon(state.sourceType);
-  if (railHost) railHost.textContent = source().host;
+  render();
 };
 
 const setClipBoundary = (boundary, value) => {
@@ -714,27 +608,23 @@ const refreshClipControls = () => {
   if (!editor) return;
   const startRange = editor.querySelector('[data-action="clip-start"]');
   const endRange = editor.querySelector('[data-action="clip-end"]');
-  const startNumber = editor.querySelector('[data-action="clip-start-number"]');
-  const endNumber = editor.querySelector('[data-action="clip-end-number"]');
-  if (!startRange || !endRange || !startNumber || !endNumber) return;
+  const startInput = editor.querySelector('[data-action="clip-start-time"]');
+  const endInput = editor.querySelector('[data-action="clip-end-time"]');
+  if (!startRange || !endRange || !startInput || !endInput) return;
   startRange.value = String(state.clipStart);
   endRange.value = String(state.clipEnd);
   startRange.setAttribute('aria-valuetext', formatTime(state.clipStart));
   endRange.setAttribute('aria-valuetext', formatTime(state.clipEnd));
-  startNumber.value = String(state.clipStart);
-  endNumber.value = String(state.clipEnd);
-  const fill = editor.querySelector('.range-fill');
+  startInput.value = formatTime(state.clipStart);
+  endInput.value = formatTime(state.clipEnd);
+  const fill = editor.querySelector('.moment-fill');
   const max = sourceRangeMax();
   if (fill) {
     fill.style.left = `${(state.clipStart / max) * 100}%`;
     fill.style.width = `${((state.clipEnd - state.clipStart) / max) * 100}%`;
   }
-  const duration = editor.querySelector('.duration-badge > span:first-child');
-  if (duration) duration.textContent = formatTime(state.clipEnd - state.clipStart);
   const selectedDuration = editor.querySelector('[data-range-duration]');
-  if (selectedDuration) selectedDuration.textContent = formatTime(state.clipEnd - state.clipStart);
-  const playerTime = app.querySelector(`[data-source-canvas="${state.sourceType}"] .media-player .player-time`);
-  if (playerTime) playerTime.textContent = formatTime(state.clipStart);
+  if (selectedDuration) selectedDuration.textContent = `${formatTime(state.clipEnd - state.clipStart)} selected`;
 };
 
 const stopAudioRecording = () => {
@@ -1085,6 +975,12 @@ app.addEventListener('click', (event) => {
   }
   if (action === 'set-view') {
     if (target.dataset.view === 'moderation' && !canModerate()) { notify('Moderation access is required.'); return; }
+    if (target.dataset.view === 'published' && !state.user) {
+      state.activeView = 'feed';
+      state.authPrompt = '';
+      render();
+      return;
+    }
     state.authPrompt = '';
     state.activeView = target.dataset.view;
     if (state.activeView !== 'profile') {
@@ -1195,6 +1091,7 @@ app.addEventListener('click', (event) => {
   if (action === 'focus-comment') { document.querySelector('[data-action="comment-draft"]')?.focus(); return; }
   if (action === 'share') { copyPublicLink(target.dataset.shareUrl || ''); return; }
   if (action === 'copy-link') { copyPublicLink(); return; }
+  if (action === 'copy-profile-link') { copyPublicLink(target.dataset.copyUrl || ''); return; }
   if (action === 'open-original') { if (target.getAttribute('href') === '#') { event.preventDefault(); notify('Original source link preserved.'); } return; }
   if (action === 'toggle-claim') {
     claimReturnFocus = { slug: target.dataset.claimSlug || '', view: state.activeView };
@@ -1213,7 +1110,7 @@ app.addEventListener('click', (event) => {
   }
   if (action === 'close-claim') { closeClaimDialog(); return; }
   if (action === 'submit-claim') { submitClaim(); return; }
-  if (action === 'logout') { api.logout().then(() => { state.user = null; notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
+  if (action === 'logout') { api.logout().then(() => { state.user = null; if (state.activeView === 'published') state.activeView = 'feed'; notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
   if (action === 'sidebar-help') { notify('Annotated keeps a source link on every public page.'); return; }
 });
 
@@ -1269,8 +1166,13 @@ app.addEventListener('input', (event) => {
 
 app.addEventListener('change', (event) => {
   const action = event.target.dataset.action;
-  if (action === 'clip-start-number') { setClipBoundary('start', event.target.value); persist(); refreshClipControls(); }
-  if (action === 'clip-end-number') { setClipBoundary('end', event.target.value); persist(); refreshClipControls(); }
+  if (action === 'clip-start-time' || action === 'clip-end-time') {
+    const seconds = parseTime(event.target.value);
+    if (seconds === null) { notify('Use mm:ss, for example 1:02.'); refreshClipControls(); return; }
+    setClipBoundary(action === 'clip-start-time' ? 'start' : 'end', seconds);
+    persist();
+    refreshClipControls();
+  }
 });
 
 app.addEventListener('submit', (event) => {
@@ -1286,5 +1188,4 @@ app.addEventListener('submit', (event) => {
   }
 });
 
-render();
 bootstrap();
