@@ -55,6 +55,20 @@ test('deployment documents the shared production rate-limit ledger', async () =>
   assert.match(env, /PG_RATE_LIMIT_POOL_MAX=4/);
 });
 
+test('deployment documents the non-destructive production backup audit', async () => {
+  const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
+  const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const backup = await readFile(new URL('../scripts/backup-production.mjs', import.meta.url), 'utf8');
+  assert.equal(packageJson.scripts['backup:production'], 'node scripts/backup-production.mjs');
+  assert.match(deployment, /## Non-destructive production backup audit/);
+  assert.match(deployment, /custom-format `postgres\.dump`/);
+  assert.match(deployment, /never deletes\n?or overwrites production data/);
+  assert.match(deployment, /Never point\n?`pg_restore` at the live database/);
+  assert.match(backup, /--format=custom/);
+  assert.match(backup, /ListObjectsV2Command/);
+  assert.match(backup, /Refusing to overwrite existing backup file/);
+});
+
 test('deployment documents the private Railway Buckets POC profile', async () => {
   const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
   const storage = await readFile(new URL('../STORAGE.md', import.meta.url), 'utf8');

@@ -44,6 +44,16 @@ first two attempts, denied the third, and removed its temporary bucket. This
 is single-instance PostgreSQL evidence; multi-replica and edge WAF coverage
 remain external.
 
+The backup/recovery layer adds a non-destructive `npm run backup:production`
+command for a trusted runner. It refuses development adapters, invokes
+`pg_dump` without a shell, captures the latest migration and per-collection
+counts, inventories the private S3-compatible bucket with bounded pagination,
+and writes a `0600` custom-format dump, sorted object manifest, and SHA-256
+manifest without mutating production. `node --test test/backup.test.js`
+covers the configuration guard, pagination, command boundary, and secret-free
+manifest contract. A provider-side retention policy and isolated restore drill
+have not been run, so durable recovery remains an external gate.
+
 The claim-surface deployment also serves the feed/profile card contract from
 the same PostgreSQL-backed staging service. The claim action preserves the
 selected annotation slug and submits through the persisted claim endpoint;

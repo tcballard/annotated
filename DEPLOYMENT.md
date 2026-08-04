@@ -108,6 +108,34 @@ adapters for this production-service evidence.
 
 Backups and recovery are external operational gates: take a PostgreSQL snapshot before migrations, retain object-store versioning/retention for published assets, and keep the prior image available for rollback. Media job records, retry state, and worker leases live in the configured repository; a restarted process re-queues queued jobs and processing jobs whose lease has expired, while an active lease prevents a second instance from claiming the same job. Set `MEDIA_WORKER_LEASE_MS` longer than the longest expected provider download/transcode, and send worker logs to the deployment's operational sink. This persisted lease is a recovery boundary, not a substitute for a managed queue when independent worker scaling is required. Source and provider requests re-check DNS answers for private/link-local address space at each input or redirect hop; keep egress controls at the deployment boundary as a second layer. A failed readiness check must remove the instance from service; do not fall back to the file adapter in production.
 
+## Non-destructive production backup audit
+
+The repository includes `npm run backup:production` for a trusted operations
+runner with `pg_dump` installed. It requires the production PostgreSQL and
+S3-compatible credentials, writes a `0600` custom-format `postgres.dump`, a
+sorted `objects.json` inventory, and a SHA-256/count `manifest.json` under a
+new `BACKUP_OUTPUT_DIR`. It reads the database and bucket only; it never deletes
+or overwrites production data, uploads credentials, or copies secret values into
+the manifest. Refuse to run it against the file/local adapters.
+
+```bash
+NODE_ENV=production \
+  ANNOTATED_STORAGE=postgres \
+  ANNOTATED_ASSET_STORAGE=s3 \
+  BACKUP_OUTPUT_DIR=/secure/annotated-backups/$(date -u +%Y%m%dT%H%M%SZ) \
+  npm run backup:production
+```
+
+Run this before every migration and on the agreed POC schedule. Preserve the
+previous container image alongside the backup. For a recovery drill, create a
+new isolated PostgreSQL database, restore `postgres.dump` with the command in
+`manifest.json`, configure the restored app with the same private bucket (or a
+provider-supported versioned copy), run `npm run db:migrate`, and require
+`/api/ready` plus the staging acceptance command to pass. Never point
+`pg_restore` at the live database. The script's object inventory is evidence of
+what must be retained; it does not replace provider-side object versioning,
+retention, or a completed restore drill.
+
 The PostgreSQL rate-limit ledger stores only a SHA-256 bucket key, the fixed
 window count, and expiry. Audio uploads, publishing, follows, comments, likes,
 claims, moderation changes, and OAuth starts use the same atomic bucket

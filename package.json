@@ -11,6 +11,7 @@
     "acceptance:staging": "node scripts/accept-staging.mjs",
     "acceptance:staging:media": "node scripts/accept-staging-media.mjs",
     "acceptance:staging:rate-limit": "node scripts/accept-staging-rate-limit.mjs",
+    "backup:production": "node scripts/backup-production.mjs",
     "generate:extension-icons": "node scripts/generate-extension-icons.mjs",
     "package:extension": "node scripts/package-extension.js",
     "db:migrate": "node scripts/migrate.js",
