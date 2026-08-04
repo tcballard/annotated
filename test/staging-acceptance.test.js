@@ -30,7 +30,7 @@ test('staging media smoke covers audio and video delivery with cleanup', async (
   const script = await readFile(new URL('../scripts/accept-staging-media.mjs', import.meta.url), 'utf8');
   assert.match(script, /ACCEPTANCE_MEDIA_SMOKE/);
   assert.match(script, /sample-3s\.mp3/);
-  assert.match(script, /sample-5s\.mp4/);
+  assert.match(script, /media\.w3\.org\/2010\/05\/sintel\/trailer\.mp4/);
   assert.match(script, /audio\\\/webm/);
   assert.match(script, /video\\\/mp4/);
   assert.match(script, /removeStoredMedia/);

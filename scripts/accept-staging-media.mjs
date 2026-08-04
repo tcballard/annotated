@@ -16,7 +16,7 @@ const fixtures = [
   },
   {
     name: 'video',
-    url: 'https://samplelib.com/preview/mp4/sample-5s.mp4',
+    url: 'https://media.w3.org/2010/05/sintel/trailer.mp4',
     sourceType: 'video',
     provider: 'direct',
     title: 'Railway staging video media smoke',
