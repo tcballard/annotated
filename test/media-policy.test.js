@@ -1,4 +1,8 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { buildFfmpegArgs, checkMediaRuntime, mediaJobLeaseExpired, runMediaCommand, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe } from '../server/media-worker.js';
 import { normalizeAudioMimeType } from '../server/media-store.js';
@@ -86,4 +90,30 @@ test('media output inspection enforces duration, audio, and video height boundar
   assert.throws(() => validateMediaProbe('video', { format: { duration: '90.1' }, streams: [{ codec_type: 'video', height: 240 }, { codec_type: 'audio' }] }), /90-second/);
   assert.throws(() => validateMediaProbe('video', { format: { duration: '12' }, streams: [{ codec_type: 'video', height: 480 }, { codec_type: 'audio' }] }), /240p/);
   assert.throws(() => validateMediaProbe('podcast', { format: { duration: '12' }, streams: [{ codec_type: 'video', height: 120 }, { codec_type: 'audio' }] }), /video stream/);
+});
+
+test('a generated video fixture is transcoded and passes the real FFprobe contract', { skip: !['ffmpeg', 'ffprobe'].every((command) => spawnSync(command, ['-version'], { stdio: 'ignore' }).status === 0) }, async (t) => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'annotated-media-fixture-'));
+  const inputPath = path.join(directory, 'source.mp4');
+  const outputPath = path.join(directory, 'clip.mp4');
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  await runMediaCommand('ffmpeg', [
+    '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', 'color=c=0x2f4b4a:s=640x360:r=24:d=2',
+    '-f', 'lavfi', '-i', 'sine=frequency=880:sample_rate=48000:duration=2',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', inputPath,
+  ]);
+  const args = buildFfmpegArgs({ sourceType: 'video', clipStart: 0.25, clipEnd: 1.75 }, inputPath, outputPath);
+  await runMediaCommand('ffmpeg', args);
+  const probeResult = await runMediaCommand('ffprobe', [
+    '-v', 'error', '-show_entries', 'format=duration:stream=codec_type,height,width', '-of', 'json', outputPath,
+  ]);
+  const probe = JSON.parse(probeResult.stdout);
+  const inspected = validateMediaProbe('video', probe);
+  const video = probe.streams.find((stream) => stream.codec_type === 'video');
+  assert.ok(inspected.duration > 1);
+  assert.ok(inspected.duration <= 90.05);
+  assert.equal(video.height, 240);
+  assert.ok(video.width <= 480);
 });

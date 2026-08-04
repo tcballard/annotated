@@ -128,6 +128,12 @@ The local browser run exercised the user-facing flows below:
 - Media-policy tests cover the FFprobe boundary for duration, required audio,
   audio-only outputs, and the 240px video-height limit; the generated artifact
   is inspected before the worker marks it ready.
+- The 2026-08-03 media-policy run now generates a 640×360 local fixture,
+  transcodes a 1.5-second clip with the production worker arguments, and
+  validates the real FFprobe report: duration under 90 seconds, 240px video
+  height, width no greater than 480px, and an audio stream. The test skips only
+  when `ffmpeg` or `ffprobe` is unavailable; the current run passed without a
+  skip.
 - The pinned yt-dlp 2026.06.09 host-compatible release resolved the public
   YouTube fixture `jNQXAC9IVRw` with the production format selector, downloaded
   the real 240p/audio source, and transcoded a 10-second MP4 using the worker's
