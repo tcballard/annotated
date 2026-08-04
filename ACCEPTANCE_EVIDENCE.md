@@ -333,6 +333,12 @@ The local browser run exercised the user-facing flows below:
   preserved. The first run exposed a missing article canonical fallback;
   `f65ea06` fixes it and adds a regression test. This is deployed source
   resolution evidence, not YouTube extraction or browser playback evidence.
+- PR #82's guarded retention command was deployed to Railway staging and failed
+  closed without changing the bucket. `PutBucketVersioning` returned
+  `BucketAlreadyExists`/HTTP 409, while `PutBucketLifecycleConfiguration`
+  reports that the provider only accepts expiration rules. The command now
+  emits a bounded capability diagnosis and the runbook explicitly says not to
+  count Railway's current bucket as durable versioned-retention evidence.
 - Deployment tests verify Vite builds before production pruning, the container
   runs as an unprivileged user, local state/secrets are excluded from its build
   context, and the Dockerfile pins the official yt-dlp 2026.06.09 amd64/arm64

@@ -16,6 +16,7 @@ import {
   validateObjectManifest,
   verifyBackupArtifact,
 } from '../scripts/verify-backup.mjs';
+import { applyObjectRetention, describeRetentionProviderError, normalizeIncompleteUploadDays, retentionConfiguration } from '../scripts/configure-object-retention.mjs';
 
 const makeArtifact = async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'annotated-backup-'));
@@ -78,6 +79,36 @@ test('missing lifecycle configuration is distinguished from an unavailable provi
   });
   assert.equal(retention.lifecycle.status, 'not-configured');
   assert.equal(retention.lifecycle.ruleCount, 0);
+});
+
+test('object retention configuration enables versioning and only aborts incomplete uploads', async () => {
+  assert.equal(normalizeIncompleteUploadDays('7'), 7);
+  assert.throws(() => normalizeIncompleteUploadDays('0'), /between 1 and 365/);
+  assert.throws(() => normalizeIncompleteUploadDays('366'), /between 1 and 365/);
+  assert.deepEqual(retentionConfiguration({ incompleteUploadDays: 7 }).lifecycle.Rules[0].AbortIncompleteMultipartUpload, { DaysAfterInitiation: 7 });
+
+  const calls = [];
+  const result = await applyObjectRetention({
+    bucket: 'annotated-media',
+    incompleteUploadDays: 7,
+    client: { async send(command) {
+      calls.push(command.input);
+      if (calls.length === 1) return {};
+      if (calls.length === 2) return {};
+      if (calls.length === 3) return { Status: 'Enabled' };
+      return { Rules: [{ ID: 'annotated-incomplete-upload-cleanup', Status: 'Enabled', AbortIncompleteMultipartUpload: { DaysAfterInitiation: 7 } }] };
+    } },
+  });
+  assert.deepEqual(calls[0].VersioningConfiguration, { Status: 'Enabled' });
+  assert.equal(calls[1].LifecycleConfiguration.Rules[0].ID, 'annotated-incomplete-upload-cleanup');
+  assert.equal(calls[1].LifecycleConfiguration.Rules[0].Expiration, undefined);
+  assert.equal(result.retention.versioning.status, 'Enabled');
+  assert.equal(result.retention.lifecycle.status, 'configured');
+});
+
+test('object retention reports unsupported provider capabilities without secrets', () => {
+  assert.match(describeRetentionProviderError({ name: 'BucketAlreadyExists', Code: 'BucketAlreadyExists', $metadata: { httpStatusCode: 409 }, message: 'bucket abc-secret is not available' }), /does not expose bucket versioning/);
+  assert.match(describeRetentionProviderError({ name: 'InvalidRequest', Code: 'InvalidRequest', message: 'Lifecycle only supports expiration rule.' }), /only accepts expiration lifecycle rules/);
 });
 
 test('object manifest validation rejects duplicate, unsorted, and mismatched entries', () => {

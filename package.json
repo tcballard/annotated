@@ -11,6 +11,7 @@
     "acceptance:staging": "node scripts/accept-staging.mjs",
     "acceptance:staging:media": "node scripts/accept-staging-media.mjs",
     "acceptance:staging:rate-limit": "node scripts/accept-staging-rate-limit.mjs",
+    "configure:object-retention": "node scripts/configure-object-retention.mjs",
     "backup:production": "node scripts/backup-production.mjs",
     "backup:verify": "node scripts/verify-backup.mjs",
     "generate:extension-icons": "node scripts/generate-extension-icons.mjs",
