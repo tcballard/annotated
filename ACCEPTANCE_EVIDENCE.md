@@ -98,6 +98,16 @@ The deployed image's read-only YouTube provider probe reached the pinned
 extractor but received HTTP 429/bot verification from YouTube; this is recorded
 as an unverified provider gate, not treated as a passing extraction claim.
 
+The provider boundary now makes the operational remedy explicit and testable:
+`YTDLP_JS_RUNTIME` defaults to `node`, while `YTDLP_PROXY`,
+`YTDLP_COOKIES_FILE`, and `YTDLP_PLAYER_CLIENT` are validated configuration
+inputs. Proxy/cookie values are passed to `yt-dlp` as argument-array options;
+cookie files must be absolute secret-mounted paths and are excluded from the
+Docker build context. Readiness rejects a configured-but-unmounted cookie file.
+This is deployment plumbing, not successful provider evidence: staging has no
+proxy or cookie configured and the bounded client probes still receive YouTube
+429/sign-in challenges.
+
 ## Browser acceptance run
 
 The local browser run exercised the user-facing flows below:

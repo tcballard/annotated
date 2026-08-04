@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { buildFfmpegArgs, checkMediaRuntime, mediaJobLeaseExpired, runMediaCommand, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe } from '../server/media-worker.js';
+import { buildFfmpegArgs, buildProviderArgs, checkMediaRuntime, mediaJobLeaseExpired, runMediaCommand, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe, validateProviderRuntimeConfig } from '../server/media-worker.js';
 import { normalizeAudioMimeType } from '../server/media-store.js';
 
 test('audio uploads accept recorder parameters but reject non-audio content types', () => {
@@ -26,6 +26,39 @@ test('podcast transcodes remove video and use the requested bounded duration', (
   assert.ok(args.includes('-vn'));
 });
 
+test('provider arguments make runtime egress configuration explicit', () => {
+  const args = buildProviderArgs(
+    { sourceType: 'video', provider: 'youtube' },
+    'https://www.youtube.com/watch?v=example',
+    { jsRuntime: 'node', proxy: 'socks5h://proxy.example:1080', cookiesFile: '/run/secrets/youtube.cookies', playerClient: 'web_safari' },
+  );
+  assert.deepEqual(args, [
+    '--no-playlist',
+    '--js-runtimes', 'node',
+    '--proxy', 'socks5h://proxy.example:1080',
+    '--cookies', '/run/secrets/youtube.cookies',
+    '--extractor-args', 'youtube:player_client=web_safari',
+    '--format', 'best[height<=240]/best',
+    '--get-url', 'https://www.youtube.com/watch?v=example',
+  ]);
+  const podcastArgs = buildProviderArgs(
+    { sourceType: 'podcast', provider: 'podcast' },
+    'https://podcast.example/episode',
+    { playerClient: 'web_safari' },
+  );
+  assert.equal(podcastArgs.includes('--extractor-args'), false);
+});
+
+test('provider runtime configuration rejects unsafe or unusable deployment values', () => {
+  assert.deepEqual(validateProviderRuntimeConfig({ proxy: 'https://proxy.example', cookiesFile: '/run/secrets/youtube.cookies', jsRuntime: 'node', playerClient: 'web_safari' }), {
+    proxy: 'https://proxy.example', cookiesFile: '/run/secrets/youtube.cookies', jsRuntime: 'node', playerClient: 'web_safari',
+  });
+  assert.throws(() => validateProviderRuntimeConfig({ proxy: 'file:///tmp/proxy' }), /http, https, or socks/);
+  assert.throws(() => validateProviderRuntimeConfig({ cookiesFile: 'relative.cookies' }), /absolute file path/);
+  assert.throws(() => validateProviderRuntimeConfig({ jsRuntime: 'node --unsafe' }), /unsupported characters/);
+  assert.throws(() => validateProviderRuntimeConfig({ playerClient: 'web;rm' }), /unsupported characters/);
+});
+
 test('production readiness checks ffmpeg, ffprobe, and the configured provider extractor', async () => {
   const calls = [];
   const runtime = await checkMediaRuntime({
@@ -43,6 +76,13 @@ test('production readiness fails explicitly when a media runtime binary is unava
   await assert.rejects(
     () => checkMediaRuntime({ includeProvider: true, runCommand: async (command) => { throw new Error(`${command} not found`); } }),
     /Media runtime ffmpeg is unavailable: ffmpeg not found/,
+  );
+});
+
+test('production readiness fails when configured provider cookies are not mounted', async () => {
+  await assert.rejects(
+    () => checkMediaRuntime({ includeProvider: true, providerConfig: { cookiesFile: '/run/secrets/missing-youtube.cookies' }, runCommand: async () => ({ stdout: '', stderr: '' }) }),
+    /provider cookies are unavailable/,
   );
 });
 

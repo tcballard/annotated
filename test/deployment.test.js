@@ -15,6 +15,7 @@ test('production image builds before pruning dev dependencies and runs non-root'
   assert.match(dockerfile, /sha256sum --check --strict/);
   assert.match(dockerfile, /\/usr\/local\/bin\/yt-dlp --version/);
   assert.match(dockerfile, /ENV YTDLP_BIN=\/usr\/local\/bin\/yt-dlp/);
+  assert.match(dockerfile, /ENV YTDLP_JS_RUNTIME=node/);
 });
 
 test('docker build context excludes local state and secrets', async () => {
@@ -22,6 +23,8 @@ test('docker build context excludes local state and secrets', async () => {
   assert.match(ignore, /^data$/m);
   assert.match(ignore, /^\.env$/m);
   assert.match(ignore, /^node_modules$/m);
+  assert.match(ignore, /^\*\.cookies$/m);
+  assert.match(ignore, /^\*\.cookiejar$/m);
 });
 
 test('production server bind host is configurable for container networking', async () => {
@@ -63,6 +66,17 @@ test('release docs distinguish verified Railway staging from public release', as
   assert.match(release, /not tagged, submitted to the Chrome Web Store/);
   assert.match(deployment, /pinned provider extractor described below/);
   assert.doesNotMatch(deployment, /does not pretend that a provider extractor is present/);
+  assert.match(deployment, /YTDLP_PROXY/);
+  assert.match(deployment, /YTDLP_COOKIES_FILE/);
+  assert.match(deployment, /passed as argument arrays/);
+});
+
+test('provider egress settings are visible in the local configuration contract', async () => {
+  const env = await readFile(new URL('../.env.example', import.meta.url), 'utf8');
+  assert.match(env, /YTDLP_JS_RUNTIME=node/);
+  assert.match(env, /YTDLP_PROXY=https:\/\/proxy\.example/);
+  assert.match(env, /YTDLP_COOKIES_FILE=\/run\/secrets\/youtube\.cookies/);
+  assert.match(env, /YTDLP_PLAYER_CLIENT=web_safari/);
 });
 
 test('web build includes a privacy policy with the extension data boundary', async () => {
