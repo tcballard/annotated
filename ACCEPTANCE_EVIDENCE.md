@@ -66,6 +66,12 @@ The current workstation has neither a `pg_dump` binary nor a running Docker
 daemon, so no custom-format staging dump was claimed; run the backup command
 from a trusted PostgreSQL-client runner before the next migration.
 
+The source-citation acceptance contract now publishes article, video, and
+podcast fixtures and verifies that both `sourceUrl` and `canonicalUrl` survive
+publish, public detail, and source-type-filtered feed responses. The API test
+passed locally; deployed browser evidence that each public surface follows the
+source link remains external.
+
 The claim-surface deployment also serves the feed/profile card contract from
 the same PostgreSQL-backed staging service. The claim action preserves the
 selected annotation slug and submits through the persisted claim endpoint;
