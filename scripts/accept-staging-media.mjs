@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { cancelMediaJob, enqueueMediaJob } from '../server/media-worker.js';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { cancelMediaJob, enqueueMediaJob, runMediaCommand, validateMediaProbe } from '../server/media-worker.js';
 import { removeStoredMedia } from '../server/media-store.js';
 import { getObjectStore } from '../server/object-store.js';
 import { closeStore, readStore, updateStore } from '../server/store.js';
@@ -41,6 +44,7 @@ const runFixture = async (fixture) => {
   const slug = `staging-media-smoke-${fixture.name}-${annotationId.slice(0, 8)}`;
   let job;
   let media;
+  let probeDirectory;
   let cleanupError;
   try {
     await updateStore((store) => ({
@@ -104,6 +108,19 @@ const runFixture = async (fixture) => {
     const bytes = Buffer.from(await objectResponse.arrayBuffer());
     assert.ok(bytes.length > 0, 'The delivered media object must not be empty.');
 
+    probeDirectory = await mkdtemp(path.join(tmpdir(), `annotated-staging-${fixture.name}-`));
+    const deliveredPath = path.join(probeDirectory, fixture.sourceType === 'video' ? 'delivered.mp4' : 'delivered.webm');
+    await writeFile(deliveredPath, bytes, { mode: 0o600 });
+    const probeResult = await runMediaCommand('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=duration:stream=codec_type,height,width',
+      '-of', 'json',
+      deliveredPath,
+    ]);
+    const probe = JSON.parse(probeResult.stdout);
+    const inspected = validateMediaProbe(fixture.sourceType, probe);
+    const videoStream = probe.streams.find((stream) => stream.codec_type === 'video');
+
     return {
       name: fixture.name,
       sourceType: fixture.sourceType,
@@ -114,8 +131,13 @@ const runFixture = async (fixture) => {
       deliveryHost: new URL(signedUrl).hostname,
       mimeType: objectResponse.headers.get('content-type'),
       bytes: bytes.length,
+      durationSeconds: Number(inspected.duration.toFixed(3)),
+      videoHeight: videoStream ? Number(videoStream.height) : null,
+      videoWidth: videoStream ? Number(videoStream.width) : null,
+      hasAudio: probe.streams.some((stream) => stream.codec_type === 'audio'),
     };
   } finally {
+    if (probeDirectory) await rm(probeDirectory, { recursive: true, force: true }).catch((error) => { cleanupError ||= error; });
     if (job?.id) await cancelMediaJob(job.id, 'local-tom').catch((error) => { cleanupError ||= error; });
     if (media) await removeStoredMedia(media).catch((error) => { cleanupError ||= error; });
     await updateStore((store) => ({
