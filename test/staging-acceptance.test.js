@@ -13,7 +13,11 @@ test('staging acceptance command verifies only public, non-mutating boundaries',
   assert.match(script, /\/privacy\.html/);
   assert.match(script, /\/api\/me/);
   assert.match(script, /\/api\/claims/);
-  assert.doesNotMatch(script, /POST|PUT|PATCH|DELETE/);
+  assert.match(script, /\/api\/sources\/resolve/);
+  assert.match(script, /jNQXAC9IVRw/);
+  assert.match(script, /sample-3s\.mp3/);
+  assert.match(script, /text-ready/);
+  assert.doesNotMatch(script, /method:\s*['"](?:PUT|PATCH|DELETE)['"]/);
 });
 
 test('staging rate-limit smoke is guarded, shared, and cleans its bucket', async () => {

@@ -325,6 +325,14 @@ The local browser run exercised the user-facing flows below:
   removed each temporary annotation, job, and object. The worker's existing
   FFprobe gate therefore ran in the deployed container for the video 240p/
   90-second contract; YouTube extraction and browser playback remain external.
+- PR #81 deployment `665c9c5e-4f1c-4554-8393-d7aa5fb8cac5` passed the expanded
+  non-mutating public acceptance command. Its source preflight classified the
+  YouTube fixture as `video`/`youtube`/`ready-for-range`, the article fixture as
+  `article`/`text-ready` with the submitted canonical URL preserved, and the
+  direct podcast fixture as `podcast`/`ready-for-range` with its media URL
+  preserved. The first run exposed a missing article canonical fallback;
+  `f65ea06` fixes it and adds a regression test. This is deployed source
+  resolution evidence, not YouTube extraction or browser playback evidence.
 - Deployment tests verify Vite builds before production pruning, the container
   runs as an unprivileged user, local state/secrets are excluded from its build
   context, and the Dockerfile pins the official yt-dlp 2026.06.09 amd64/arm64

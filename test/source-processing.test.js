@@ -61,6 +61,22 @@ test('article metadata decodes HTML entities in titles, descriptions, excerpts, 
   }
 });
 
+test('article resolution falls back to the submitted URL when no canonical tag exists', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    arrayBuffer: async () => Buffer.from('<html><head><title>Example Domain</title></head><body><main><p>This page has no canonical link, so the submitted URL remains the source citation.</p></main></body></html>'),
+  });
+  try {
+    const source = await resolveSource('https://news.example/story', { lookup: publicLookup });
+    assert.equal(source.canonicalUrl, 'https://news.example/story');
+    assert.equal(source.processing, 'text-ready');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('podcast RSS resolution extracts the first episode, enclosure, and show metadata', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => ({

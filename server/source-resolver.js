@@ -232,7 +232,7 @@ export async function resolveSource(value, { lookup } = {}) {
       const feed = parsePodcastFeed(html, url.toString());
       if (feed) return { ...base, ...feed };
     }
-    const canonicalUrl = canonicalFromHTML(html, url.toString());
+    const canonicalUrl = canonicalFromHTML(html, url.toString()) || base.canonicalUrl;
     return {
       ...base,
       canonicalUrl,
