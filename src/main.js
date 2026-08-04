@@ -484,8 +484,12 @@ const timeRange = () => {
   const length = Math.max(0, state.clipEnd - state.clipStart);
   return `<div class="clip-editor" ${state.sourceType === 'article' ? 'hidden' : ''}>
     <div class="clip-editor-head"><span class="clip-editor-label"><span class="clip-editor-icon">${icon(state.sourceType)}</span><span>Select a moment</span></span><strong class="duration-badge ${length > 90 ? 'is-warning' : ''}" role="status" aria-live="polite"><span>${formatTime(length)}</span><span aria-hidden="true">/</span><span>1:30 max</span></strong></div>
-    <div class="range-track"><span class="range-fill" style="left:${(state.clipStart / max) * 100}%; width:${((state.clipEnd - state.clipStart) / max) * 100}%"></span><input aria-label="Clip start" aria-valuetext="${formatTime(state.clipStart)}" type="range" min="0" max="${MAX_CLIP_SECONDS}" value="${state.clipStart}" data-action="clip-start" /><input aria-label="Clip end" aria-valuetext="${formatTime(state.clipEnd)}" type="range" min="0" max="${MAX_CLIP_SECONDS}" value="${state.clipEnd}" data-action="clip-end" /></div>
-    <div class="time-fields"><label><span>Start</span><input type="number" min="0" max="${MAX_CLIP_SECONDS}" inputmode="numeric" value="${state.clipStart}" data-action="clip-start-number" aria-label="Clip start seconds" /></label><span class="time-separator" aria-hidden="true">→</span><label><span>End</span><input type="number" min="0" max="${MAX_CLIP_SECONDS}" inputmode="numeric" value="${state.clipEnd}" data-action="clip-end-number" aria-label="Clip end seconds" /></label></div>
+    <div class="range-console">
+      <div class="range-console-meta" aria-hidden="true"><span>Source time</span><span>90 sec window</span></div>
+      <div class="range-track"><span class="range-fill" style="left:${(state.clipStart / max) * 100}%; width:${((state.clipEnd - state.clipStart) / max) * 100}%"></span><input aria-label="Clip start" aria-valuetext="${formatTime(state.clipStart)}" type="range" min="0" max="${MAX_CLIP_SECONDS}" value="${state.clipStart}" data-action="clip-start" /><input aria-label="Clip end" aria-valuetext="${formatTime(state.clipEnd)}" type="range" min="0" max="${MAX_CLIP_SECONDS}" value="${state.clipEnd}" data-action="clip-end" /></div>
+      <div class="range-scale" aria-hidden="true"><span>0:00</span><span>0:30</span><span>1:00</span><span>1:30</span></div>
+      <div class="time-fields"><label><span>In</span><input type="number" min="0" max="${MAX_CLIP_SECONDS}" inputmode="numeric" value="${state.clipStart}" data-action="clip-start-number" aria-label="Clip start seconds" /></label><span class="time-selection" aria-hidden="true"><span>Selected</span><strong data-range-duration>${formatTime(length)}</strong></span><label><span>Out</span><input type="number" min="0" max="${MAX_CLIP_SECONDS}" inputmode="numeric" value="${state.clipEnd}" data-action="clip-end-number" aria-label="Clip end seconds" /></label></div>
+    </div>
   </div><div class="highlight-preview" ${state.sourceType === 'article' ? '' : 'hidden'}><div class="highlight-mark"></div><label for="article-excerpt">Selected passage</label><textarea id="article-excerpt" data-action="article-excerpt" maxlength="2000" aria-describedby="article-excerpt-hint">${escapeHTML(excerpt)}</textarea><span id="article-excerpt-hint">Highlight selected · ${excerpt.length} characters · edit before publishing</span></div>`;
 };
 
@@ -723,6 +727,8 @@ const refreshClipControls = () => {
   }
   const duration = editor.querySelector('.duration-badge > span:first-child');
   if (duration) duration.textContent = formatTime(state.clipEnd - state.clipStart);
+  const selectedDuration = editor.querySelector('[data-range-duration]');
+  if (selectedDuration) selectedDuration.textContent = formatTime(state.clipEnd - state.clipStart);
   const playerTime = app.querySelector(`[data-source-canvas="${state.sourceType}"] .media-player .player-time`);
   if (playerTime) playerTime.textContent = formatTime(state.clipStart);
 };

@@ -44,3 +44,14 @@ test('mobile capture compresses the preview and keeps primary targets at least 4
   assert.match(styles, /\.brand-mark \{ min-width: 44px; min-height: 44px; \}/u);
   assert.match(styles, /\.nav-link \{ min-width: 44px; min-height: 44px;/u);
 });
+
+test('clip timer presents an instrument-style ruler without replacing native range inputs', () => {
+  assert.match(mainSource, /class="range-console"/u);
+  assert.match(mainSource, /class="range-scale"/u);
+  assert.match(mainSource, /data-range-duration/u);
+  assert.match(mainSource, /type="range"[^>]*data-action="clip-start"/u);
+  assert.match(mainSource, /type="range"[^>]*data-action="clip-end"/u);
+  assert.match(styles, /\.range-console \.range-track \{/u);
+  assert.match(styles, /repeating-linear-gradient/u);
+  assert.match(styles, /\.range-console \.range-track input:focus-visible/u);
+});
