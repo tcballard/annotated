@@ -190,6 +190,22 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.ok(publishedFeedItem);
   assert.equal(publishedFeedItem.canonicalUrl, annotationPayload.sourceUrl);
 
+  const firstFeedPage = await request(baseUrl, '/api/feed?limit=1');
+  assert.equal(firstFeedPage.response.status, 200);
+  assert.equal(firstFeedPage.payload.annotations.length, 1);
+  assert.equal(firstFeedPage.payload.nextCursor, '1');
+  const secondFeedPage = await request(baseUrl, `/api/feed?limit=1&cursor=${firstFeedPage.payload.nextCursor}`);
+  assert.equal(secondFeedPage.response.status, 200);
+  assert.equal(secondFeedPage.payload.annotations.length, 1);
+  assert.equal(secondFeedPage.payload.nextCursor, null);
+  assert.notEqual(secondFeedPage.payload.annotations[0].id, firstFeedPage.payload.annotations[0].id);
+
+  const searchedFeed = await request(baseUrl, '/api/feed?limit=invalid&cursor=invalid&q=durable%20publish');
+  assert.equal(searchedFeed.response.status, 200);
+  assert.equal(searchedFeed.payload.query, 'durable publish');
+  assert.equal(searchedFeed.payload.annotations.length, 1);
+  assert.equal(searchedFeed.payload.annotations[0].id, published.payload.annotation.id);
+
   const profile = await request(baseUrl, '/api/profiles/tcballard');
   assert.equal(profile.response.status, 200);
   assert.equal(profile.payload.profile.handle, 'tcballard');

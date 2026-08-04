@@ -292,6 +292,11 @@ The local browser run exercised the user-facing flows below:
   page keeps its existing claim card. The same branch is deployed to Railway
   staging and passed `npm run acceptance:staging`; live authenticated browser
   interaction remains an external gate.
+- The 2026-08-04 feed contract tests verify that malformed `limit`/`cursor`
+  values fall back safely, limits remain bounded, cursor pages advance without
+  duplicates, and normalized search matches source and commentary context.
+  This is local API evidence; deployed multi-user and browser feed evidence
+  remains an external gate.
 - Deployment tests verify Vite builds before production pruning, the container
   runs as an unprivileged user, local state/secrets are excluded from its build
   context, and the Dockerfile pins the official yt-dlp 2026.06.09 amd64/arm64
