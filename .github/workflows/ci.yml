@@ -107,6 +107,23 @@ jobs:
           test -s "$BACKUP_OUTPUT_DIR/postgres.dump"
           test -s "$BACKUP_OUTPUT_DIR/objects.json"
           test -s "$BACKUP_OUTPUT_DIR/manifest.json"
+      - name: Restore backup into an isolated recovery database
+        shell: bash
+        env:
+          BACKUP_OUTPUT_DIR: ${{ runner.temp }}/annotated-backup
+          RECOVERY_DATABASE_URL: postgresql://annotated:annotated@127.0.0.1:5432/annotated_recovery_ci
+        run: |
+          set -eu
+          PGPASSWORD=annotated psql \
+            --host=127.0.0.1 \
+            --port=5432 \
+            --username=annotated \
+            --dbname=postgres \
+            --command='CREATE DATABASE annotated_recovery_ci'
+          BACKUP_DIR="$BACKUP_OUTPUT_DIR" \
+            RUN_RECOVERY_DRILL=true \
+            RECOVERY_DATABASE_URL="$RECOVERY_DATABASE_URL" \
+            npm run backup:verify
       - name: Stop S3-compatible service
         if: always()
         run: docker stop annotated-minio 2>/dev/null || true

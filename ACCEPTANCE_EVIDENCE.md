@@ -78,6 +78,14 @@ migration ledger and collection snapshot, and produced the manifest checksum
 a scheduled production backup, provider retention policy, object-byte recovery,
 or isolated live restore.
 
+The recovery-drill branch extends the same hosted job with an explicitly named
+`annotated_recovery_ci` database. CI creates that empty target, runs
+`RUN_RECOVERY_DRILL=true`, restores with `pg_restore --exit-on-error`, and
+checks the restored migration ledger against the backup manifest. This proves
+the isolated database-recovery path without pointing `pg_restore` at the source
+database; scheduled production snapshots, provider retention, object-byte
+recovery, and deployed-service recovery remain external.
+
 The source-citation acceptance contract now publishes article, video, and
 podcast fixtures and verifies that both `sourceUrl` and `canonicalUrl` survive
 publish, public detail, and source-type-filtered feed responses. The API test
