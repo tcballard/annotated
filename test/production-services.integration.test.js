@@ -46,7 +46,7 @@ test('production PostgreSQL and S3 adapters work against real services', {
   }));
   const persisted = await repository.read();
   assert.ok(persisted.users.some((user) => user.id === markerId));
-  assert.equal(latestMigrationVersion, '003_idempotency_index');
+  assert.equal(latestMigrationVersion, '004_rate_limit_buckets');
 
   const fixturePrefix = `full-surface-${randomUUID()}`;
   const annotationId = `${fixturePrefix}-annotation`;

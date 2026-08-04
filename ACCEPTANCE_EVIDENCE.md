@@ -8,9 +8,9 @@ production gates are complete.
 
 ## Railway staging acceptance
 
-The current claim-surface stack was deployed to the existing Railway staging
-service (`annotated-poc`, environment `staging`) as deployment
-`3e0dddde-4edd-465d-b596-8977668f1789` at
+The current distributed-limits stack was deployed to the existing Railway
+staging service (`annotated-poc`, environment `staging`) as deployment
+`35651b01-9801-4a04-b2b2-46d29a2d4d06` at
 `https://annotated-staging.up.railway.app`. The non-mutating acceptance command
 below passed on 2026-08-04:
 
@@ -31,6 +31,18 @@ asset, `/privacy.html`, an empty server-backed feed, and the expected `401`
 identity and claims boundaries. This is deployed API evidence; it does not
 replace live OAuth consent, docked Chrome, microphone, offline replay, or
 provider fixture/browser playback evidence.
+
+The distributed-limits layer adds migration `004_rate_limit_buckets` and routes
+mutation/OAuth limits through an atomic PostgreSQL bucket ledger in production.
+Keys are SHA-256 hashed, the production path fails closed if the ledger cannot
+be reached, and local development/tests retain the explicit in-process
+fallback. `node --test test/rate-limit.test.js test/hardening.test.js
+test/storage.test.js` passed this contract. On deployment
+`35651b01-9801-4a04-b2b2-46d29a2d4d06`, the guarded
+`accept-staging-rate-limit.mjs` smoke returned `shared: true`, allowed the
+first two attempts, denied the third, and removed its temporary bucket. This
+is single-instance PostgreSQL evidence; multi-replica and edge WAF coverage
+remain external.
 
 The claim-surface deployment also serves the feed/profile card contract from
 the same PostgreSQL-backed staging service. The claim action preserves the

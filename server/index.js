@@ -13,7 +13,8 @@ import { resolveSource } from './source-resolver.js';
 import { matchesFeedQuery, normalizeFeedQuery } from './feed.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, parseCookies, providerStatus, startOAuth } from './auth.js';
-import { assertHardeningConfiguration, rateLimit, requestId, securityHeaders } from './hardening.js';
+import { assertHardeningConfiguration, requestId, securityHeaders } from './hardening.js';
+import { closeRateLimitStore, rateLimitAsync } from './rate-limit.js';
 import { canUseAudioAsset } from './media-access.js';
 import { metricsSnapshot, recordRequest } from './observability.js';
 import { findIdempotentAnnotation } from './idempotency.js';
@@ -41,7 +42,7 @@ const redirect = (response, location, headers = {}) => {
 };
 const unauthorized = (response) => send(response, 401, { error: 'Sign in is required.' });
 const forbidden = (response) => send(response, 403, { error: 'You do not have permission for this action.' });
-const mutationAllowed = (request, actor, name, limit = 60) => rateLimit(`${request.socket?.remoteAddress || 'unknown'}:${actor?.id || 'anonymous'}:${name}`, { limit }).allowed;
+const mutationAllowed = async (request, actor, name, limit = 60) => (await rateLimitAsync(`${request.socket?.remoteAddress || 'unknown'}:${actor?.id || 'anonymous'}:${name}`, { limit })).allowed;
 const isModerator = (user) => Boolean(user && (['owner', 'admin', 'moderator'].includes(user.role) || String(process.env.MODERATOR_USER_IDS || '').split(',').map((value) => value.trim()).includes(user.id)));
 const oauthErrorRedirect = (request) => {
   const fallback = `${process.env.APP_ORIGIN || publicOrigin}/?auth=error`;
@@ -146,7 +147,7 @@ const handleApi = async (request, response, pathname) => {
     if (!actor && authIsRequired()) return unauthorized(response);
     let mimeType;
     try { mimeType = normalizeAudioMimeType(request.headers['content-type']); } catch (error) { return send(response, 415, { error: error.message }); }
-    if (!mutationAllowed(request, actor, 'audio-upload', 10)) return send(response, 429, { error: 'Too many audio uploads. Try again later.' }, { 'retry-after': '60' });
+    if (!(await mutationAllowed(request, actor, 'audio-upload', 10))) return send(response, 429, { error: 'Too many audio uploads. Try again later.' }, { 'retry-after': '60' });
     const media = await writeIncomingMedia(request, mimeType);
     await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, ownerId: actor?.id || 'local-tom', createdAt: media.createdAt }] }));
     return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, url: `${publicOrigin}/media/${media.id}` } });
@@ -199,7 +200,7 @@ const handleApi = async (request, response, pathname) => {
     const knownUsers = (await readStore()).users || [];
     if (!knownUsers.some((user) => user.id === targetId)) return notFound(response);
     if (targetId === actor?.id) return send(response, 422, { error: 'You cannot follow yourself.' });
-    if (!mutationAllowed(request, actor, 'follow', 60)) return send(response, 429, { error: 'Too many follow changes. Try again later.' }, { 'retry-after': '60' });
+    if (!(await mutationAllowed(request, actor, 'follow', 60))) return send(response, 429, { error: 'Too many follow changes. Try again later.' }, { 'retry-after': '60' });
     let following = followMatch[2] === 'follow';
     const result = await updateStore((store) => {
       const exists = (store.follows || []).some((follow) => follow.followerId === (actor?.id || 'local-tom') && follow.followingId === targetId);
@@ -223,7 +224,7 @@ const handleApi = async (request, response, pathname) => {
   if (request.method === 'POST' && pathname === '/api/annotations') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
-    if (!mutationAllowed(request, actor, 'annotation', 30)) return send(response, 429, { error: 'Too many publishes. Try again later.' }, { 'retry-after': '60' });
+    if (!(await mutationAllowed(request, actor, 'annotation', 30))) return send(response, 429, { error: 'Too many publishes. Try again later.' }, { 'retry-after': '60' });
     const payload = await readJson(request);
     const { errors, normalized } = validateAnnotation(payload);
     if (errors.length) return send(response, 422, { errors });
@@ -266,7 +267,7 @@ const handleApi = async (request, response, pathname) => {
   if (commentsMatch && request.method === 'POST') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
-    if (!mutationAllowed(request, actor, 'comment', 30)) return send(response, 429, { error: 'Too many comments. Try again later.' }, { 'retry-after': '60' });
+    if (!(await mutationAllowed(request, actor, 'comment', 30))) return send(response, 429, { error: 'Too many comments. Try again later.' }, { 'retry-after': '60' });
     const payload = await readJson(request);
     const validation = validateComment(payload);
     if (validation.error) return send(response, 422, { error: validation.error });
@@ -285,7 +286,7 @@ const handleApi = async (request, response, pathname) => {
   if (likeMatch && request.method === 'POST') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
-    if (!mutationAllowed(request, actor, 'like', 120)) return send(response, 429, { error: 'Too many like changes. Try again later.' }, { 'retry-after': '60' });
+    if (!(await mutationAllowed(request, actor, 'like', 120))) return send(response, 429, { error: 'Too many like changes. Try again later.' }, { 'retry-after': '60' });
     const result = await updateStore((store) => {
       const annotation = store.annotations.find((item) => item.slug === likeMatch[1] || item.id === likeMatch[1]);
       if (!annotation) return store;
@@ -302,7 +303,7 @@ const handleApi = async (request, response, pathname) => {
   if (claimsMatch && request.method === 'POST') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
-    if (!mutationAllowed(request, actor, 'claim', 10)) return send(response, 429, { error: 'Too many claims. Try again later.' }, { 'retry-after': '60' });
+    if (!(await mutationAllowed(request, actor, 'claim', 10))) return send(response, 429, { error: 'Too many claims. Try again later.' }, { 'retry-after': '60' });
     const payload = await readJson(request);
     const validation = validateClaim(payload);
     if (validation.error) return send(response, 422, { error: validation.error });
@@ -348,7 +349,7 @@ const handleApi = async (request, response, pathname) => {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
     if (!isModerator(actor)) return forbidden(response);
-    if (!mutationAllowed(request, actor, 'moderation', 60)) return send(response, 429, { error: 'Too many moderation changes. Try again later.' }, { 'retry-after': '60' });
+    if (!(await mutationAllowed(request, actor, 'moderation', 60))) return send(response, 429, { error: 'Too many moderation changes. Try again later.' }, { 'retry-after': '60' });
     const payload = await readJson(request);
     const currentStore = await readStore();
     const currentClaim = (currentStore.claims || []).find((item) => item.id === moderateClaimMatch[1]);
@@ -431,6 +432,7 @@ server.listen(port, host, () => {
 });
 
 const shutdown = async () => {
+  await closeRateLimitStore().catch((error) => console.error('rate-limit shutdown failed', error));
   await closeStore().catch((error) => console.error('store shutdown failed', error));
   server.close(() => process.exit(0));
 };

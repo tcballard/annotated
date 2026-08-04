@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { readStore, updateStore } from './store.js';
+import { rateLimitAsync } from './rate-limit.js';
 
 const sessionTtlSeconds = Number(process.env.AUTH_SESSION_TTL_SECONDS || 2_592_000);
 const oauthStateTtlSeconds = 600;
@@ -104,19 +105,14 @@ const validateReturnTo = (value) => {
 };
 
 const requestOrigin = (request) => request.socket?.remoteAddress || 'unknown';
-const rateBuckets = new Map();
-const enforceRateLimit = (request, providerName) => {
+const enforceRateLimit = async (request, providerName) => {
   const key = `${requestOrigin(request)}:${providerName}`;
-  const now = Date.now();
-  const current = rateBuckets.get(key) || { count: 0, resetAt: now + 300_000 };
-  if (current.resetAt <= now) { current.count = 0; current.resetAt = now + 300_000; }
-  current.count += 1;
-  rateBuckets.set(key, current);
-  if (current.count > 10) throw new Error('Too many sign-in attempts. Try again later.');
+  const result = await rateLimitAsync(key, { limit: 10, windowMs: 300_000 });
+  if (!result.allowed) throw new Error(result.unavailable ? 'Sign-in rate limiting is temporarily unavailable.' : 'Too many sign-in attempts. Try again later.');
 };
 
 export const startOAuth = async (request, providerName, returnTo = '') => {
-  enforceRateLimit(request, providerName);
+  await enforceRateLimit(request, providerName);
   const provider = providerFor(providerName);
   const state = base64url(randomBytes(24));
   const verifier = base64url(randomBytes(48));
