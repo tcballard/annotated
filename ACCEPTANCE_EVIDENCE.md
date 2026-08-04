@@ -48,11 +48,15 @@ The backup/recovery layer adds a non-destructive `npm run backup:production`
 command for a trusted runner. It refuses development adapters, invokes
 `pg_dump` without a shell, captures the latest migration and per-collection
 counts, inventories the private S3-compatible bucket with bounded pagination,
-and writes a `0600` custom-format dump, sorted object manifest, and SHA-256
-manifest without mutating production. `node --test test/backup.test.js`
-covers the configuration guard, pagination, command boundary, and secret-free
-manifest contract. A provider-side retention policy and isolated restore drill
-have not been run, so durable recovery remains an external gate.
+and writes a `0600` custom-format dump, sorted object manifest, bucket
+versioning/lifecycle audit, and SHA-256 manifest without mutating production.
+`npm run backup:verify` checks the artifact offline with `pg_restore --list`,
+and its guarded recovery mode requires an `annotated_recovery*` database name
+before restoring and checking the migration ledger. `node --test
+test/backup.test.js test/backup-verification.test.js` covers the configuration
+guard, pagination, retention contract, command boundary, and secret-free
+manifest verification. A provider-side retention policy and isolated restore
+drill have not been run, so durable recovery remains an external gate.
 
 The claim-surface deployment also serves the feed/profile card contract from
 the same PostgreSQL-backed staging service. The claim action preserves the

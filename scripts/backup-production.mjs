@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import pg from 'pg';
-import { ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
+import { GetBucketLifecycleConfigurationCommand, GetBucketVersioningCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
 
 const require = createRequire(import.meta.url);
 const { version: releaseVersion } = require('../package.json');
@@ -37,6 +37,8 @@ export const normalizeBackupConfig = ({ env = process.env, now = new Date() } = 
     outputDir,
     pgDumpBin: env.PG_DUMP_BIN || 'pg_dump',
     maxObjects,
+    requireObjectVersioning: env.BACKUP_REQUIRE_OBJECT_VERSIONING === 'true',
+    requireObjectLifecycle: env.BACKUP_REQUIRE_OBJECT_LIFECYCLE === 'true',
     createdAt: now.toISOString(),
   };
 };
@@ -57,7 +59,7 @@ export const sha256File = async (filePath) => {
   return { bytes, sha256: hash.digest('hex') };
 };
 
-const connectionEnvironment = (databaseUrl, baseEnv = process.env) => {
+export const connectionEnvironment = (databaseUrl, baseEnv = process.env) => {
   let url;
   try {
     url = new URL(databaseUrl);
@@ -80,21 +82,20 @@ const connectionEnvironment = (databaseUrl, baseEnv = process.env) => {
   return result;
 };
 
-export const runPgDump = ({ databaseUrl, outputPath, command = 'pg_dump', spawnImpl = spawn, baseEnv = process.env } = {}) => new Promise((resolve, reject) => {
+const runPostgresUtility = ({ databaseUrl, args, command, spawnImpl = spawn, baseEnv = process.env } = {}) => new Promise((resolve, reject) => {
   let commandEnv;
   try {
-    commandEnv = connectionEnvironment(databaseUrl, baseEnv);
+    commandEnv = databaseUrl ? connectionEnvironment(databaseUrl, baseEnv) : { ...baseEnv };
+    if (!databaseUrl) {
+      delete commandEnv.DATABASE_URL;
+      delete commandEnv.S3_ACCESS_KEY_ID;
+      delete commandEnv.S3_SECRET_ACCESS_KEY;
+    }
   } catch (error) {
     reject(error);
     return;
   }
-  const child = spawnImpl(command, [
-    '--format=custom',
-    '--no-owner',
-    '--no-privileges',
-    '--file',
-    outputPath,
-  ], { env: commandEnv, stdio: ['ignore', 'ignore', 'pipe'] });
+  const child = spawnImpl(command, args, { env: commandEnv, stdio: ['ignore', 'ignore', 'pipe'] });
   let stderr = '';
   child.stderr?.on('data', (chunk) => {
     stderr = `${stderr}${chunk}`.slice(-2000);
@@ -105,10 +106,33 @@ export const runPgDump = ({ databaseUrl, outputPath, command = 'pg_dump', spawnI
   });
   child.once('close', (code, signal) => {
     if (code === 0) return resolve();
-    const withUrlRedacted = stderr.replaceAll(databaseUrl, '[DATABASE_URL]');
+    const withUrlRedacted = databaseUrl ? stderr.replaceAll(databaseUrl, '[DATABASE_URL]') : stderr;
     const redacted = commandEnv.PGPASSWORD ? withUrlRedacted.replaceAll(commandEnv.PGPASSWORD, '[PASSWORD]') : withUrlRedacted;
     reject(new Error(`${command} failed${signal ? ` (${signal})` : ''}${redacted ? `: ${redacted.trim()}` : '.'}`));
   });
+});
+
+export const runPgDump = ({ databaseUrl, outputPath, command = 'pg_dump', spawnImpl = spawn, baseEnv = process.env } = {}) => runPostgresUtility({
+  databaseUrl,
+  command,
+  spawnImpl,
+  baseEnv,
+  args: ['--format=custom', '--no-owner', '--no-privileges', '--file', outputPath],
+});
+
+export const runPgRestoreList = ({ databaseUrl, dumpPath, command = 'pg_restore', spawnImpl = spawn, baseEnv = process.env } = {}) => runPostgresUtility({
+  command,
+  spawnImpl,
+  baseEnv,
+  args: ['--list', dumpPath],
+});
+
+export const runPgRestore = ({ databaseUrl, dumpPath, command = 'pg_restore', spawnImpl = spawn, baseEnv = process.env } = {}) => runPostgresUtility({
+  databaseUrl,
+  command,
+  spawnImpl,
+  baseEnv,
+  args: ['--exit-on-error', '--no-owner', '--no-privileges', dumpPath],
 });
 
 export const inspectDatabase = async ({ databaseUrl, pgModule = pg } = {}) => {
@@ -153,6 +177,43 @@ export const listObjectManifest = async ({ client, bucket, maxObjects = 100_000 
   };
 };
 
+const summarizeLifecycleRule = (rule) => ({
+  id: rule.ID || rule.Id || null,
+  status: rule.Status || null,
+  prefix: rule.Prefix || null,
+  filter: rule.Filter ? { prefix: rule.Filter.Prefix || null, tag: rule.Filter.Tag ? { key: rule.Filter.Tag.Key || null, value: rule.Filter.Tag.Value || null } : null } : null,
+  expiration: rule.Expiration ? { days: rule.Expiration.Days || null, date: rule.Expiration.Date?.toISOString?.() || rule.Expiration.Date || null, expiredObjectDeleteMarker: rule.Expiration.ExpiredObjectDeleteMarker ?? null } : null,
+  noncurrentVersionExpiration: rule.NoncurrentVersionExpiration ? { noncurrentDays: rule.NoncurrentVersionExpiration.NoncurrentDays || null } : null,
+});
+
+const retentionError = (error) => ({ status: 'unavailable', error: error?.name || error?.Code || 'request-failed' });
+const noLifecycle = (error) => ['NoSuchLifecycleConfiguration', 'NoSuchLifecycle'].includes(error?.name) || ['NoSuchLifecycleConfiguration', 'NoSuchLifecycle'].includes(error?.Code);
+
+export const auditObjectRetention = async ({ client, bucket } = {}) => {
+  if (!client || !bucket) throw new Error('An S3 client and bucket are required.');
+  let versioning;
+  let lifecycle;
+  try {
+    const result = await client.send(new GetBucketVersioningCommand({ Bucket: bucket }));
+    versioning = { status: result.Status || 'Disabled', mfaDelete: result.MFADelete || null };
+  } catch (error) {
+    versioning = retentionError(error);
+  }
+  try {
+    const result = await client.send(new GetBucketLifecycleConfigurationCommand({ Bucket: bucket }));
+    const rules = (result.Rules || []).map(summarizeLifecycleRule);
+    lifecycle = { status: rules.length ? 'configured' : 'not-configured', ruleCount: rules.length, rules };
+  } catch (error) {
+    lifecycle = noLifecycle(error) ? { status: 'not-configured', ruleCount: 0, rules: [] } : retentionError(error);
+  }
+  return { versioning, lifecycle };
+};
+
+export const assertObjectRetention = ({ retention, requireVersioning = false, requireLifecycle = false } = {}) => {
+  if (requireVersioning && retention?.versioning?.status !== 'Enabled') throw new Error(`Object versioning is required but is ${retention?.versioning?.status || 'unknown'}.`);
+  if (requireLifecycle && retention?.lifecycle?.status !== 'configured') throw new Error(`Object lifecycle retention is required but is ${retention?.lifecycle?.status || 'unknown'}.`);
+};
+
 export const buildBackupManifest = ({ config, database, dump, objectManifest, gitSha = null } = {}) => ({
   formatVersion: 1,
   createdAt: config.createdAt,
@@ -168,6 +229,7 @@ export const buildBackupManifest = ({ config, database, dump, objectManifest, gi
     manifestPath: 'objects.json',
     objectCount: objectManifest.objectCount,
     totalBytes: objectManifest.totalBytes,
+    retention: objectManifest.retention,
   },
   recovery: {
     restoreDatabaseWith: 'pg_restore --exit-on-error --no-owner --no-privileges --dbname="$RECOVERY_DATABASE_URL" postgres.dump',
@@ -198,7 +260,11 @@ export const createProductionBackup = async ({ env = process.env, now = new Date
   await chmod(dumpPath, 0o600);
   const dump = await sha256File(dumpPath);
   const database = await inspectDatabase({ databaseUrl: config.databaseUrl });
-  const objectManifest = await listObjectManifest({ client: createS3Client(config), bucket: config.bucket, maxObjects: config.maxObjects });
+  const client = createS3Client(config);
+  const objectManifest = await listObjectManifest({ client, bucket: config.bucket, maxObjects: config.maxObjects });
+  const retention = await auditObjectRetention({ client, bucket: config.bucket });
+  assertObjectRetention({ retention, requireVersioning: config.requireObjectVersioning, requireLifecycle: config.requireObjectLifecycle });
+  objectManifest.retention = retention;
   await writeJson(path.join(config.outputDir, 'objects.json'), { formatVersion: 1, createdAt: config.createdAt, bucket: config.bucket, ...objectManifest });
   const manifest = buildBackupManifest({ config, database, dump, objectManifest, gitSha });
   await writeJson(path.join(config.outputDir, 'manifest.json'), manifest);
