@@ -312,6 +312,11 @@ The local browser run exercised the user-facing flows below:
   request to `/api/feed?following=true` returned HTTP 401 with the expected
   sign-in error; the public feed remained readable and empty. This is deployed
   API evidence, not authenticated OAuth/browser proof.
+- The same deployment passed the guarded media smoke from inside the Railway
+  service: a direct podcast fixture reached a ready worker job, the private
+  media redirect produced a signed object URL, and the object returned HTTP
+  200 as `audio/webm` with 10,037 bytes. Cleanup removed the temporary
+  annotation, job, and object; this does not prove deployed YouTube extraction.
 - Deployment tests verify Vite builds before production pruning, the container
   runs as an unprivileged user, local state/secrets are excluded from its build
   context, and the Dockerfile pins the official yt-dlp 2026.06.09 amd64/arm64
