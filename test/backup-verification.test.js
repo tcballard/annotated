@@ -9,6 +9,7 @@ import {
   assertObjectRetention,
   auditObjectRetention,
   runPgRestoreList,
+  runPgRestore,
 } from '../scripts/backup-production.mjs';
 import {
   assertIsolatedRecoveryTarget,
@@ -181,4 +182,21 @@ test('offline pg_restore listing receives no database URL or shell', async () =>
   assert.deepEqual(invocation.args, ['--list', '/tmp/postgres.dump']);
   assert.equal(invocation.options.shell, undefined);
   assert.equal(invocation.options.env.DATABASE_URL, undefined);
+});
+
+test('pg_restore targets the parsed recovery database without exposing the URL in arguments', async () => {
+  const child = new EventEmitter();
+  child.stderr = new EventEmitter();
+  let invocation;
+  const spawnImpl = (command, args, options) => {
+    invocation = { command, args, options };
+    queueMicrotask(() => child.emit('close', 0, null));
+    return child;
+  };
+  await runPgRestore({ databaseUrl: 'postgresql://user:secret@db.example/annotated_recovery_ci', dumpPath: '/tmp/postgres.dump', spawnImpl });
+  assert.equal(invocation.command, 'pg_restore');
+  assert.deepEqual(invocation.args, ['--exit-on-error', '--no-owner', '--no-privileges', '--dbname', 'annotated_recovery_ci', '/tmp/postgres.dump']);
+  assert.doesNotMatch(invocation.args.join(' '), /secret/);
+  assert.equal(invocation.options.env.PGDATABASE, 'annotated_recovery_ci');
+  assert.equal(invocation.options.env.PGPASSWORD, 'secret');
 });

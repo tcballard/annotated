@@ -188,9 +188,12 @@ versioned/retained bucket or an isolated copy for media recovery.
 
 Hosted CI also exercises the artifact path against ephemeral PostgreSQL and
 MinIO: it runs `pg_dump`, inventories the real S3-compatible bucket, writes the
-manifest, and runs `npm run backup:verify` with `pg_restore --list`. This proves
-the command boundary and artifact shape; it is not a scheduled production
-backup or an isolated live recovery.
+manifest, runs `npm run backup:verify` with `pg_restore --list`, and restores
+the dump into a separately named `annotated_recovery_ci` database before
+checking the migration ledger. This proves the command boundary, artifact
+shape, and database recovery path; it is not a scheduled production backup,
+provider retention policy, object-byte recovery, or isolated live recovery of
+the deployed service.
 
 The PostgreSQL rate-limit ledger stores only a SHA-256 bucket key, the fixed
 window count, and expiry. Audio uploads, publishing, follows, comments, likes,

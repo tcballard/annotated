@@ -77,6 +77,9 @@ test('deployment documents the non-destructive production backup audit', async (
   assert.match(workflow, /Exercise production backup artifact/);
   assert.match(workflow, /npm run backup:production/);
   assert.match(workflow, /BACKUP_DIR=\"\$BACKUP_OUTPUT_DIR\" npm run backup:verify/);
+  assert.match(workflow, /CREATE DATABASE annotated_recovery_ci/);
+  assert.match(workflow, /RUN_RECOVERY_DRILL=true/);
+  assert.match(workflow, /RECOVERY_DATABASE_URL:\s+postgresql:\/\/annotated:annotated@127\.0\.0\.1:5432\/annotated_recovery_ci/);
 });
 
 test('deployment documents the private Railway Buckets POC profile', async () => {
