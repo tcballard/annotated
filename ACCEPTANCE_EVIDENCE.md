@@ -47,6 +47,13 @@ The local browser run exercised the user-facing flows below:
   Podcast mode switches were also exercised after the layout change. This is
   rendered local evidence, not docked-extension or deployed-browser proof.
 
+- A second 2026-08-03 local render focused on the highlighted clip selector.
+  The range editor is now a compact grouped control: the timeline remains the
+  primary gesture, the duration is a visible status beside its label, and
+  start/end fields are equal-width, keyboard-labelled numeric fallbacks. The
+  state rendered at 1280×720 and 390×844 with no horizontal overflow; the
+  source-type tabs and text/audio controls remained reachable in both layouts.
+
 - Capture desk loaded with the local API, Article mode selected, and a
   highlighted passage visible for a `theverge.com` source.
 - A text annotation was published. The public page showed a stable `/a/:slug`

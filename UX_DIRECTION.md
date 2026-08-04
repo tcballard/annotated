@@ -22,6 +22,9 @@ else stays legible but quiet.
   note rail stays beneath the header once it reaches the viewport and is
   compact enough to keep the publish action in view; mobile remains a single
   linear flow with no nested scroll region.
+- **Selection rule:** the timeline is the primary gesture, while compact start
+  and end fields provide precise keyboard entry. The selected duration stays
+  visible beside the control instead of being hidden in helper copy.
 - **Recovery:** loading, offline, validation, audio retry, empty feed, empty
   published page, and moderation states use the same quiet surfaces and always
   name the next action.

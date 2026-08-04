@@ -570,3 +570,152 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
     min-height: clamp(340px, calc(100vh - 414px), 422px);
   }
 }
+
+/* UX pass: make the range editor a compact, legible control rather than a
+   loose stack of inputs. The timeline remains the primary gesture; the
+   numeric fields are the precise fallback. */
+.clip-editor {
+  margin-top: 12px;
+  padding: 13px 14px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.clip-editor-head {
+  min-height: 20px;
+}
+
+.clip-editor-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.clip-editor-label .icon {
+  width: 14px;
+  height: 14px;
+  color: var(--orange-deep);
+}
+
+.duration-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 9px;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.duration-badge > span:first-child {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.duration-badge.is-warning > span:first-child {
+  color: #a43d25;
+}
+
+.range-track {
+  height: 28px;
+  margin: 11px 4px 0;
+}
+
+.range-track::before,
+.range-fill {
+  top: 12px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.range-track input {
+  height: 28px;
+}
+
+.range-track input::-webkit-slider-thumb {
+  width: 14px;
+  height: 24px;
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.range-track input::-moz-range-thumb {
+  width: 12px;
+  height: 22px;
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.time-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.time-fields label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.time-fields label > span {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.time-fields input {
+  min-height: 37px;
+  padding: 6px 9px;
+  border-color: var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-separator {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+@media (max-width: 560px) {
+  .clip-editor {
+    padding: 12px 0 13px;
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+
+  .time-fields {
+    gap: 6px;
+  }
+
+  .time-fields label {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .time-fields input {
+    width: 100%;
+  }
+
+  .time-separator {
+    align-self: end;
+    padding-bottom: 11px;
+  }
+}
