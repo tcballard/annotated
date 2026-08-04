@@ -16,7 +16,7 @@ test('postgres repository serializes the existing store contract transactionally
     async query(sql) {
       statements.push(sql);
       if (sql.startsWith('SELECT state FROM annotated_state')) return { rows: [{ state }] };
-      if (sql.startsWith('SELECT version FROM annotated_schema_migrations')) return { rows: [{ version: '003_idempotency_index' }] };
+      if (sql.startsWith('SELECT version FROM annotated_schema_migrations')) return { rows: [{ version: '004_rate_limit_buckets' }] };
       return { rows: [] };
     },
     async connect() {

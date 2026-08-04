@@ -43,6 +43,18 @@ test('deployment documents persisted media-worker leases', async () => {
   assert.match(env, /MEDIA_WORKER_PROCESS_TIMEOUT_MS=300000/);
 });
 
+test('deployment documents the shared production rate-limit ledger', async () => {
+  const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
+  const storage = await readFile(new URL('../STORAGE.md', import.meta.url), 'utf8');
+  const migration = await readFile(new URL('../server/migrations/004_rate_limit_buckets.sql', import.meta.url), 'utf8');
+  const env = await readFile(new URL('../.env.example', import.meta.url), 'utf8');
+  assert.match(deployment, /004_rate_limit_buckets/);
+  assert.match(deployment, /fails closed/);
+  assert.match(storage, /annotated_rate_limit_buckets/);
+  assert.match(migration, /PRIMARY KEY \(bucket_key, window_start\)/);
+  assert.match(env, /PG_RATE_LIMIT_POOL_MAX=4/);
+});
+
 test('deployment documents the private Railway Buckets POC profile', async () => {
   const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
   const storage = await readFile(new URL('../STORAGE.md', import.meta.url), 'utf8');

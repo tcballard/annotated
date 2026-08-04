@@ -32,6 +32,15 @@ identity and claims boundaries. This is deployed API evidence; it does not
 replace live OAuth consent, docked Chrome, microphone, offline replay, or
 provider fixture/browser playback evidence.
 
+The next stacked layer adds migration `004_rate_limit_buckets` and routes
+mutation/OAuth limits through an atomic PostgreSQL bucket ledger in production.
+Keys are SHA-256 hashed, the production path fails closed if the ledger cannot
+be reached, and local development/tests retain the explicit in-process
+fallback. `node --test test/rate-limit.test.js test/hardening.test.js
+test/storage.test.js` passed this contract. The layer is not yet deployed to
+Railway, so this is implementation evidence rather than live multi-instance
+proof.
+
 The claim-surface deployment also serves the feed/profile card contract from
 the same PostgreSQL-backed staging service. The claim action preserves the
 selected annotation slug and submits through the persisted claim endpoint;
