@@ -66,6 +66,18 @@ The current workstation has neither a `pg_dump` binary nor a running Docker
 daemon, so no custom-format staging dump was claimed; run the backup command
 from a trusted PostgreSQL-client runner before the next migration.
 
+PR #83's hosted Node job
+[30880966114](https://github.com/tcballard/annotated/actions/runs/30880966114)
+now exercises this boundary against ephemeral PostgreSQL and MinIO. The job
+reported `pg_dump (PostgreSQL) 16.14` and `pg_restore (PostgreSQL) 16.14`,
+created an 8,625-byte custom-format dump, captured the `004_rate_limit_buckets`
+migration ledger and collection snapshot, and produced the manifest checksum
+`6845be5df0329a0ddc9b410b2fff434363fa07b5d43e083851b095fe87e199c0`.
+`npm run backup:verify` returned `status: verified` with the same checksum and
+`objectCount: 0`. This is hosted artifact and restore-list evidence; it is not
+a scheduled production backup, provider retention policy, object-byte recovery,
+or isolated live restore.
+
 The source-citation acceptance contract now publishes article, video, and
 podcast fixtures and verifies that both `sourceUrl` and `canonicalUrl` survive
 publish, public detail, and source-type-filtered feed responses. The API test

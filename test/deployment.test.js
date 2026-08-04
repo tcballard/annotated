@@ -57,6 +57,7 @@ test('deployment documents the shared production rate-limit ledger', async () =>
 
 test('deployment documents the non-destructive production backup audit', async () => {
   const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
+  const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const backup = await readFile(new URL('../scripts/backup-production.mjs', import.meta.url), 'utf8');
   const verifier = await readFile(new URL('../scripts/verify-backup.mjs', import.meta.url), 'utf8');
@@ -73,6 +74,9 @@ test('deployment documents the non-destructive production backup audit', async (
   assert.match(backup, /Refusing to overwrite existing backup file/);
   assert.match(verifier, /annotated_recovery/);
   assert.match(verifier, /runPgRestoreList/);
+  assert.match(workflow, /Exercise production backup artifact/);
+  assert.match(workflow, /npm run backup:production/);
+  assert.match(workflow, /BACKUP_DIR=\"\$BACKUP_OUTPUT_DIR\" npm run backup:verify/);
 });
 
 test('deployment documents the private Railway Buckets POC profile', async () => {
