@@ -8,6 +8,16 @@ Before starting a production container:
 2. Load `ANNOTATED_ASSET_STORAGE=s3`, the S3/R2 bucket/endpoint/credentials, `PUBLIC_ORIGIN`, `APP_ORIGIN`, and a non-wildcard `CORS_ORIGIN`.
 3. Run `npm run db:migrate` from the same release artifact against the target database.
 4. Start the container (the image binds `HOST=0.0.0.0`) and require `/api/ready` to return 200 before routing traffic; readiness now verifies the latest migration, performs a database health query, checks the S3-compatible bucket, and probes `ffmpeg`, `ffprobe`, and the configured `YTDLP_BIN` provider extractor. A missing or non-executable media runtime returns 503 instead of allowing provider jobs to fail after deployment. Audio uploads accept only the supported recorder/media MIME types, enforce the 25 MB payload cap, and have a per-actor process-local mutation limit; use a distributed edge or service limiter for multi-instance abuse protection. Provider extraction, FFmpeg, and FFprobe commands are killed after `MEDIA_WORKER_PROCESS_TIMEOUT_MS` (300 seconds by default), then persisted as retryable failures; keep that deadline below the worker lease. Forward structured `http_request` logs and `/api/health` telemetry to the deployment's log/metrics sink.
+
+   YouTube extraction also has an explicit egress configuration boundary. The
+   image defaults `YTDLP_JS_RUNTIME=node`; if the hosting provider challenges
+   shared egress, configure a managed `YTDLP_PROXY` and/or a secret-mounted
+   `YTDLP_COOKIES_FILE` (absolute path), with an optional `YTDLP_PLAYER_CLIENT`.
+   These values are passed as argument arrays to `yt-dlp`, never through a
+   shell. A configured cookie path is checked during readiness, and the
+   cookie file must stay outside the image and repository. A proxy or cookie
+   is an operational dependency, not proof of successful extraction; run the
+   bounded provider smoke before calling YouTube complete.
 5. Verify a real OAuth callback, source resolution, media upload, feed write, and claim review in the deployed environment.
 
 ## Railway POC staging
@@ -88,6 +98,8 @@ Backups and recovery are external operational gates: take a PostgreSQL snapshot 
 The Docker image includes the pinned provider extractor described below, and
 `/api/ready` probes `ffmpeg`, `ffprobe`, and `YTDLP_BIN` before the instance can
 receive traffic. That proves the runtime is present; it does not claim a
-deployed provider transcode or browser playback run.
+deployed provider transcode or browser playback run. The optional
+`YTDLP_PROXY`, `YTDLP_COOKIES_FILE`, and `YTDLP_PLAYER_CLIENT` settings are
+deliberately deployment configuration rather than image contents.
 
 The image builds with dev dependencies present so Vite can produce the bundle, prunes them before runtime, excludes local state/secrets through `.dockerignore`, and runs as the unprivileged `annotated` user. It installs the pinned [yt-dlp 2026.06.09 standalone release](https://github.com/yt-dlp/yt-dlp/releases/tag/2026.06.09) with architecture-specific SHA-256 verification from the release's [`SHA2-256SUMS`](https://github.com/yt-dlp/yt-dlp/releases/download/2026.06.09/SHA2-256SUMS) (`yt-dlp_linux` for amd64 and `yt-dlp_linux_aarch64` for arm64) before setting `YTDLP_BIN`. Build it from a clean checkout and fail the release if the image build or `/api/ready` health check fails.

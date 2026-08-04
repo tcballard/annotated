@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { access, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mediaWorkDirectory, removeMediaFile, removeStoredMedia, storeMediaFile } from './media-store.js';
@@ -14,6 +15,10 @@ const retryDelayMs = Math.max(100, Number(process.env.MEDIA_WORKER_RETRY_DELAY_M
 const workerId = process.env.MEDIA_WORKER_ID || randomUUID();
 const leaseMs = Math.max(30_000, Number(process.env.MEDIA_WORKER_LEASE_MS || 600_000));
 const processTimeoutMs = Math.max(10_000, Number(process.env.MEDIA_WORKER_PROCESS_TIMEOUT_MS || 300_000));
+const ytdlpProxy = String(process.env.YTDLP_PROXY || '').trim();
+const ytdlpCookiesFile = String(process.env.YTDLP_COOKIES_FILE || '').trim();
+const ytdlpJsRuntime = String(process.env.YTDLP_JS_RUNTIME || 'node').trim();
+const ytdlpPlayerClient = String(process.env.YTDLP_PLAYER_CLIENT || '').trim();
 const queue = [];
 const activeProcesses = new Map();
 const cancelledJobs = new Set();
@@ -23,6 +28,48 @@ const directMediaUrl = (value) => /\.(?:mp4|webm|mov|m3u8|mp3|m4a|wav|ogg|aac|fl
 const outputFor = (sourceType, id) => sourceType === 'video'
   ? { fileName: `${id}.mp4`, mimeType: 'video/mp4' }
   : { fileName: `${id}.webm`, mimeType: 'audio/webm' };
+
+const providerProtocols = new Set(['http:', 'https:', 'socks4:', 'socks4a:', 'socks5:', 'socks5h:']);
+const providerArgPattern = /^[A-Za-z0-9._,-]+$/;
+
+export const validateProviderRuntimeConfig = ({ proxy = ytdlpProxy, cookiesFile = ytdlpCookiesFile, jsRuntime = ytdlpJsRuntime, playerClient = ytdlpPlayerClient } = {}) => {
+  const normalized = {
+    proxy: String(proxy || '').trim(),
+    cookiesFile: String(cookiesFile || '').trim(),
+    jsRuntime: String(jsRuntime || '').trim(),
+    playerClient: String(playerClient || '').trim(),
+  };
+  if (normalized.proxy) {
+    let parsed;
+    try { parsed = new URL(normalized.proxy); } catch { throw new Error('YTDLP_PROXY must be a valid proxy URL.'); }
+    if (!providerProtocols.has(parsed.protocol) || !parsed.hostname) throw new Error('YTDLP_PROXY must use an http, https, or socks proxy URL.');
+  }
+  if (normalized.cookiesFile && (!path.isAbsolute(normalized.cookiesFile) || normalized.cookiesFile.includes('\0'))) {
+    throw new Error('YTDLP_COOKIES_FILE must be an absolute file path.');
+  }
+  if (normalized.jsRuntime && !providerArgPattern.test(normalized.jsRuntime)) throw new Error('YTDLP_JS_RUNTIME contains unsupported characters.');
+  if (normalized.playerClient && !providerArgPattern.test(normalized.playerClient)) throw new Error('YTDLP_PLAYER_CLIENT contains unsupported characters.');
+  return normalized;
+};
+
+export const buildProviderArgs = (job, sourceUrl, config = {}) => {
+  const runtime = validateProviderRuntimeConfig({
+    proxy: config.proxy ?? ytdlpProxy,
+    cookiesFile: config.cookiesFile ?? ytdlpCookiesFile,
+    jsRuntime: config.jsRuntime ?? ytdlpJsRuntime,
+    playerClient: config.playerClient ?? ytdlpPlayerClient,
+  });
+  const format = job.sourceType === 'video' ? 'best[height<=240]/best' : 'bestaudio/best';
+  const args = ['--no-playlist'];
+  if (runtime.jsRuntime) args.push('--js-runtimes', runtime.jsRuntime);
+  if (runtime.proxy) args.push('--proxy', runtime.proxy);
+  if (runtime.cookiesFile) args.push('--cookies', runtime.cookiesFile);
+  if (runtime.playerClient && (job.provider === 'youtube' || /(?:youtube\.com|youtu\.be)/i.test(sourceUrl))) {
+    args.push('--extractor-args', `youtube:player_client=${runtime.playerClient}`);
+  }
+  args.push('--format', format, '--get-url', sourceUrl);
+  return args;
+};
 
 export const buildFfmpegArgs = (job, input, outputPath) => {
   const duration = Math.max(0, Math.min(90, Number(job.clipEnd) - Number(job.clipStart)));
@@ -99,12 +146,18 @@ const run = (command, args, { maxOutput = 64_000, jobId = '', timeoutMs = proces
 
 export { run as runMediaCommand };
 
-export const checkMediaRuntime = async ({ runCommand = run, includeProvider = process.env.NODE_ENV === 'production' } = {}) => {
+export const checkMediaRuntime = async ({ runCommand = run, includeProvider = process.env.NODE_ENV === 'production', providerConfig } = {}) => {
   const checks = [
     ['ffmpeg', 'ffmpeg', ['-version']],
     ['ffprobe', 'ffprobe', ['-version']],
   ];
-  if (includeProvider) checks.push(['provider extractor', ytdlpBinary, ['--version']]);
+  if (includeProvider) {
+    const runtime = validateProviderRuntimeConfig(providerConfig);
+    if (runtime.cookiesFile) {
+      try { await access(runtime.cookiesFile, fsConstants.R_OK); } catch (error) { throw new Error(`Media runtime provider cookies are unavailable: ${error.message}`); }
+    }
+    checks.push(['provider extractor', ytdlpBinary, ['--version']]);
+  }
   for (const [label, command, args] of checks) {
     try {
       await runCommand(command, args, { maxOutput: 2_000 });
@@ -141,8 +194,7 @@ export const resolveInput = async (job, { lookup } = {}) => {
   if (mediaUrl && (directMediaUrl(mediaUrl) || (job.sourceType === 'podcast' && job.provider === 'podcast'))) return mediaUrl;
   if (directMediaUrl(sourceUrl)) return sourceUrl;
   if (job.provider === 'youtube' || job.provider === 'podcast' || job.sourceType === 'podcast' || /(?:youtube\.com|youtu\.be)/i.test(sourceUrl)) {
-    const format = job.sourceType === 'video' ? 'best[height<=240]/best' : 'bestaudio/best';
-    const result = await run(ytdlpBinary, ['--no-playlist', '--format', format, '--get-url', sourceUrl], { jobId: job.id });
+    const result = await run(ytdlpBinary, buildProviderArgs(job, sourceUrl), { jobId: job.id });
     const input = result.stdout.trim().split(/\s+/)[0];
     if (!input) throw new Error('The media provider returned no playable stream.');
     return validatePlayableInput(input, { lookup });
