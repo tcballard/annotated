@@ -76,6 +76,19 @@ credential.
    signed object response, then removes the fixture and object. It is not a
    substitute for authenticated OAuth publishing or browser playback.
 
+8. For a controlled shared-rate-limit smoke, run the guarded script inside the
+   same staging app container after confirming the target is staging:
+
+   ```bash
+   railway ssh --service annotated --environment staging -- env \
+     ACCEPTANCE_RATE_LIMIT_SMOKE=1 node scripts/accept-staging-rate-limit.mjs
+   ```
+
+   It consumes three unique PostgreSQL buckets, proves the first two attempts
+   are allowed and the third is denied by the shared ledger, then deletes the
+   temporary bucket. It does not exercise a second live replica or claim edge
+   WAF coverage.
+
 Railway Buckets use virtual-hosted URLs at `https://storage.railway.app` with
 the `auto` region. The generic adapter still validates a Cloudflare R2 endpoint
 if one is configured later, but R2 is not part of this POC deployment.
