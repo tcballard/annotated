@@ -10,7 +10,7 @@ production gates are complete.
 
 The current claim-surface stack was deployed to the existing Railway staging
 service (`annotated-poc`, environment `staging`) as deployment
-`5a5fc2e3-1a25-44d9-8e94-9e469180f2c8` at
+`3e0dddde-4edd-465d-b596-8977668f1789` at
 `https://annotated-staging.up.railway.app`. The non-mutating acceptance command
 below passed on 2026-08-04:
 
@@ -47,8 +47,20 @@ creation.
 The same deployed API resolved the public YouTube fixture
 `https://www.youtube.com/watch?v=jNQXAC9IVRw` as `video`, `youtube`, and
 `ready-for-range`, and resolved `https://example.com/` as an `article` with
-`text-ready` metadata. The worker transcode, media delivery, and browser
-playback gates remain intentionally unclaimed.
+`text-ready` metadata. A direct-audio podcast worker smoke is also recorded
+below; YouTube extraction and browser playback remain intentionally unclaimed.
+
+The repository also contains a guarded `accept-staging-media.mjs` command for
+the Railway container. It is explicitly restricted to the staging host and
+production PostgreSQL/S3 settings; when run, it creates and cleans one direct
+audio podcast fixture while checking the worker output, private media redirect,
+signed object delivery, and object/database cleanup. This does not claim
+authenticated OAuth publishing or YouTube extraction.
+
+On 2026-08-04, deployment `3e0dddde-4edd-465d-b596-8977668f1789` passed the
+guarded command. It reached `jobStatus: ready` and `mediaStatus: ready`, served
+the private redirect and signed object with HTTP 200, and delivered 10,037 bytes
+of `audio/webm` before cleaning the fixture.
 
 ## Clean-checkout validation
 
@@ -81,6 +93,10 @@ The 2026-08-04 docs-boundary update corrects the README, release record, and
 deployment runbook to describe the verified Railway POC staging service without
 calling it a public production release. `node --test test/deployment.test.js`
 and the full local suite cover the wording and release-boundary contract.
+
+The deployed image's read-only YouTube provider probe reached the pinned
+extractor but received HTTP 429/bot verification from YouTube; this is recorded
+as an unverified provider gate, not treated as a passing extraction claim.
 
 ## Browser acceptance run
 
