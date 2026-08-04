@@ -1,6 +1,6 @@
 # Annotated brief acceptance
 
-Last verified: 2026-08-03 against <https://annotated.lovable.app/>. The
+Last verified: 2026-08-04 against <https://annotated.lovable.app/>. The
 handoff URL <https://annotated.com/brief> returned HTTP 404 on that date; the
 reachable Lovable brief is the current source used here and describes the same
 Chrome-sidebar, source-link, claim, identity, media, commentary, and social-feed
@@ -31,7 +31,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 
 ## Production readiness gates
 
-- [ ] PostgreSQL is the production metadata repository; migrations and integration tests cover annotations, users, comments, claims, follows, likes, and media jobs. PR33 runs the migration ledger and transactional repository against real PostgreSQL, and PR35’s hosted integration round-trips every persisted product collection through the entity-record table; deployed database durability and recovery remain external.
+- [ ] PostgreSQL is the production metadata repository; migrations and integration tests cover annotations, users, comments, claims, follows, likes, and media jobs. PR33 runs the migration ledger and transactional repository against real PostgreSQL, and PR35’s hosted integration round-trips every persisted product collection through the entity-record table; the new non-destructive `npm run backup:production` audit captures a custom-format dump, schema/collection snapshot, and S3 object inventory without mutating production; scheduled snapshots, provider retention, and an isolated restore drill remain external.
 - [ ] Published media uses configured S3/R2-compatible object storage and a delivery URL; local files remain development-only. PR33 now exercises a real S3-compatible bucket, signed URL, upload, and deletion in hosted CI; a durable production bucket/CDN remains external.
 - [ ] Google and X OAuth, secure sessions, ownership, logout, expiry, and extension authentication are real and tested. PR37 executes the PKCE callback/session/one-time-extension-ticket protocol in an isolated provider fixture; PR49 makes Google the first enabled production provider and keeps X as an explicitly configured sibling; PR50 adds page-preserving web callbacks and visible auth recovery for protected mutations. Real provider credentials, consent/cancellation, callback DNS, and deployed browser evidence remain external.
 - [ ] Extension API origin, offline queueing, retry states, and service-worker/side-panel recovery are production-configurable and browser-tested.
@@ -53,6 +53,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 - 2026-08-04: The deployed Railway image's direct YouTube provider probe reached yt-dlp but returned YouTube HTTP 429/bot verification, so it is not counted as successful deployed YouTube extraction. This remains an explicit provider limitation rather than a fabricated pass.
 - 2026-08-04: Bounded Railway probes using the pinned extractor's `web_creator`, `mweb`, `tv`, `android_vr`, `android`, and `web_embedded` clients all reached YouTube but received HTTP 429/sign-in bot verification. The new provider configuration boundary supports a managed `YTDLP_PROXY` and secret-mounted `YTDLP_COOKIES_FILE` without putting credentials in the image; no configured egress/cookie is present in staging, so YouTube remains unverified.
 - 2026-08-04: The guarded `accept-staging-media.mjs` smoke was added for the Railway container. It requires an explicit staging flag, runs a direct-audio podcast fixture through the production worker and private S3 delivery path, and cleans the temporary database/object records before reporting success.
+- 2026-08-04: The backup/recovery boundary now has a guarded `npm run backup:production` command. From a trusted runner with `pg_dump`, it requires production PostgreSQL/S3 configuration, writes a `0600` custom-format database dump plus a sorted object inventory and SHA-256 manifest, refuses local adapters and existing output files, and never mutates the live database or bucket. Provider-side versioning/retention and an isolated restore drill remain external gates.
 - 2026-08-04: The guarded Railway smoke passed on deployment `3e0dddde-4edd-465d-b596-8977668f1789`: the podcast job and annotation reached `ready`, the private media redirect and signed object returned HTTP 200, and the delivered `audio/webm` object was 10,037 bytes before cleanup.
 
 ## Explicit non-goals from the brief
