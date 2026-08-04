@@ -90,6 +90,21 @@ credential.
    temporary bucket. It does not exercise a second live replica or claim edge
    WAF coverage.
 
+9. Configure the POC bucket's durable object boundary only after confirming the
+   target is staging. The guarded command enables bucket versioning and adds an
+   incomplete-multipart-upload cleanup rule; it does not expire or delete
+   published objects:
+
+   ```bash
+   railway ssh --service annotated --environment staging \
+     "env APPLY_OBJECT_RETENTION=1 OBJECT_RETENTION_INCOMPLETE_UPLOAD_DAYS=7 npm run configure:object-retention"
+   ```
+
+   The command is restricted to `annotated-staging.up.railway.app`, requires
+   production PostgreSQL/S3 configuration, and re-reads both policies before
+   reporting success. It is a staging POC guard, not a substitute for a
+   scheduled database backup or isolated restore drill.
+
 Railway Buckets use virtual-hosted URLs at `https://storage.railway.app` with
 the `auto` region. The generic adapter still validates a Cloudflare R2 endpoint
 if one is configured later, but R2 is not part of this POC deployment.
