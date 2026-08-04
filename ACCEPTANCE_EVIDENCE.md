@@ -58,6 +58,14 @@ guard, pagination, retention contract, command boundary, and secret-free
 manifest verification. A provider-side retention policy and isolated restore
 drill have not been run, so durable recovery remains an external gate.
 
+On 2026-08-04, a read-only Railway CLI audit against the existing staging
+bucket reported `versioning: Disabled`, `lifecycle: not-configured`, and an
+empty object inventory (`count: 0`, `bytes: 0`). The strict retention flags
+therefore correctly remain off for this POC and would fail closed if enabled.
+The current workstation has neither a `pg_dump` binary nor a running Docker
+daemon, so no custom-format staging dump was claimed; run the backup command
+from a trusted PostgreSQL-client runner before the next migration.
+
 The claim-surface deployment also serves the feed/profile card contract from
 the same PostgreSQL-backed staging service. The claim action preserves the
 selected annotation slug and submits through the persisted claim endpoint;
