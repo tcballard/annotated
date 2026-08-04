@@ -84,7 +84,7 @@ jobs:
         run: |
           package_version="$(node -p 'require("./extension/manifest.json").version')"
           package_path="annotated-extension-v${package_version}.zip"
-          test "$(unzip -Z1 "$package_path" | wc -l | tr -d ' ')" = 17
+          test "$(unzip -Z1 "$package_path" | wc -l | tr -d ' ')" = 18
           test "$(unzip -Z1 "$package_path" | grep -c '^clip-range.js$')" = 1
           if unzip -Z1 "$package_path" | grep -E '(^|/)(\.env|data/|node_modules/|dist/)'; then
             echo "runtime extension package contains development files" >&2
