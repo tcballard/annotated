@@ -22,3 +22,24 @@
 .queue-status button { min-height: 30px; padding: 4px 7px; border: 1px solid var(--color-text); background: transparent; color: var(--color-text); font-family: var(--font-mono); font-size: 8px; text-transform: uppercase; }
 .queue-status button:hover { background: var(--color-accent); }
 @keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(232,60,47,.15); } }
+
+/* The supplied mark is the extension's single source of brand identity. */
+.mark {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  background: var(--color-bg);
+  object-fit: cover;
+}
+
+.track,
+.track input,
+.track input::-webkit-slider-thumb,
+.track input::-moz-range-thumb {
+  touch-action: none;
+}
+
+.track input#start { z-index: 2; }
+.track input#end { z-index: 1; }
+.track input:focus { z-index: 3; outline: none; }

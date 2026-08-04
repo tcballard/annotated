@@ -152,7 +152,7 @@ remain external gates.
 
 ### Known Issues / Limitations
 
-- Screenshots, promo artwork, public privacy-policy URL verification, and monitored publisher email are still required before submission. The icon source and deterministic PNG variants are now in `scripts/extension-icon-source.svg`, `scripts/generate-extension-icons.mjs`, and `extension/icons/`; the policy source is included in `public/privacy.html` and copied into `dist/` by the Vite build.
+- Screenshots, promo artwork, public privacy-policy URL verification, and monitored publisher email are still required before submission. The supplied mark is preserved at `assets/brand/annotated-mark-source.jpg`, with square derivatives in `assets/brand/` and deterministic copies produced by `scripts/generate-extension-icons.mjs`; the policy source is included in `public/privacy.html` and copied into `dist/` by the Vite build.
 - The extension requires a configured Annotated backend. Local development uses `http://localhost:8787`; deployed API origins must be HTTPS.
 - Google/X OAuth, PostgreSQL/S3 media delivery, real provider fixture extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates. Queued captures now remain visible when authentication expires and can be retried after sign-in. The production image now includes a pinned, SHA-256-verified `yt-dlp` runtime, but that does not replace a real provider fixture run.
 - The broad page host permissions are intentional because the product works on the user-selected active page, but the sidebar only reads and publishes data after an explicit user action.

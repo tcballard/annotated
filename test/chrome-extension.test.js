@@ -97,11 +97,12 @@ test('Chrome Web Store record covers every manifest permission and the privacy g
   assert.match(listing, /not ready|TBD|external gate/i);
 });
 
-test('extension icon source and generator preserve the authored brand mark', async () => {
-  const source = await readFile(new URL('../scripts/extension-icon-source.svg', import.meta.url), 'utf8');
+test('extension icon derivatives preserve the supplied raster brand mark', async () => {
+  const source = await readFile(new URL('../assets/brand/annotated-mark-source.jpg', import.meta.url));
   const generator = await readFile(new URL('../scripts/generate-extension-icons.mjs', import.meta.url), 'utf8');
-  assert.match(source, /#fa6336/);
-  assert.match(source, /#111515/);
-  assert.match(generator, /supersample = 4/);
+  assert.ok(source.length > 1000);
+  assert.match(generator, /assets['\"], 'brand|assets[\\/]brand/);
+  assert.match(generator, /copyFile/);
+  assert.doesNotMatch(generator, /supersample/);
   assert.match(generator, /icon-\$\{size\}\.png/);
 });
