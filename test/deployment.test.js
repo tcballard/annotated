@@ -53,6 +53,18 @@ test('deployment documents the private Railway Buckets POC profile', async () =>
   assert.match(env, /S3_ENDPOINT=https:\/\/storage\.railway\.app/);
 });
 
+test('release docs distinguish verified Railway staging from public release', async () => {
+  const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
+  const release = await readFile(new URL('../RELEASE.md', import.meta.url), 'utf8');
+  const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
+  assert.match(readme, /Railway POC staging/);
+  assert.match(readme, /annotated-staging\.up\.railway\.app/);
+  assert.match(release, /Railway POC staging is deployed and\s+> evidenced/);
+  assert.match(release, /not tagged, submitted to the Chrome Web Store/);
+  assert.match(deployment, /pinned provider extractor described below/);
+  assert.doesNotMatch(deployment, /does not pretend that a provider extractor is present/);
+});
+
 test('web build includes a privacy policy with the extension data boundary', async () => {
   const policy = await readFile(new URL('../public/privacy.html', import.meta.url), 'utf8');
   const listing = await readFile(new URL('../CHROMEWEBSTORE.md', import.meta.url), 'utf8');
