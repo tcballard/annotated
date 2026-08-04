@@ -105,6 +105,13 @@ credential.
    reporting success. It is a staging POC guard, not a substitute for a
    scheduled database backup or isolated restore drill.
 
+   Railway Buckets currently expose the read-side retention calls but reject
+   `PutBucketVersioning` and only accept expiration-style lifecycle rules. The
+   command therefore fails closed with an explicit provider-capability error;
+   do not treat a failed run as durable retention evidence. Use an S3-compatible
+   provider that supports versioning and incomplete-upload lifecycle controls
+   before enabling the strict backup retention gates.
+
 Railway Buckets use virtual-hosted URLs at `https://storage.railway.app` with
 the `auto` region. The generic adapter still validates a Cloudflare R2 endpoint
 if one is configured later, but R2 is not part of this POC deployment.

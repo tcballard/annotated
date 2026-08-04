@@ -16,7 +16,7 @@ import {
   validateObjectManifest,
   verifyBackupArtifact,
 } from '../scripts/verify-backup.mjs';
-import { applyObjectRetention, normalizeIncompleteUploadDays, retentionConfiguration } from '../scripts/configure-object-retention.mjs';
+import { applyObjectRetention, describeRetentionProviderError, normalizeIncompleteUploadDays, retentionConfiguration } from '../scripts/configure-object-retention.mjs';
 
 const makeArtifact = async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'annotated-backup-'));
@@ -104,6 +104,11 @@ test('object retention configuration enables versioning and only aborts incomple
   assert.equal(calls[1].LifecycleConfiguration.Rules[0].Expiration, undefined);
   assert.equal(result.retention.versioning.status, 'Enabled');
   assert.equal(result.retention.lifecycle.status, 'configured');
+});
+
+test('object retention reports unsupported provider capabilities without secrets', () => {
+  assert.match(describeRetentionProviderError({ name: 'BucketAlreadyExists', Code: 'BucketAlreadyExists', $metadata: { httpStatusCode: 409 }, message: 'bucket abc-secret is not available' }), /does not expose bucket versioning/);
+  assert.match(describeRetentionProviderError({ name: 'InvalidRequest', Code: 'InvalidRequest', message: 'Lifecycle only supports expiration rule.' }), /only accepts expiration lifecycle rules/);
 });
 
 test('object manifest validation rejects duplicate, unsorted, and mismatched entries', () => {

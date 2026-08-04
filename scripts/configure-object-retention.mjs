@@ -32,6 +32,13 @@ export const applyObjectRetention = async ({ client, bucket, incompleteUploadDay
   return { retention, incompleteUploadDays: configuration.lifecycle.Rules[0].AbortIncompleteMultipartUpload.DaysAfterInitiation };
 };
 
+export const describeRetentionProviderError = (error) => {
+  const code = error?.Code || error?.name;
+  if (code === 'BucketAlreadyExists' && error?.$metadata?.httpStatusCode === 409) return 'The configured S3 provider does not expose bucket versioning through PutBucketVersioning; it interpreted the request as a bucket-creation attempt.';
+  if (code === 'InvalidRequest' && /lifecycle only supports expiration/i.test(String(error?.message || ''))) return 'The configured S3 provider only accepts expiration lifecycle rules; incomplete multipart-upload cleanup is unavailable.';
+  return String(error?.message || 'The object-retention provider request failed.');
+};
+
 const createClient = (config) => new S3Client({
   region: config.region,
   endpoint: config.endpoint,
@@ -50,4 +57,4 @@ const run = async () => {
 };
 
 const isMainModule = process.argv[1] && import.meta.url === new URL(process.argv[1], 'file:').href;
-if (isMainModule) run().catch((error) => { console.error(`Object retention configuration failed: ${error.message}`); process.exitCode = 1; });
+if (isMainModule) run().catch((error) => { console.error(`Object retention configuration failed: ${describeRetentionProviderError(error)}`); process.exitCode = 1; });
