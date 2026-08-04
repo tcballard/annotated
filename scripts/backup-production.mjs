@@ -127,12 +127,25 @@ export const runPgRestoreList = ({ databaseUrl, dumpPath, command = 'pg_restore'
   args: ['--list', dumpPath],
 });
 
+export const recoveryDatabaseName = (databaseUrl) => {
+  let url;
+  try {
+    url = new URL(databaseUrl);
+  } catch {
+    throw new Error('RECOVERY_DATABASE_URL must be a PostgreSQL URL.');
+  }
+  if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('RECOVERY_DATABASE_URL must use the postgres or postgresql scheme.');
+  const databaseName = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+  if (!databaseName) throw new Error('RECOVERY_DATABASE_URL must include a database name.');
+  return databaseName;
+};
+
 export const runPgRestore = ({ databaseUrl, dumpPath, command = 'pg_restore', spawnImpl = spawn, baseEnv = process.env } = {}) => runPostgresUtility({
   databaseUrl,
   command,
   spawnImpl,
   baseEnv,
-  args: ['--exit-on-error', '--no-owner', '--no-privileges', dumpPath],
+  args: ['--exit-on-error', '--no-owner', '--no-privileges', '--dbname', recoveryDatabaseName(databaseUrl), dumpPath],
 });
 
 export const inspectDatabase = async ({ databaseUrl, pgModule = pg } = {}) => {
