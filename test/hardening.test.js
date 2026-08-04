@@ -27,7 +27,7 @@ test('production hardening rejects wildcard CORS', () => {
     encoding: 'utf8',
   });
   assert.notEqual(result.status, 0);
-  assert.match(`${result.stderr}${result.stdout}`, /restricted CORS_ORIGIN/);
+  assert.match(`${result.stderr}${result.stdout}`, /restricted CORS_ORIGINS/);
 });
 
 test('production hardening rejects origins with paths', () => {

@@ -3,7 +3,8 @@ const LAST_PUBLISHED_KEY = 'annotatedLastPublished';
 const CONFIG_KEY = 'annotatedConfig';
 export const PENDING_KEY = 'annotatedPendingCaptures';
 const SESSION_KEY = 'annotatedSession';
-export const DEFAULT_API_ORIGIN = 'http://localhost:8787';
+export const DEFAULT_API_ORIGIN = 'https://annotated-staging.up.railway.app';
+export const LOCAL_API_ORIGIN = 'http://localhost:8787';
 export const MAX_PENDING_CAPTURES = 5;
 export const MAX_PENDING_ATTEMPTS = 8;
 export const PENDING_STATUSES = new Set(['queued', 'needs-auth', 'blocked']);
@@ -11,7 +12,8 @@ export const PENDING_STATUSES = new Set(['queued', 'needs-auth', 'blocked']);
 const sourceTypes = new Set(['video', 'article', 'podcast']);
 
 const boundedString = (value, max) => String(value || '').slice(0, max);
-const boundedNumber = (value) => Math.max(0, Math.min(90, Number(value) || 0));
+const boundedTimelineSecond = (value) => Math.max(0, Math.min(604800, Number(value) || 0));
+const boundedDuration = (value) => Math.max(0, Math.min(90, Number(value) || 0));
 
 export const compactDraft = (draft = {}) => ({
   sourceUrl: boundedString(draft.sourceUrl, 2048),
@@ -19,12 +21,12 @@ export const compactDraft = (draft = {}) => ({
   sourceTitle: boundedString(draft.sourceTitle, 500),
   sourceHost: boundedString(draft.sourceHost, 255),
   sourceExcerpt: boundedString(draft.sourceExcerpt, 2000),
-  clipStart: boundedNumber(draft.clipStart),
-  clipEnd: boundedNumber(draft.clipEnd),
+  clipStart: boundedTimelineSecond(draft.clipStart),
+  clipEnd: boundedTimelineSecond(draft.clipEnd),
   commentary: boundedString(draft.commentary, 280),
   commentaryMode: draft.commentaryMode === 'audio' ? 'audio' : 'text',
   audioAssetId: boundedString(draft.audioAssetId, 80),
-  audioDuration: boundedNumber(draft.audioDuration),
+  audioDuration: boundedDuration(draft.audioDuration),
   audioDraftId: boundedString(draft.audioDraftId, 80),
   clientRequestId: boundedString(draft.clientRequestId, 80),
 });

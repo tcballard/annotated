@@ -93,6 +93,8 @@ test('local API serves the acceptance-critical health, identity, publish, social
     }],
   }));
   const allowedOrigin = 'http://127.0.0.1:5173';
+  const extensionId = 'omlikcdpcdhfmdojdalfdeihgjmgikkg';
+  const extensionOrigin = `chrome-extension://${extensionId}`;
   const baseUrl = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ['server/index.js'], {
     cwd: repoRoot,
@@ -102,6 +104,7 @@ test('local API serves the acceptance-critical health, identity, publish, social
       PORT: String(port),
       PUBLIC_ORIGIN: `http://localhost:${port}`,
       CORS_ORIGIN: allowedOrigin,
+      CHROME_EXTENSION_IDS: extensionId,
       ANNOTATED_STORAGE: 'file',
       ANNOTATED_ASSET_STORAGE: 'local',
       ANNOTATED_DATA_DIR: dataDirectory,
@@ -123,6 +126,19 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.equal(health.payload.status, 'ok');
   assert.equal(health.payload.version, packageVersion);
   assert.equal(health.payload.persistence, 'file');
+  assert.equal(health.response.headers.get('access-control-allow-origin'), allowedOrigin);
+
+  const extensionHealth = await request(baseUrl, '/api/health', { origin: extensionOrigin });
+  assert.equal(extensionHealth.response.status, 200);
+  assert.equal(extensionHealth.response.headers.get('access-control-allow-origin'), extensionOrigin);
+  const extensionPreflight = await fetch(`${baseUrl}/api/auth/extension/exchange`, {
+    method: 'OPTIONS',
+    headers: { origin: extensionOrigin, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type' },
+  });
+  assert.equal(extensionPreflight.status, 204);
+  assert.equal(extensionPreflight.headers.get('access-control-allow-origin'), extensionOrigin);
+  const deniedExtension = await request(baseUrl, '/api/health', { origin: 'chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' });
+  assert.equal(deniedExtension.response.status, 403);
   assert.equal(health.response.headers.get('access-control-allow-origin'), allowedOrigin);
   assert.ok(health.response.headers.get('x-request-id'));
 

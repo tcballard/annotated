@@ -793,16 +793,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
    action stayed close together. This layer gives that grammar to Annotated
    without turning the product into a nostalgia skin or a card dashboard. */
 :root {
-  --ink: #292c2a;
-  --ink-soft: #505852;
-  --muted: #7c847d;
-  --paper: #efede7;
-  --paper-deep: #e4e1d8;
+  --ink: #212121;
+  --ink-soft: #4f4f4c;
+  --muted: #777773;
+  --paper: #f3f1ed;
+  --paper-deep: #e8e5df;
   --surface: #fbfaf5;
-  --line: #d2d0c7;
-  --line-dark: #4b4d47;
-  --orange: #b45f49;
-  --orange-deep: #914737;
+  --line: #d5d1ca;
+  --line-dark: #484744;
+  --orange: #c15a45;
+  --orange-deep: #984432;
   --mint: #dfe8df;
   --blue: #e2e8e6;
   --yellow: #e9e2cf;
@@ -812,7 +812,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   --radius-md: 6px;
   --radius-lg: 10px;
   --motion: 150ms cubic-bezier(.2, .7, .2, 1);
-  --focus-ring: 0 0 0 3px rgba(180, 95, 73, .2);
+  --focus-ring: 0 0 0 3px rgba(193, 90, 69, .2);
 }
 
 html, body {
@@ -1314,3 +1314,306 @@ body {
 .media-recovery button { justify-self: start; padding: 6px 9px; border: 1px solid var(--surface); background: transparent; color: var(--surface); font-family: var(--mono); font-size: 9px; text-transform: uppercase; }
 .media-recovery button:hover:not(:disabled) { background: var(--surface); color: var(--ink); }
 .media-recovery button:disabled { cursor: wait; opacity: .65; }
+
+/* v0.1.0 UX closeout: truthful preview states, readable metadata, and complete recovery. */
+.mobile-source-summary { display: none; }
+
+.preview-unavailable {
+  position: absolute;
+  z-index: 2;
+  top: 44%;
+  left: 50%;
+  display: flex;
+  width: min(260px, calc(100% - 40px));
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 254, 250, .72);
+  border-radius: var(--radius-sm);
+  background: rgba(32, 37, 34, .74);
+  color: var(--surface);
+  transform: translate(-50%, -50%);
+  backdrop-filter: blur(5px);
+}
+
+.preview-unavailable-icon, .feed-preview-state {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.preview-unavailable-icon { width: 34px; height: 34px; }
+.preview-unavailable-icon .icon { width: 16px; height: 16px; }
+.preview-unavailable strong, .preview-unavailable small { display: block; }
+.preview-unavailable strong { font-family: var(--mono); font-size: 10px; font-weight: 500; text-transform: uppercase; }
+.preview-unavailable small { margin-top: 3px; color: #d8ddd7; font-family: var(--sans); font-size: 11px; line-height: 1.3; }
+
+.feed-preview-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 48px;
+  height: 48px;
+  color: rgba(255, 254, 250, .86);
+  transform: translate(-50%, -50%);
+}
+
+.feed-preview-state .icon { width: 20px; height: 20px; }
+.feed-empty-action { width: auto; margin-top: 18px; }
+.signed-out-card h3 { margin-top: 10px; }
+
+.claim-modal .modal-close { width: 44px; height: 44px; }
+.claim-error { margin: 10px 0 0; padding: 9px 10px; border-left: 3px solid var(--orange); background: #fff0ea; color: #8a3d2a; font-family: var(--mono); font-size: 11px; line-height: 1.4; }
+.claim-success { margin-top: 16px; padding: 14px; border: 1px solid #9fb7a6; background: var(--mint); color: #315e44; }
+.claim-success strong { font-family: var(--display); font-size: 18px; }
+.claim-success p { margin: 5px 0 0; color: #315e44; }
+
+.eyebrow,
+.connection-status,
+.auth-label,
+.auth-user,
+.auth-link,
+.source-byline,
+.player-time,
+.media-overline,
+.clip-editor-label,
+.duration-badge,
+.commentary-head,
+.editor-foot,
+.privacy-note,
+.feed-source-link,
+.feed-media-status,
+.annotation-page-bar {
+  font-size: max(10px, .68rem);
+  line-height: 1.4;
+}
+
+@media (max-width: 560px) {
+  .brand-mark { min-width: 44px; min-height: 44px; }
+  .nav-link { min-width: 44px; min-height: 44px; padding: 10px 3px; }
+  .ghost-button,
+  .source-input-wrap button,
+  .source-link,
+  .filter-button,
+  .search-button { min-height: 44px; }
+  .search-button { width: 44px; }
+
+  .mobile-source-summary {
+    display: flex;
+    min-height: 52px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 7px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    color: var(--ink-soft);
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+  }
+
+  .mobile-source-summary > span { display: inline-flex; min-width: 0; align-items: center; gap: 7px; }
+  .mobile-source-summary button { min-height: 44px; padding: 7px 9px; border: 1px solid var(--line-dark); background: transparent; color: var(--ink); font-family: var(--mono); font-size: 10px; text-transform: uppercase; }
+  .browser-frame { display: none; }
+  .browser-frame.is-mobile-expanded { display: block; }
+  .source-spine-footer { margin-top: 0; }
+  .extension-sidebar.source-spine-note { padding-top: 18px; }
+}
+
+/* Clip chronograph: the capture range reads like a compact editing instrument,
+   borrowing the reference's ruler and selected-time window while retaining
+   Annotated's ink, paper, and signal-orange language. */
+.range-console {
+  --range-surface: var(--surface);
+  --range-surface-raised: var(--paper);
+  --range-ink: var(--ink);
+  --range-muted: var(--muted);
+  --range-line: var(--line);
+  --range-tick: rgba(17, 21, 21, .30);
+  --range-tick-strong: rgba(17, 21, 21, .16);
+  --range-selection: rgba(180, 95, 73, .20);
+  overflow: hidden;
+  margin-top: 13px;
+  border: 1px solid var(--range-line);
+  border-radius: var(--radius-md);
+  background: var(--range-surface);
+  color: var(--range-ink);
+  box-shadow: 0 5px 12px rgba(17, 21, 21, .07);
+}
+
+.range-console-meta {
+  display: flex;
+  justify-content: space-between;
+  padding: 9px 11px 7px;
+  color: var(--range-muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.range-console .range-track {
+  height: 62px;
+  margin: 0;
+  border-top: 1px solid var(--range-line);
+  border-bottom: 1px solid var(--range-line);
+  background:
+    repeating-linear-gradient(90deg, var(--range-tick) 0 1px, transparent 1px 6px) 0 100% / 100% 18px no-repeat,
+    repeating-linear-gradient(90deg, var(--range-tick-strong) 0 1px, transparent 1px 30px) 0 100% / 100% 31px no-repeat,
+    linear-gradient(var(--range-surface), var(--range-surface-raised));
+}
+
+.range-console .range-track::before {
+  top: auto;
+  right: 0;
+  bottom: 17px;
+  left: 0;
+  height: 1px;
+  border-radius: 0;
+  background: var(--range-tick-strong);
+}
+
+.range-console .range-fill {
+  top: 0;
+  z-index: 0;
+  height: 62px;
+  border-right: 1px solid var(--orange-deep);
+  border-left: 1px solid var(--orange-deep);
+  border-radius: 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(145, 71, 55, .34) 0 1px, transparent 1px 6px) 0 100% / 100% 18px no-repeat,
+    var(--range-selection);
+}
+
+.range-console .range-track input {
+  height: 62px;
+}
+
+.range-console .range-track input::-webkit-slider-thumb {
+  width: 5px;
+  height: 62px;
+  border: 0;
+  border-radius: 0;
+  background: var(--orange);
+  box-shadow: 0 0 0 1px var(--range-surface);
+}
+
+.range-console .range-track input::-moz-range-thumb {
+  width: 5px;
+  height: 62px;
+  border: 0;
+  border-radius: 0;
+  background: var(--orange);
+  box-shadow: 0 0 0 1px var(--range-surface);
+}
+
+.range-console .range-track input:focus-visible {
+  outline: 2px solid var(--range-ink);
+  outline-offset: -3px;
+}
+
+.range-scale {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 10px 0;
+  color: var(--range-muted);
+  font-family: var(--mono);
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.range-console .time-fields {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 9px 10px 11px;
+}
+
+.range-console .time-fields label {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+}
+
+.range-console .time-fields label > span,
+.time-selection > span {
+  color: var(--range-muted);
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.range-console .time-fields input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px;
+  border-color: var(--range-line);
+  background: var(--range-surface-raised);
+  color: var(--range-ink);
+  font-family: var(--mono);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.range-console .time-fields input:hover { border-color: var(--range-muted); }
+.range-console .time-fields input:focus { border-color: var(--orange); }
+
+.time-selection {
+  display: grid;
+  min-width: 54px;
+  justify-items: center;
+  align-content: center;
+  gap: 2px;
+}
+
+.time-selection strong {
+  color: var(--orange-deep);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+@media (max-width: 560px) {
+  .range-console { border-radius: var(--radius-sm); }
+  .range-console .time-fields label { grid-template-columns: 1fr; }
+  .range-console .time-fields input { text-align: left; }
+}
+
+/* Follow the operating-system appearance without storing a second preference. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ink: #f0eee8;
+    --ink-soft: #cfcbc2;
+    --muted: #aaa69e;
+    --paper: #171817;
+    --paper-deep: #20211f;
+    --surface: #252623;
+    --line: #44443f;
+    --line-dark: #686760;
+    --orange: #d7735d;
+    --orange-deep: #ed927d;
+    --mint: #263a31;
+    --blue: #27373c;
+    --yellow: #403923;
+    --shadow: 0 8px 22px rgba(0, 0, 0, .25);
+    --shadow-dark: 0 12px 28px rgba(0, 0, 0, .4);
+    --range-tick: rgba(240, 238, 232, .30);
+    --range-tick-strong: rgba(240, 238, 232, .16);
+    --range-selection: rgba(215, 115, 93, .26);
+  }
+
+  .app-header, .clip-editor, .highlight-preview { background: var(--surface); }
+  .commentary-editor textarea::placeholder,
+  .comment-row input::placeholder { color: #918e87; }
+  .feed-video, .annotation-hero.video { filter: saturate(.82) brightness(.82); }
+  .share-url { border-color: rgba(240, 238, 232, .22); background: rgba(23, 24, 23, .38); }
+  .share-card p { color: var(--ink-soft); }
+}

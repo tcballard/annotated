@@ -3,6 +3,7 @@ import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const projectRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const extensionRoot = path.join(projectRoot, 'extension');
@@ -17,6 +18,9 @@ test('Manifest V3 extension has a reachable side-panel trigger and local files',
   const manifest = JSON.parse(await read('manifest.json'));
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.minimum_chrome_version, '114');
+  const keyBytes = Buffer.from(manifest.key, 'base64');
+  const extensionId = [...createHash('sha256').update(keyBytes).digest().subarray(0, 16)].map((byte) => `${String.fromCharCode(97 + (byte >> 4))}${String.fromCharCode(97 + (byte & 15))}`).join('');
+  assert.equal(extensionId, 'omlikcdpcdhfmdojdalfdeihgjmgikkg');
   assert.ok(manifest.permissions.includes('sidePanel'));
   assert.ok(manifest.permissions.includes('tabs'));
   assert.ok(manifest.permissions.includes('scripting'));
@@ -71,16 +75,28 @@ test('side panel keeps hidden states hidden and uses a coherent icon language', 
   assert.match(runtime, /authRequired/);
   assert.match(html, /class="record-icon"/);
   assert.match(html, /class="stop-icon"/);
+  assert.match(html, /class="range-console"/);
+  assert.match(html, /class="range-console-meta"/);
+  assert.match(html, /class="range-scale"/);
+  assert.match(html, /id="selectedDuration"/);
   assert.match(html, /id="publish"[^>]*>\s*<span>Publish annotation<\/span>\s*<svg/);
   assert.doesNotMatch(html, />\s*[▶◉●■✓]\s*</);
   assert.match(styles, /prefers-reduced-motion/);
   assert.match(styles, /\.mode[^}]*min-height:\s*(?:3[6-9]|4[0-9])px/);
   assert.match(styles, /\.audio-record[^}]*width:\s*44px[^}]*height:\s*44px/);
+  assert.match(styles, /\.range-console \.track/);
+  assert.match(styles, /--range-selection:\s*rgba\(193, 90, 69, \.20\)/);
   assert.match(runtime, /sourceIcon[\s\S]*dataset\.sourceType/);
+  assert.match(runtime, /selectedDuration\.textContent\s*=\s*format\(to - from\)/);
   assert.match(runtime, /recordIcon\.hidden\s*=\s*isRecording/);
   assert.match(runtime, /stopIcon\.hidden\s*=\s*!isRecording/);
   assert.match(runtime, /button\.setAttribute\('aria-pressed', String\(active\)\)/);
   assert.match(runtime, /currentTab\.sourceType === 'article' && !selectedText\.trim\(\)/);
+  assert.match(runtime, /\/api\/sources\/resolve/);
+  assert.match(runtime, /signOut/);
+  assert.match(html, /id="sourceForm"/);
+  assert.match(html, /data-open-view="feed"/);
+  assert.match(styles, /prefers-color-scheme:\s*dark/);
 });
 
 test('extension settings surface explains the API boundary and recovery states', async () => {
@@ -91,13 +107,14 @@ test('extension settings surface explains the API boundary and recovery states',
   assert.match(html, /<label for="apiOrigin">API origin<\/label>/);
   assert.match(html, /id="apiOriginHint"/);
   assert.match(html, /id="status"[^>]*role="status"[^>]*aria-live="polite"/);
-  assert.match(html, /id="reset"[^>]*>Use local default<\/button>/);
+  assert.match(html, /id="reset"[^>]*>Use Annotated staging<\/button>/);
   assert.match(runtime, /form\.addEventListener\('submit'/);
   assert.match(runtime, /DEFAULT_API_ORIGIN/);
   assert.match(runtime, /setStatus\(error\.message/);
   assert.match(styles, /prefers-reduced-motion/);
   assert.match(styles, /:focus-visible/);
   assert.match(styles, /min-height: 44px/);
+  assert.match(styles, /prefers-color-scheme:\s*dark/);
 });
 
 test('Chrome Web Store record covers every manifest permission and the privacy gate', async () => {
@@ -116,11 +133,11 @@ test('Chrome Web Store record covers every manifest permission and the privacy g
   assert.match(listing, /not ready|TBD|external gate/i);
 });
 
-test('extension icon derivatives preserve the supplied raster brand mark', async () => {
-  const source = await readFile(new URL('../assets/brand/annotated-mark-source.jpg', import.meta.url));
+test('extension icon derivatives preserve the approved brand kit exports', async () => {
+  const source = await readFile(new URL('../assets/brand/annotated-brand-kit/chrome-extension/icons/icon-128.png', import.meta.url));
   const generator = await readFile(new URL('../scripts/generate-extension-icons.mjs', import.meta.url), 'utf8');
   assert.ok(source.length > 1000);
-  assert.match(generator, /assets['\"], 'brand|assets[\\/]brand/);
+  assert.match(generator, /annotated-brand-kit/u);
   assert.match(generator, /copyFile/);
   assert.doesNotMatch(generator, /supersample/);
   assert.match(generator, /icon-\$\{size\}\.png/);

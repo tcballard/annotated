@@ -25,3 +25,13 @@ export const signIn = async (provider) => {
   await extensionStorage.saveAuthSession(body);
   return body.user;
 };
+
+export const signOut = async () => {
+  const origin = await apiOrigin();
+  const headers = await authHeaders();
+  const response = await fetch(`${origin}/api/auth/logout`, { method: 'POST', credentials: 'omit', headers: { 'content-type': 'application/json', ...headers } });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || `Sign out failed (${response.status}).`);
+  await extensionStorage.clearAuthSession();
+  return body;
+};

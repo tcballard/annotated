@@ -52,7 +52,7 @@ resetButton.addEventListener('click', async () => {
   try {
     await extensionStorage.saveApiOrigin(DEFAULT_API_ORIGIN);
     input.value = DEFAULT_API_ORIGIN;
-    setStatus('Local development origin restored.', 'success');
+    setStatus('Annotated staging restored.', 'success');
   } catch (error) {
     setStatus(error.message || 'Could not restore the local origin.', 'error');
   } finally {

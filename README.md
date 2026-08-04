@@ -24,7 +24,8 @@ web app proxies `/api` to `http://localhost:8787`.
 
 To load the Chrome side panel, open `chrome://extensions`, enable Developer
 mode, choose **Load unpacked**, select [`extension/`](extension/), and set its
-API origin to `http://localhost:8787` in the extension options.
+API origin defaults to Railway staging. Set it to `http://localhost:8787` in
+the extension options only when testing against a local backend.
 
 ## Railway POC staging
 
@@ -65,6 +66,8 @@ acceptance source, not this README.
 
 ## Useful references
 
+- [Approved brand kit](assets/brand/annotated-brand-kit/README.md)
+- [Brand guidelines](assets/brand/annotated-brand-kit/guidelines/annotated-brand-guidelines.pdf)
 - [Product contract](PRODUCT.md)
 - [Acceptance evidence](ACCEPTANCE_EVIDENCE.md)
 - [Dated acceptance-gap audit](ACCEPTANCE_GAP_AUDIT_2026-08-04.md)

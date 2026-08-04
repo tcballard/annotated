@@ -8,6 +8,7 @@ origin.search = '';
 origin.hash = '';
 
 const checks = [];
+const extensionOrigin = 'chrome-extension://omlikcdpcdhfmdojdalfdeihgjmgikkg';
 const sourceFixtures = [
   {
     name: 'youtube',
@@ -69,6 +70,19 @@ const health = await json('/api/health');
 assert.equal(health.status, 'ok');
 assert.equal(health.persistence, 'postgres');
 
+const extensionHealth = await fetch(new URL('/api/health', origin), { headers: { origin: extensionOrigin }, redirect: 'error' });
+assert.equal(extensionHealth.status, 200, 'the packaged extension origin must reach the deployed API');
+assert.equal(extensionHealth.headers.get('access-control-allow-origin'), extensionOrigin, 'the deployed API must reflect the approved extension origin');
+checks.push({ path: '/api/health', origin: extensionOrigin, status: extensionHealth.status });
+const extensionPreflight = await fetch(new URL('/api/auth/extension/exchange', origin), {
+  method: 'OPTIONS',
+  headers: { origin: extensionOrigin, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type' },
+  redirect: 'error',
+});
+assert.equal(extensionPreflight.status, 204, 'the extension auth exchange preflight must be accepted');
+assert.equal(extensionPreflight.headers.get('access-control-allow-origin'), extensionOrigin);
+checks.push({ path: '/api/auth/extension/exchange', origin: extensionOrigin, status: extensionPreflight.status });
+
 const ready = await json('/api/ready');
 assert.equal(ready.status, 'ready');
 assert.equal(ready.persistence, 'postgres');
@@ -112,7 +126,7 @@ assert.ok(Array.isArray(feed.annotations));
 assert.equal(feed.annotations.length <= 3, true);
 
 const { body: root } = await request('/');
-assert.match(root, /annotated-mark-32\.png/);
+assert.match(root, /\/brand\/favicon\.svg/);
 assert.match(root, /keep the moment/i);
 
 const { body: privacy } = await request('/privacy.html');

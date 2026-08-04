@@ -50,12 +50,12 @@ body { padding: 0 16px 20px; background: var(--color-bg); }
 /* Keep the browser side panel in the same source-first notebook language as
    the web capture desk: warm paper, quiet rules, and one restrained signal. */
 :root {
-  --color-text: #292c2a;
-  --color-muted: #7c847d;
-  --color-bg: #efede7;
+  --color-text: #212121;
+  --color-muted: #777773;
+  --color-bg: #f3f1ed;
   --color-surface: #fbfaf5;
-  --color-line: #d2d0c7;
-  --color-accent: #b45f49;
+  --color-line: #d5d1ca;
+  --color-accent: #c15a45;
   --color-success: #dfe8df;
 }
 

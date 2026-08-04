@@ -15,13 +15,14 @@ const clampSeconds = (value, max) => Math.max(0, Math.min(max, numericSeconds(va
 export const normalizeClipRange = (
   start,
   end,
-  { max = MAX_CLIP_SECONDS, min = MIN_CLIP_SECONDS, allowEmpty = false } = {},
+  { max = MAX_CLIP_SECONDS, maxDuration = MAX_CLIP_SECONDS, min = MIN_CLIP_SECONDS, allowEmpty = false } = {},
 ) => {
   let from = clampSeconds(start, max);
   let to = clampSeconds(end, max);
 
   if (allowEmpty && from === 0 && to === 0) return { start: 0, end: 0 };
   if (to < from) [from, to] = [to, from];
+  if (to - from > maxDuration) to = Math.min(max, from + maxDuration);
   if (to - from >= min) return { start: from, end: to };
 
   // Preserve the boundary being nearest the edge where possible. At the
@@ -40,9 +41,9 @@ export const moveClipBoundary = (
   end,
   boundary,
   value,
-  { max = MAX_CLIP_SECONDS, min = MIN_CLIP_SECONDS, allowEmpty = false } = {},
+  { max = MAX_CLIP_SECONDS, maxDuration = MAX_CLIP_SECONDS, min = MIN_CLIP_SECONDS, allowEmpty = false } = {},
 ) => {
-  const current = normalizeClipRange(start, end, { max, min, allowEmpty });
+  const current = normalizeClipRange(start, end, { max, maxDuration, min, allowEmpty });
   const candidate = clampSeconds(value, max);
 
   if (allowEmpty && current.start === 0 && current.end === 0) {
@@ -51,6 +52,6 @@ export const moveClipBoundary = (
       : { start: Math.max(0, Math.min(candidate - min, max - min)), end: Math.max(candidate, min) };
   }
 
-  if (boundary === 'start') return { start: Math.min(candidate, current.end - min), end: current.end };
-  return { start: current.start, end: Math.max(candidate, current.start + min) };
+  if (boundary === 'start') return { start: Math.max(current.end - maxDuration, Math.min(candidate, current.end - min)), end: current.end };
+  return { start: current.start, end: Math.min(current.start + maxDuration, Math.max(candidate, current.start + min)) };
 };

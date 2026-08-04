@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { validateCorsConfiguration } from './cors.js';
 
 const buckets = new Map();
 const production = process.env.NODE_ENV === 'production';
@@ -6,8 +7,8 @@ const production = process.env.NODE_ENV === 'production';
 export const assertHardeningConfiguration = () => {
   if (!production) return;
   if (!process.env.PUBLIC_ORIGIN) throw new Error('Production requires PUBLIC_ORIGIN.');
-  if (!process.env.CORS_ORIGIN || process.env.CORS_ORIGIN === '*') throw new Error('Production requires a restricted CORS_ORIGIN.');
-  for (const [name, value] of [['PUBLIC_ORIGIN', process.env.PUBLIC_ORIGIN], ['CORS_ORIGIN', process.env.CORS_ORIGIN]]) {
+  validateCorsConfiguration();
+  for (const [name, value] of [['PUBLIC_ORIGIN', process.env.PUBLIC_ORIGIN]]) {
     let origin;
     try { origin = new URL(value); } catch { throw new Error(`Production requires a valid ${name}.`); }
     if (!['http:', 'https:'].includes(origin.protocol) || origin.pathname !== '/' || origin.search || origin.hash) throw new Error(`Production requires ${name} to be an origin without a path.`);
