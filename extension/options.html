@@ -1,12 +1,41 @@
 <!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8"><title>Annotated extension settings</title></head>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Annotated extension settings</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
   <body>
-    <main>
-      <h1>Annotated extension</h1>
-      <p>Set the API origin for your Annotated deployment.</p>
-      <label>API origin <input id="apiOrigin" type="url" placeholder="https://annotated.example.com"></label>
-      <button id="save">Save</button><p id="status" role="status"></p>
+    <main class="settings-shell">
+      <header class="brand-bar">
+        <img class="brand-mark" src="icons/icon-128.png" alt="">
+        <div><strong>annotated<span>.</span></strong><small>EXTENSION SETTINGS</small></div>
+      </header>
+
+      <section class="settings-panel" aria-labelledby="settings-title">
+        <div class="panel-kicker">Connection</div>
+        <h1 id="settings-title">Point the sidebar at your backend.</h1>
+        <p class="panel-lede">The sidebar reads the page you are on, then sends a capture to this API origin when you publish.</p>
+
+        <form id="settingsForm" novalidate>
+          <div class="field-heading"><label for="apiOrigin">API origin</label><span>HTTPS required in production</span></div>
+          <input id="apiOrigin" name="apiOrigin" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://annotated.example.com" aria-describedby="apiOriginHint" required>
+          <p class="field-hint" id="apiOriginHint">Use the origin only, without a path. Local development may use http://localhost:8787.</p>
+          <div class="form-actions">
+            <button id="save" class="primary-button" type="submit">Save connection</button>
+            <button id="reset" class="secondary-button" type="button">Use local default</button>
+          </div>
+          <p id="status" class="status" data-state="idle" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <aside class="boundary-note" aria-label="Data boundary">
+        <span class="note-mark" aria-hidden="true">a.</span>
+        <div><strong>Source-first by default.</strong><p>Draft text stays in browser storage. Published annotations and media go to the configured backend only when you choose Publish.</p></div>
+      </aside>
+
+      <p class="settings-foot">Annotated v0.1.0 · <a href="https://annotated.lovable.app/privacy.html" target="_blank" rel="noreferrer">Privacy boundary</a></p>
     </main>
     <script type="module" src="options.js"></script>
   </body>

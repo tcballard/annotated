@@ -297,6 +297,11 @@ The local browser run exercised the user-facing flows below:
   duplicates, and normalized search matches source and commentary context.
   This is local API evidence; deployed multi-user and browser feed evidence
   remains an external gate.
+- The extension settings surface now uses the supplied mark, keeps the API
+  origin form keyboard-accessible with explicit local/production guidance, and
+  exposes save, validation, reset, and failure states. Static extension tests
+  cover the page contract; an installed packaged-browser review remains an
+  external gate.
 - Deployment tests verify Vite builds before production pruning, the container
   runs as an unprivileged user, local state/secrets are excluded from its build
   context, and the Dockerfile pins the official yt-dlp 2026.06.09 amd64/arm64
