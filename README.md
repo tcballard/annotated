@@ -52,7 +52,9 @@ Chrome behavior, microphone capture, or production traffic.
 - A Manifest V3 side panel with bounded local recovery metadata and
   browser-local audio staging.
 - Production-shaped PostgreSQL/S3, OAuth, media-worker, and deployment
-  boundaries that are configured separately from local development.
+  boundaries that are configured separately from local development. The
+  current Railway POC enables X sign-in only; Google remains an optional
+  adapter for a later release.
 
 ## Release boundary
 
