@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import { tmpdir as systemTmpdir } from 'node:os';
 import path from 'node:path';
@@ -53,6 +53,12 @@ const request = async (baseUrl, pathname, { method = 'GET', body, origin } = {})
 test('local API serves the acceptance-critical health, identity, publish, social, and moderation paths', async (t) => {
   const port = await freePort();
   const dataDirectory = await mkdtemp(path.join(systemTmpdir(), 'annotated-api-'));
+  await writeFile(path.join(dataDirectory, 'store.json'), JSON.stringify({
+    users: [
+      { id: 'local-tom', handle: 'tcballard', displayName: 'Tom Ballard', role: 'owner' },
+      { id: 'reader-1', handle: 'reader', displayName: 'Avid Reader', role: 'member' },
+    ],
+  }));
   const allowedOrigin = 'http://127.0.0.1:5173';
   const baseUrl = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ['server/index.js'], {
@@ -155,9 +161,45 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.equal(profile.payload.profile.annotations.length, 1);
   assert.equal('email' in profile.payload.profile, false);
 
+  const readerBeforeFollow = await request(baseUrl, '/api/profiles/reader');
+  assert.equal(readerBeforeFollow.response.status, 200);
+  assert.equal(readerBeforeFollow.payload.profile.isFollowing, false);
+  assert.equal(readerBeforeFollow.payload.profile.followers, 0);
+
+  const followed = await request(baseUrl, '/api/users/reader-1/follow', { method: 'POST' });
+  assert.equal(followed.response.status, 200);
+  assert.equal(followed.payload.following, true);
+
+  const readerAfterFollow = await request(baseUrl, '/api/profiles/reader');
+  assert.equal(readerAfterFollow.payload.profile.isFollowing, true);
+  assert.equal(readerAfterFollow.payload.profile.followers, 1);
+
+  const followingFeed = await request(baseUrl, '/api/feed?following=true');
+  assert.equal(followingFeed.response.status, 200);
+  assert.equal(followingFeed.payload.annotations.length, 1);
+  assert.equal(followingFeed.payload.annotations[0].authorId, 'local-tom');
+
+  const unfollowed = await request(baseUrl, '/api/users/reader-1/unfollow', { method: 'POST' });
+  assert.equal(unfollowed.response.status, 200);
+  assert.equal(unfollowed.payload.following, false);
+
   const comment = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}/comments`, { method: 'POST', body: { body: 'The retry boundary is covered.' } });
   assert.equal(comment.response.status, 201);
   assert.equal(comment.payload.annotation.comments.length, 1);
+
+  const liked = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}/like`, { method: 'POST' });
+  assert.equal(liked.response.status, 200);
+  assert.equal(liked.payload.annotation.likes, 1);
+  assert.equal(liked.payload.annotation.likedByMe, true);
+
+  const duplicateLike = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}/like`, { method: 'POST' });
+  assert.equal(duplicateLike.response.status, 200);
+  assert.equal(duplicateLike.payload.annotation.likes, 1);
+
+  const unliked = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}/unlike`, { method: 'POST' });
+  assert.equal(unliked.response.status, 200);
+  assert.equal(unliked.payload.annotation.likes, 0);
+  assert.equal(unliked.payload.annotation.likedByMe, false);
 
   const claimPath = `/api/annotations/${published.payload.annotation.slug}/claims`;
   const claim = await request(baseUrl, claimPath, { method: 'POST', body: { reason: 'Acceptance test claim.' } });

@@ -72,6 +72,12 @@ publish, public detail, and source-type-filtered feed responses. The API test
 passed locally; deployed browser evidence that each public surface follows the
 source link remains external.
 
+The same API acceptance test now seeds a second local profile and verifies
+follow/unfollow persistence, follower counts, the following-feed filter,
+comment persistence, and idempotent like/unlike counts. This proves the local
+social interaction contract; OAuth-backed multi-user and deployed evidence
+remain external.
+
 The claim-surface deployment also serves the feed/profile card contract from
 the same PostgreSQL-backed staging service. The claim action preserves the
 selected annotation slug and submits through the persisted claim endpoint;
