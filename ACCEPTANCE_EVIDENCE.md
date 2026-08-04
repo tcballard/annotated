@@ -86,6 +86,15 @@ the isolated database-recovery path without pointing `pg_restore` at the source
 database; scheduled production snapshots, provider retention, object-byte
 recovery, and deployed-service recovery remain external.
 
+PR #84's passing hosted Node job
+[30881337135](https://github.com/tcballard/annotated/actions/runs/30881337135)
+created `annotated_recovery_ci` and restored the custom-format dump with
+`pg_restore --exit-on-error`. The verifier reported `recovery.status: restored`
+and `latestMigration: 004_rate_limit_buckets`, matching the source manifest;
+the restore target was separate from the source database. This is hosted
+isolated database-recovery evidence, not a scheduled production backup,
+provider retention policy, object-byte recovery, or deployed-service recovery.
+
 The source-citation acceptance contract now publishes article, video, and
 podcast fixtures and verifies that both `sourceUrl` and `canonicalUrl` survive
 publish, public detail, and source-type-filtered feed responses. The API test
