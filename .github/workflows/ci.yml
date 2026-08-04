@@ -221,6 +221,16 @@ jobs:
           done
           docker logs "$APP_CONTAINER" || true
           exit 1
+      - name: Verify production media fixture inside the image
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ matrix.tag }}
+        run: |
+          set -eu
+          docker run --rm --platform "${{ matrix.platform }}" \
+            --env ANNOTATED_STORAGE=file \
+            --env ANNOTATED_ASSET_STORAGE=local \
+            --entrypoint node "$IMAGE_TAG" --test test/media-policy.test.js
       - name: Stop production smoke containers
         if: always()
         shell: bash
