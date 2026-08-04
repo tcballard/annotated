@@ -10,7 +10,7 @@ import { normalizeAudioMimeType, serveStoredMedia, writeIncomingMedia } from './
 import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
-import { matchesFeedQuery, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery } from './feed.js';
+import { followingFeedRequiresAuth, matchesFeedQuery, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery } from './feed.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, parseCookies, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, requestId, securityHeaders } from './hardening.js';
@@ -161,7 +161,9 @@ const handleApi = async (request, response, pathname) => {
     const offset = normalizeFeedCursor(query.get('cursor'));
     const sourceType = query.get('sourceType');
     const search = normalizeFeedQuery(query.get('q'));
-    const followingOnly = query.get('following') === 'true' && viewer;
+    const followingRequested = query.get('following') === 'true';
+    if (followingFeedRequiresAuth({ requested: followingRequested, required: authIsRequired(), viewer })) return unauthorized(response);
+    const followingOnly = followingRequested && Boolean(viewer);
     const followedIds = new Set((store.follows || []).filter((follow) => follow.followerId === viewer?.id).map((follow) => follow.followingId));
     const candidates = store.annotations.filter((item) => item.status === 'published' && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id) && matchesFeedQuery(item, store.users || [], search)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const page = candidates.slice(offset, offset + limit);

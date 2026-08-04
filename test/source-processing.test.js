@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { classifySource, parseSourceUrl, resolveSource } from '../server/source-resolver.js';
 import { resolveInput, validatePlayableInput } from '../server/media-worker.js';
-import { matchesFeedQuery, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery } from '../server/feed.js';
+import { followingFeedRequiresAuth, matchesFeedQuery, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery } from '../server/feed.js';
 import { findIdempotentAnnotation } from '../server/idempotency.js';
 import { findActiveClaim, validateClaimTransition } from '../server/moderation.js';
 
@@ -198,6 +198,13 @@ test('feed pagination bounds reject malformed values without producing invalid s
   assert.equal(normalizeFeedCursor('-4'), 0);
   assert.equal(normalizeFeedCursor('3'), 3);
   assert.equal(normalizeFeedCursor('2.5'), 0);
+});
+
+test('following feed requires identity only when requested in an authenticated deployment', () => {
+  assert.equal(followingFeedRequiresAuth({ requested: true, required: true, viewer: null }), true);
+  assert.equal(followingFeedRequiresAuth({ requested: true, required: true, viewer: { id: 'reader-1' } }), false);
+  assert.equal(followingFeedRequiresAuth({ requested: false, required: true, viewer: null }), false);
+  assert.equal(followingFeedRequiresAuth({ requested: true, required: false, viewer: null }), false);
 });
 
 test('idempotent annotation lookup is scoped to the author and request ID', () => {
