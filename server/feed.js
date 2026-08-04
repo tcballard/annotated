@@ -23,6 +23,8 @@ export const normalizeFeedLimit = (value) => Math.min(50, Math.max(1, normalizeI
 
 export const normalizeFeedCursor = (value) => Math.max(0, normalizeInteger(value, 0));
 
+export const followingFeedRequiresAuth = ({ requested, required, viewer }) => Boolean(requested && required && !viewer);
+
 export const matchesFeedQuery = (annotation, users, query) => {
   const normalized = normalizeFeedQuery(query).toLocaleLowerCase();
   return !normalized || searchableFields(annotation, users).includes(normalized);

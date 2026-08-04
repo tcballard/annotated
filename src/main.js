@@ -762,7 +762,14 @@ const loadFeed = async ({ append = false } = {}) => {
     const result = await api.feed(params.toString());
     state.feedAnnotations = append ? [...state.feedAnnotations, ...(result.annotations || [])] : (result.annotations || []);
     state.feedCursor = result.nextCursor || null;
-  } catch { /* the capture flow should remain usable when feed loading fails */ }
+  } catch (error) {
+    if (state.feedFollowing && error?.status === 401) {
+      state.feedFollowing = false;
+      state.feedCursor = null;
+      recoverAuthError(error, 'Sign in to see the people you follow.');
+    }
+    /* the capture flow should remain usable when feed loading fails */
+  }
 };
 
 const watchMediaProcessing = () => {
@@ -943,7 +950,14 @@ app.addEventListener('click', (event) => {
   if (action === 'toggle-record') { toggleAudioRecording(); return; }
   if (action === 'retry-audio') { retryStagedAudio(); return; }
   if (action === 'publish') { publishAnnotation(); return; }
-  if (action === 'feed-filter') { state.feedFollowing = target.dataset.following === 'true'; state.feedCursor = null; loadFeed().then(render); return; }
+  if (action === 'feed-filter') {
+    const following = target.dataset.following === 'true';
+    if (following && requestSignIn('see the people you follow')) return;
+    state.feedFollowing = following;
+    state.feedCursor = null;
+    loadFeed().then(render);
+    return;
+  }
   if (action === 'search') { state.showFeedSearch = !state.showFeedSearch; render(); if (state.showFeedSearch) document.querySelector('#feed-search')?.focus(); return; }
   if (action === 'clear-feed-search') { state.feedQuery = ''; state.feedCursor = null; loadFeed().then(() => { render(); document.querySelector('#feed-search')?.focus(); }); return; }
   if (action === 'feed-more') { loadFeed({ append: true }).then(render); return; }
