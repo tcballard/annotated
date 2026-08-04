@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { buildFfmpegArgs, buildProviderArgs, checkMediaRuntime, mediaJobLeaseExpired, runMediaCommand, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe, validateProviderRuntimeConfig } from '../server/media-worker.js';
+import { buildFfmpegArgs, buildProviderArgs, canRetryMediaJob, checkMediaRuntime, mediaJobLeaseExpired, runMediaCommand, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe, validateProviderRuntimeConfig } from '../server/media-worker.js';
 import { normalizeAudioMimeType } from '../server/media-store.js';
 
 test('audio uploads accept recorder parameters but reject non-audio content types', () => {
@@ -105,6 +105,14 @@ test('cancelled media jobs abort before a late worker completion can publish', (
   assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'cancelled' }] }, new Set()), true);
   assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'processing' }] }, new Set(['job-1'])), true);
   assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'processing' }] }, new Set()), false);
+});
+
+test('failed media jobs can only be retried by their annotation owner', () => {
+  const annotation = { id: 'annotation-1', authorId: 'owner-1' };
+  assert.equal(canRetryMediaJob({ id: 'job-1', annotationId: 'annotation-1', status: 'failed' }, annotation, 'owner-1'), true);
+  assert.equal(canRetryMediaJob({ id: 'job-1', annotationId: 'annotation-1', status: 'ready' }, annotation, 'owner-1'), false);
+  assert.equal(canRetryMediaJob({ id: 'job-1', annotationId: 'annotation-1', status: 'failed' }, annotation, 'owner-2'), false);
+  assert.equal(canRetryMediaJob({ id: 'job-1', annotationId: 'other', status: 'failed' }, annotation, 'owner-1'), false);
 });
 
 test('media jobs use a persistent lease for restart recovery and multi-worker claims', () => {

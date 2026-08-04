@@ -85,6 +85,13 @@ it for article annotations; validation and extension contract tests pass.
 This closes the local selection contract while real-page selection evidence
 remains external.
 
+Failed media jobs now retain an explicit bounded error and expose an
+owner-scoped retry endpoint. The public landing page renders the error and a
+`Retry clip` action; retrying supersedes the failed job before queueing a fresh
+attempt, and duplicate retries are rejected. The API acceptance fixture and
+media-policy tests cover this recovery contract; deployed provider recovery
+remains external.
+
 The claim-surface deployment also serves the feed/profile card contract from
 the same PostgreSQL-backed staging service. The claim action preserves the
 selected annotation slug and submits through the persisted claim endpoint;

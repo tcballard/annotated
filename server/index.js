@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { checkStore, closeStore, readStore, storageDescription, updateStore } from './store.js';
 import { normalizeAudioMimeType, serveStoredMedia, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
-import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs } from './media-worker.js';
+import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
 import { matchesFeedQuery, normalizeFeedQuery } from './feed.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
@@ -219,6 +219,21 @@ const handleApi = async (request, response, pathname) => {
     if (!actor && authIsRequired()) return unauthorized(response);
     const cancelled = await cancelMediaJob(cancelJobMatch[1], actor?.id || 'local-tom');
     return cancelled ? send(response, 200, { status: 'cancelled' }) : send(response, 404, { error: 'Media job not found or cannot be cancelled.' });
+  }
+
+  const retryMediaMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/media\/retry$/);
+  if (retryMediaMatch && request.method === 'POST') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
+    if (!(await mutationAllowed(request, actor, 'media-retry', 10))) return send(response, 429, { error: 'Too many media retries. Try again later.' }, { 'retry-after': '60' });
+    const store = await readStore();
+    const annotation = store.annotations.find((item) => item.slug === retryMediaMatch[1] || item.id === retryMediaMatch[1]);
+    if (!annotation) return notFound(response);
+    const job = await retryMediaJobForAnnotation(annotation.id, actor?.id || 'local-tom');
+    if (!job) return send(response, 409, { error: 'This annotation has no failed media job available to retry.' });
+    const next = await readStore();
+    const updated = next.annotations.find((item) => item.id === annotation.id);
+    return send(response, 202, { annotation: withComments(updated, next, actor?.id), job: { id: job.id, status: job.status } });
   }
 
   if (request.method === 'POST' && pathname === '/api/annotations') {
