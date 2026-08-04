@@ -139,8 +139,11 @@ const initialState = {
   claimSlug: '',
   claimTitle: '',
   claimReason: '',
+  claimError: '',
+  claimSubmitted: false,
   toast: '',
   showSourceInput: false,
+  showMobileSourcePreview: false,
   customSource: null,
   publishedSlug: '',
   publishedAnnotation: null,
@@ -190,6 +193,7 @@ let recordingChunks = [];
 let recordingTimer;
 let recordingStartedAt = 0;
 let mediaPollTimer;
+let claimReturnFocus = null;
 
 const persist = () => {
   try {
@@ -432,7 +436,7 @@ const videoCanvas = () => `
   <div class="media-canvas video-canvas" data-source-canvas="video" ${state.sourceType === 'video' ? '' : 'hidden'}>
     <div class="video-backdrop"><div class="video-silhouette"></div><div class="video-shelf shelf-one"></div><div class="video-shelf shelf-two"></div><div class="video-window"></div></div>
     <div class="media-overline"><span>${icon('video')} VIDEO ESSAY</span><span>J-CAL CONVERSATIONS</span></div>
-    <button class="hero-play" data-action="toggle-preview" aria-label="Play source preview">${icon('play')}</button>
+    <div class="preview-unavailable" role="status"><span class="preview-unavailable-icon" aria-hidden="true">${icon('video')}</span><span><strong>Preview after publish</strong><small>Open the original to confirm exact timing.</small></span></div>
     <div class="media-caption"><span>“The future is built by people who keep asking why.”</span><small>06:08</small></div>
     <div class="media-player"><span class="player-time">${formatTime(state.clipStart)}</span><div class="player-line"><span class="player-progress" style="width: 24%"></span></div><span class="player-time">06:08</span></div>
   </div>`;
@@ -466,7 +470,8 @@ const sourceCanvas = () => {
   return `<section class="source-stage source-spine-stage">
     <div class="stage-header"><div><span class="eyebrow">Source</span><h1>${escapeHTML(source().title)}</h1></div><button class="ghost-button" data-action="toggle-source-input">${icon('link')} Change</button></div>
     ${state.showSourceInput ? `<div class="source-input-row"><label for="source-url">Paste a source URL</label><div class="source-input-wrap">${icon('link')}<input id="source-url" data-action="source-url" value="${escapeHTML(state.sourceUrl)}" /><button data-action="load-source" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Load'}</button></div><p>Metadata stays attached to the original link.</p>${state.sourceError ? `<p class="source-error" role="alert">${escapeHTML(state.sourceError)}</p>` : ''}</div>` : ''}
-    <div class="browser-frame">${browserChrome()}<div class="browser-page">${canvas}</div></div>
+    <div class="mobile-source-summary"><span>${icon(state.sourceType)} ${escapeHTML(source().label)} · ${escapeHTML(source().host)}</span><button data-action="toggle-mobile-source" aria-expanded="${state.showMobileSourcePreview}">${state.showMobileSourcePreview ? 'Hide preview' : 'Show preview'}</button></div>
+    <div class="browser-frame ${state.showMobileSourcePreview ? 'is-mobile-expanded' : ''}">${browserChrome()}<div class="browser-page">${canvas}</div></div>
     <div class="source-footer source-spine-footer"><div><span class="source-pill">${icon(state.sourceType)} ${source().label}</span><span class="source-byline">${escapeHTML(source().author)} <span>·</span> ${escapeHTML(source().date)}</span></div><a href="${escapeHTML(source().url)}" target="_blank" rel="noreferrer" class="source-link">Open original ${icon('external')}</a></div>
   </section>`;
 };
@@ -511,7 +516,7 @@ const feedCard = (item, index) => {
   const fallbackStatus = media.status === 'processing' || media.status === 'queued' ? 'Preparing clip…' : media.status === 'failed' ? 'Clip unavailable' : 'Play after publishing';
   const videoMedia = media.kind === 'video' && media.src
     ? `<div class="feed-media feed-video feed-video-live"><video class="feed-video-player" controls preload="metadata" src="${escapeHTML(media.src)}"></video><span class="feed-duration">${escapeHTML(item.duration)}</span></div>`
-    : `<div class="feed-media feed-video"><div class="feed-video-shade"></div><button class="feed-play" aria-label="${escapeHTML(fallbackStatus)}" data-action="play-feed" data-media-status="${escapeHTML(media.status)}">${icon('play')}</button><span class="feed-duration">${escapeHTML(item.duration)}</span><span class="feed-media-status">${escapeHTML(fallbackStatus)}</span></div>`;
+    : `<div class="feed-media feed-video"><div class="feed-video-shade"></div><span class="feed-preview-state" aria-hidden="true">${icon('video')}</span><span class="feed-duration">${escapeHTML(item.duration)}</span><span class="feed-media-status" role="status">${escapeHTML(fallbackStatus)}</span></div>`;
   const audioMedia = media.kind === 'audio' && media.src
     ? `<div class="feed-media feed-audio feed-audio-live"><div class="feed-audio-art">${icon('podcast')}</div><audio class="feed-audio-player" controls preload="metadata" src="${escapeHTML(media.src)}"></audio><span class="feed-duration">${escapeHTML(item.duration)}</span></div>`
     : `<div class="feed-media feed-audio"><div class="feed-audio-art">${icon('podcast')}</div><div class="mini-wave">${Array.from({ length: 25 }, (_, i) => `<i style="height:${16 + ((i * 23) % 50)}%"></i>`).join('')}</div><span class="feed-duration">${escapeHTML(item.duration)}</span><span class="feed-media-status">${escapeHTML(fallbackStatus)}</span></div>`;
@@ -532,13 +537,16 @@ const feedView = () => {
   const visibleItems = state.feedAnnotations.map(annotationToFeedItem);
   const emptyMessage = state.feedQuery ? `No annotations match “${escapeHTML(state.feedQuery)}”.` : state.feedFollowing ? 'No annotations from followed users yet.' : 'No public annotations yet.';
   const emptyDescription = state.feedQuery ? 'Try a different source, author, or phrase.' : state.feedFollowing ? 'Follow someone whose context you want to keep up with.' : 'Publish the first source-backed moment and it will appear here.';
-  const profileName = state.user?.displayName || state.user?.handle || 'Your library';
+  const profileName = state.user?.displayName || state.user?.handle || '';
   const profileHandle = state.user?.handle || '';
   const profileAction = profileHandle ? `<a class="dark-button" href="/u/${encodeURIComponent(profileHandle)}">View your profile ${icon('arrow')}</a>` : `<button class="dark-button" data-action="set-view" data-view="capture">Open capture desk ${icon('arrow')}</button>`;
+  const profileCard = state.user
+    ? `<div class="aside-card profile-card"><div class="profile-top"><div class="profile-avatar">${escapeHTML((profileName || 'A').slice(0, 2).toUpperCase())}</div><span class="profile-stamp">SIGNED IN</span></div><h3>${escapeHTML(profileName)}</h3><p>Your source-backed moments will live here.</p>${profileAction}</div>`
+    : `<div class="aside-card profile-card signed-out-card"><span class="eyebrow">Signed out</span><h3>Build your public library.</h3><p>Capture now. Sign in with X when you are ready to publish, follow, or respond.</p>${profileAction}</div>`;
   return `
   <div class="view-head feed-head"><div><span class="eyebrow">Timeline</span><h2>What people kept.</h2><p>Moments with enough context to be worth opening.</p></div><div class="feed-controls"><button class="filter-button ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true">Following</button><button class="filter-button ${state.feedFollowing ? '' : 'is-active'}" data-action="feed-filter" data-following="false">For you</button><button class="search-button" data-action="search" aria-label="Search timeline" aria-expanded="${state.showFeedSearch}">${icon('search')}</button></div></div>
   ${state.showFeedSearch ? `<form class="feed-search-row" data-action="feed-search-form"><label for="feed-search">Search annotations</label><div><input id="feed-search" data-action="feed-search" value="${escapeHTML(state.feedQuery)}" placeholder="Try a source, author, or idea" maxlength="80" /><button class="dark-button" type="submit">Search ${icon('arrow')}</button>${state.feedQuery ? '<button class="ghost-button" type="button" data-action="clear-feed-search">Clear</button>' : ''}</div></form>` : ''}
-  <div class="feed-layout"><main class="feed-list">${visibleItems.length ? visibleItems.map(feedCard).join('') : `<div class="feed-empty"><span class="eyebrow">Nothing found</span><h3>${emptyMessage}</h3><p>${emptyDescription}</p>${state.feedQuery ? '<button class="ghost-button" data-action="clear-feed-search">Clear search</button>' : ''}</div>`}${state.feedCursor ? '<button class="ghost-button" data-action="feed-more">Load more</button>' : ''}</main><aside class="feed-aside"><div class="aside-card profile-card"><div class="profile-top"><div class="profile-avatar">${escapeHTML((profileName || 'A').slice(0, 2).toUpperCase())}</div><span class="profile-stamp">${state.user ? 'SIGNED IN' : 'LOCAL'}</span></div><h3>${escapeHTML(profileName)}</h3><p>${state.user ? 'Your source-backed moments will live here.' : 'Sign in when you are ready to keep a public profile.'}</p>${profileAction}</div><div class="aside-card rule-card"><span class="eyebrow">The annotated rule</span><h3>A clip without its source is just a rumour.</h3><div class="rule-line"></div><p>Every public page points back to the original. Context travels with the moment.</p></div></aside></div>`;
+  <div class="feed-layout"><main class="feed-list">${visibleItems.length ? visibleItems.map(feedCard).join('') : `<div class="feed-empty"><span class="eyebrow">Nothing found</span><h3>${emptyMessage}</h3><p>${emptyDescription}</p>${state.feedQuery ? '<button class="ghost-button" data-action="clear-feed-search">Clear search</button>' : '<button class="dark-button feed-empty-action" data-action="set-view" data-view="capture">Open capture desk ' + icon('arrow') + '</button>'}</div>`}${state.feedCursor ? '<button class="ghost-button" data-action="feed-more">Load more</button>' : ''}</main><aside class="feed-aside">${profileCard}<div class="aside-card rule-card"><span class="eyebrow">The annotated rule</span><h3>A clip without its source is just a rumour.</h3><div class="rule-line"></div><p>Every public page points back to the original. Context travels with the moment.</p></div></aside></div>`;
 };
 
 const annotationHero = () => {
@@ -549,8 +557,8 @@ const annotationHero = () => {
   if (state.sourceType === 'article') return `<div class="annotation-article-text"><span class="quote-mark">“</span><p>${escapeHTML(articleExcerpt() || sourceData.article.excerpt)}</p><span>Highlighted passage</span></div>`;
   if (state.sourceType === 'video') return clipUrl
     ? `<video class="annotation-video-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></video>`
-    : `<div class="annotation-video-bg"><div class="video-silhouette small"></div><span class="media-status">${status}</span>${mediaRecovery}</div><button class="annotation-play" data-action="toggle-preview">${icon('play')}</button><span class="annotation-clip-time">${formatTime(state.clipStart)} — ${formatTime(state.clipEnd)}</span>`;
-  return `<div class="annotation-audio"><div class="podcast-orbit small"><span></span><span></span><span></span></div>${clipUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></audio>` : audioUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : icon('play')}<div class="mini-wave large">${Array.from({ length: 34 }, (_, i) => `<i style="height:${16 + ((i * 19) % 58)}%"></i>`).join('')}</div>${clipUrl && audioUrl ? `<audio class="commentary-audio" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : !clipUrl ? `<span class="media-status">${status}</span>${mediaRecovery}` : ''}</div>`;
+    : `<div class="annotation-video-bg"><div class="video-silhouette small"></div><span class="media-status">${status}</span>${mediaRecovery}</div><span class="annotation-clip-time">${formatTime(state.clipStart)} — ${formatTime(state.clipEnd)}</span>`;
+  return `<div class="annotation-audio"><div class="podcast-orbit small"><span></span><span></span><span></span></div>${clipUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></audio>` : audioUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : icon('podcast')}<div class="mini-wave large">${Array.from({ length: 34 }, (_, i) => `<i style="height:${16 + ((i * 19) % 58)}%"></i>`).join('')}</div>${clipUrl && audioUrl ? `<audio class="commentary-audio" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : !clipUrl ? `<span class="media-status">${status}</span>${mediaRecovery}` : ''}</div>`;
 };
 
 const moderationView = () => {
@@ -589,15 +597,29 @@ const publishedView = () => {
   return `
     <div class="view-head published-head"><div><span class="eyebrow">Published</span><h2>${state.published ? 'The moment, with your note.' : 'Your first annotation is waiting.'}</h2><p>${state.published ? 'A permanent link back to the source, with the context only you could add.' : 'Capture something from the page you are on, then publish it here.'}</p></div>${state.published ? `<button class="ghost-button" data-action="set-view" data-view="capture">${icon('back')} Capture another</button>` : ''}</div>
     ${state.published ? `<div class="annotation-layout"><article class="annotation-page"><div class="annotation-page-bar"><span class="source-pill">${icon(state.sourceType)} ${publishedSource.label}</span><span>Published just now</span></div><div class="annotation-hero ${state.sourceType}">${annotationHero()}</div><div class="annotation-body"><div class="annotation-byline"><div class="feed-avatar avatar-0">TB</div><div>${authorHandle ? `<a class="profile-link" href="/u/${encodeURIComponent(authorHandle)}">${escapeHTML(authorName)}</a>` : `<strong>${escapeHTML(authorName)}</strong>`}<span>@${escapeHTML(authorHandle || 'tcballard')} · just now</span></div><button class="icon-button" aria-label="More options">${icon('more')}</button></div><h3>${escapeHTML(publishedSource.title)}</h3>${hasNote ? `<p class="annotation-copy">${state.publishedAnnotation?.commentary ? escapeHTML(state.publishedAnnotation.commentary) : state.commentary ? escapeHTML(state.commentary) : 'An audio annotation attached to this moment.'}</p>` : '<p class="annotation-copy empty-copy">No commentary added.</p>'}<div class="source-citation"><span>${icon('link')} Source</span><a href="${escapeHTML(publishedSource.url)}" target="_blank" rel="noreferrer">${escapeHTML(publishedSource.host)} ${icon('external')}</a></div></div><div class="annotation-actions"><button data-action="toggle-like" data-slug="${escapeHTML(state.publishedSlug)}" class="feed-action ${state.publishedAnnotation?.likedByMe || state.liked ? 'is-liked' : ''}">${icon('heart')} ${state.publishedAnnotation?.likedByMe || state.liked ? 'Liked' : 'Like'}</button><button class="feed-action" data-action="focus-comment">${icon('message')} ${publishedComments.length} comments</button><button class="feed-action" data-action="share">${icon('link')} Copy link</button></div><div class="annotation-comments">${publishedComments.length ? publishedComments.map((comment) => `<div class="commenter-avatar">TB</div><p><strong>@${escapeHTML(comment.author?.handle || comment.authorId)}</strong> ${escapeHTML(comment.body)}</p>`).join('') : '<p class="empty-copy">No comments yet. Add the first considered response.</p>'}</div><form class="comment-row annotation-comment-row" data-action="comment-form"><input aria-label="Add a comment" placeholder="Add a considered comment…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" /><button aria-label="Post comment">${icon('arrow')}</button></form></article><aside class="annotation-aside"><div class="claim-card"><span class="eyebrow">Source & rights</span><h3>Something wrong with this annotation?</h3><p>Every page keeps the source visible. If this clip misuses your work, file a claim and we’ll review it.</p><button class="claim-button" data-action="toggle-claim">File a claim ${icon('arrow')}</button></div><div class="share-card"><span class="eyebrow">Share this page</span><div class="share-url"><strong>${escapeHTML(publicLabel)}</strong><button data-action="copy-link" aria-label="Copy page link">${icon('link')}</button></div><p>It opens with the clip, the source, and the note.</p></div></aside></div>` : `<div class="empty-published"><img class="empty-symbol" src="/brand/annotated-mark-32.png" alt="" aria-hidden="true" /><h3>Nothing published yet.</h3><p>Start with the page you are already reading. The sidebar will do the rest.</p><button class="dark-button" data-action="set-view" data-view="capture">Open capture desk ${icon('arrow')}</button></div>`}
-    ${state.claimOpen ? claimModal() : ''}`;
+    `;
 };
 
-const claimModal = () => `<div class="modal-backdrop" data-action="toggle-claim"><div class="claim-modal" role="dialog" aria-modal="true" aria-labelledby="claim-title" data-stop-click="true"><button class="icon-button modal-close" data-action="toggle-claim" aria-label="Close claim form">${icon('close')}</button><span class="eyebrow">Source & rights</span><h3 id="claim-title">File a claim</h3>${state.claimTitle ? `<p class="claim-context">About: ${escapeHTML(state.claimTitle)}</p>` : ''}<p>Tell us what is wrong with this annotation. We’ll keep your report attached to the source page.</p><label>What should we review?<textarea placeholder="Describe the issue…" data-action="claim-text">${escapeHTML(state.claimReason)}</textarea></label><button class="dark-button full-button" data-action="submit-claim">Send claim ${icon('arrow')}</button></div></div>`;
+const claimModal = () => `<div class="modal-backdrop" data-action="close-claim">
+  <div class="claim-modal" role="dialog" aria-modal="true" aria-labelledby="claim-title" aria-describedby="claim-description" data-action="stop-modal" data-stop-click="true">
+    <button class="icon-button modal-close" data-action="close-claim" aria-label="Close claim form">${icon('close')}</button>
+    <span class="eyebrow">Source & rights</span>
+    <h3 id="claim-title">${state.claimSubmitted ? 'Claim received' : 'File a claim'}</h3>
+    ${state.claimTitle ? `<p class="claim-context">About: ${escapeHTML(state.claimTitle)}</p>` : ''}
+    ${state.claimSubmitted
+      ? `<div class="claim-success" role="status"><strong>Thank you for flagging the source.</strong><p id="claim-description">The report is attached to this annotation for review.</p></div><button class="dark-button full-button" data-action="close-claim">Done ${icon('check')}</button>`
+      : `<p id="claim-description">Tell us what is wrong with this annotation. We’ll keep your report attached to the source page.</p><label>What should we review?<textarea placeholder="Describe the issue…" data-action="claim-text" aria-describedby="claim-error">${escapeHTML(state.claimReason)}</textarea></label>${state.claimError ? `<p class="claim-error" id="claim-error" role="alert">${escapeHTML(state.claimError)}</p>` : '<span id="claim-error" hidden></span>'}<button class="dark-button full-button" data-action="submit-claim">Send claim ${icon('arrow')}</button>`}
+  </div>
+</div>`;
 
 const toast = () => state.toast ? `<div class="toast" role="status"><span class="toast-icon">${icon('check')}</span>${escapeHTML(state.toast)}</div>` : '';
 
 const render = () => {
-  app.innerHTML = `${appHeader()}${authStateView()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : state.activeView === 'profile' ? profileView() : publishedView()}</main></div>${toast()}`;
+  app.innerHTML = `${appHeader()}${authStateView()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : state.activeView === 'profile' ? profileView() : publishedView()}</main></div>${state.claimOpen ? claimModal() : ''}${toast()}`;
+  for (const element of app.querySelectorAll('.app-header, .auth-notice, .auth-prompt, .app-body')) {
+    element.inert = state.claimOpen;
+    if (state.claimOpen) element.setAttribute('aria-hidden', 'true');
+  }
 };
 
 const renderCapture = () => {
@@ -631,6 +653,8 @@ const renderCapture = () => {
   if (favicon) favicon.textContent = state.sourceType === 'video' ? '▶' : state.sourceType === 'article' ? 'V' : '◉';
   if (browserTabHost) browserTabHost.textContent = source().host;
   if (addressBar) addressBar.textContent = state.sourceUrl;
+  const mobileSourceSummary = sourceStage.querySelector('.mobile-source-summary > span');
+  if (mobileSourceSummary) mobileSourceSummary.innerHTML = `${icon(state.sourceType)} ${escapeHTML(source().label)} · ${escapeHTML(source().host)}`;
 
   sourceStage.querySelectorAll('[data-source-canvas]').forEach((canvas) => {
     canvas.hidden = canvas.dataset.sourceCanvas !== state.sourceType;
@@ -981,21 +1005,59 @@ const submitComment = async () => {
 
 const submitClaim = async () => {
   const reason = state.claimReason.trim();
-  if (!reason) { notify('Tell us what should be reviewed.'); return; }
+  if (!reason) {
+    state.claimError = 'Tell us what should be reviewed.';
+    render();
+    document.querySelector('[data-action="claim-text"]')?.focus();
+    return;
+  }
   const claimSlug = state.claimSlug || state.publishedSlug;
-  if (!claimSlug || state.serverStatus !== 'online') { notify('Backend unavailable — claim not submitted.'); return; }
-  if (requestSignIn('file a claim')) return;
+  if (!claimSlug || state.serverStatus !== 'online') {
+    state.claimError = 'The backend is unavailable. Your report is still here; try again when the connection returns.';
+    render();
+    document.querySelector('[data-action="claim-text"]')?.focus();
+    return;
+  }
+  if (state.authRequired && !state.user) {
+    state.claimOpen = false;
+    requestSignIn('file a claim');
+    return;
+  }
   try {
     await api.fileClaim(claimSlug, reason);
     state.claimReason = '';
-    state.claimSlug = '';
-    state.claimTitle = '';
-    state.claimOpen = false;
-    notify('Claim received. We’ll review the source.');
+    state.claimError = '';
+    state.claimSubmitted = true;
+    render();
+    document.querySelector('.full-button[data-action="close-claim"]')?.focus();
   } catch (error) {
-    if (recoverAuthError(error, 'Sign in to file a claim.')) return;
-    notify(error.message || 'Claim could not be submitted.');
+    if (error?.status === 401) {
+      state.claimOpen = false;
+      recoverAuthError(error, 'Sign in to file a claim.');
+      return;
+    }
+    state.claimError = error.message || 'Claim could not be submitted. Your report is still here.';
+    render();
+    document.querySelector('[data-action="claim-text"]')?.focus();
   }
+};
+
+const restoreClaimFocus = () => {
+  const returnTarget = claimReturnFocus?.slug
+    ? [...document.querySelectorAll('[data-action="toggle-claim"][data-claim-slug]')].find((element) => element.dataset.claimSlug === claimReturnFocus.slug)
+    : document.querySelector('.claim-button');
+  (returnTarget || document.querySelector('.nav-link.is-active'))?.focus();
+  claimReturnFocus = null;
+};
+
+const closeClaimDialog = () => {
+  state.claimOpen = false;
+  state.claimSlug = '';
+  state.claimTitle = '';
+  state.claimError = '';
+  state.claimSubmitted = false;
+  render();
+  restoreClaimFocus();
 };
 
 app.addEventListener('click', (event) => {
@@ -1004,9 +1066,16 @@ app.addEventListener('click', (event) => {
   const action = target.dataset.action;
 
   if (target.dataset.stopClick === 'true') return;
-  if (action === 'dismiss-auth') { state.authNotice = ''; state.authPrompt = ''; render(); return; }
+  if (action === 'dismiss-auth') {
+    state.authNotice = '';
+    state.authPrompt = '';
+    render();
+    document.querySelector('.nav-link.is-active')?.focus();
+    return;
+  }
   if (action === 'set-view') {
     if (target.dataset.view === 'moderation' && !canModerate()) { notify('Moderation access is required.'); return; }
+    state.authPrompt = '';
     state.activeView = target.dataset.view;
     if (state.activeView !== 'profile') {
       state.profileHandle = '';
@@ -1019,6 +1088,7 @@ app.addEventListener('click', (event) => {
   }
   if (action === 'source-type') { setSource(target.dataset.type); return; }
   if (action === 'toggle-source-input') { state.showSourceInput = !state.showSourceInput; if (!state.showSourceInput) state.sourceError = ''; render(); return; }
+  if (action === 'toggle-mobile-source') { state.showMobileSourcePreview = !state.showMobileSourcePreview; render(); return; }
   if (action === 'load-source') { loadSource(); return; }
   if (action === 'commentary-mode') { if (state.isRecording) stopAudioRecording(); state.commentaryMode = target.dataset.mode; persist(); render(); return; }
   if (action === 'toggle-record') { toggleAudioRecording(); return; }
@@ -1117,23 +1187,51 @@ app.addEventListener('click', (event) => {
   if (action === 'copy-link') { copyPublicLink(); return; }
   if (action === 'open-original') { if (target.getAttribute('href') === '#') { event.preventDefault(); notify('Original source link preserved.'); } return; }
   if (action === 'toggle-claim') {
+    claimReturnFocus = { slug: target.dataset.claimSlug || '', view: state.activeView };
     if (target.dataset.claimSlug) {
       state.claimSlug = target.dataset.claimSlug;
       state.claimTitle = target.dataset.claimTitle || '';
       state.claimOpen = true;
     } else {
-      state.claimOpen = !state.claimOpen;
-      if (!state.claimOpen) { state.claimSlug = ''; state.claimTitle = ''; }
+      state.claimOpen = true;
     }
+    state.claimError = '';
+    state.claimSubmitted = false;
     render();
     if (state.claimOpen) document.querySelector('[data-action="claim-text"]')?.focus();
     return;
   }
+  if (action === 'close-claim') { closeClaimDialog(); return; }
   if (action === 'submit-claim') { submitClaim(); return; }
   if (action === 'logout') { api.logout().then(() => { state.user = null; notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
   if (action === 'sidebar-help') { notify('Annotated keeps a source link on every public page.'); return; }
-  if (action === 'toggle-preview') { notify('The source preview becomes playable after the clip is ready.'); return; }
-  if (action === 'play-feed') { notify(target.dataset.mediaStatus === 'not-applicable' ? 'Publish this clip to make it playable.' : 'This clip is still being prepared.'); return; }
+});
+
+app.addEventListener('keydown', (event) => {
+  if (!state.claimOpen) return;
+  const dialog = app.querySelector('.claim-modal');
+  if (!dialog) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeClaimDialog();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = [...dialog.querySelectorAll('button, textarea, input, select, a[href]')]
+    .filter((element) => !element.disabled && !element.hidden && element.getClientRects().length);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  } else if (!dialog.contains(document.activeElement)) {
+    event.preventDefault();
+    first.focus();
+  }
 });
 
 app.addEventListener('input', (event) => {
@@ -1144,7 +1242,10 @@ app.addEventListener('input', (event) => {
     if (count) count.textContent = `${state.commentary.length}/280`;
   }
   if (action === 'comment-draft') state.commentDraft = event.target.value;
-  if (action === 'claim-text') state.claimReason = event.target.value;
+  if (action === 'claim-text') {
+    state.claimReason = event.target.value;
+    state.claimError = '';
+  }
   if (action === 'source-url') { state.sourceUrl = event.target.value; state.customSource = null; state.sourceError = ''; }
   if (action === 'article-excerpt') {
     state.articleExcerpt = event.target.value.slice(0, 2000);
