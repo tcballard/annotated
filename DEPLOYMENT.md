@@ -116,7 +116,11 @@ S3-compatible credentials, writes a `0600` custom-format `postgres.dump`, a
 sorted `objects.json` inventory, and a SHA-256/count `manifest.json` under a
 new `BACKUP_OUTPUT_DIR`. It reads the database and bucket only; it never deletes
 or overwrites production data, uploads credentials, or copies secret values into
-the manifest. Refuse to run it against the file/local adapters.
+the manifest. The manifest also records S3-compatible bucket versioning and
+lifecycle state. Set `BACKUP_REQUIRE_OBJECT_VERSIONING=true` and/or
+`BACKUP_REQUIRE_OBJECT_LIFECYCLE=true` when the provider policy is configured;
+the command then fails closed if that policy is absent or unavailable. Refuse
+to run it against the file/local adapters.
 
 ```bash
 NODE_ENV=production \
@@ -135,6 +139,29 @@ provider-supported versioned copy), run `npm run db:migrate`, and require
 `pg_restore` at the live database. The script's object inventory is evidence of
 what must be retained; it does not replace provider-side object versioning,
 retention, or a completed restore drill.
+
+Verify a completed artifact before scheduling a restore:
+
+```bash
+BACKUP_DIR=/secure/annotated-backups/20260804T120000Z npm run backup:verify
+```
+
+This checks the dump size and SHA-256, validates sorted/unique object keys and
+totals, and runs `pg_restore --list` without connecting to a database. For an
+explicit recovery drill, first create a new empty database whose name begins
+with `annotated_recovery`, then run:
+
+```bash
+BACKUP_DIR=/secure/annotated-backups/20260804T120000Z \
+  RUN_RECOVERY_DRILL=true \
+  RECOVERY_DATABASE_URL=postgresql://user:password@db.example/annotated_recovery_20260804 \
+  npm run backup:verify
+```
+
+The guarded drill restores without `--clean`, checks the restored migration
+ledger, and never accepts an ambiguous database name. It does not delete or
+repoint a database, and it does not copy object bytes; use the provider's
+versioned/retained bucket or an isolated copy for media recovery.
 
 The PostgreSQL rate-limit ledger stores only a SHA-256 bucket key, the fixed
 window count, and expiry. Audio uploads, publishing, follows, comments, likes,
