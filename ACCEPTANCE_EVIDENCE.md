@@ -95,6 +95,12 @@ the restore target was separate from the source database. This is hosted
 isolated database-recovery evidence, not a scheduled production backup,
 provider retention policy, object-byte recovery, or deployed-service recovery.
 
+The operator-run archive contract requires a distinct archive bucket, checks
+archive versioning and lifecycle before upload, archives the three verified
+artifacts under a dated prefix, and supports a follow-up `npm run backup:verify`.
+No recurring production scheduler is enabled; the owner must authorize the
+scheduler, secret scope, and destination before a live run is counted.
+
 The source-citation acceptance contract now publishes article, video, and
 podcast fixtures and verifies that both `sourceUrl` and `canonicalUrl` survive
 publish, public detail, and source-type-filtered feed responses. The API test

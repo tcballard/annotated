@@ -195,6 +195,39 @@ shape, and database recovery path; it is not a scheduled production backup,
 provider retention policy, object-byte recovery, or isolated live recovery of
 the deployed service.
 
+## Operator-run production backup archive
+
+`npm run backup:production` can archive a verified backup to a distinct
+S3-compatible destination when `BACKUP_ARCHIVE_REQUIRED=true` is set. It
+requires the production database/media secrets plus a distinct
+`BACKUP_ARCHIVE_BUCKET` and archive credentials, uploads only `postgres.dump`,
+`objects.json`, and `manifest.json` under a dated prefix, and then the operator
+should run `npm run backup:verify`. Archive versioning and lifecycle are strict
+gates: the command fails before upload if the archive provider does not report
+both policies. Configure these secrets in the trusted runner or secret manager
+before an owner-authorized run:
+
+```text
+ANNOTATED_PRODUCTION_DATABASE_URL
+ANNOTATED_PRODUCTION_MEDIA_BUCKET
+ANNOTATED_PRODUCTION_MEDIA_REGION
+ANNOTATED_PRODUCTION_MEDIA_ENDPOINT
+ANNOTATED_PRODUCTION_MEDIA_FORCE_PATH_STYLE
+ANNOTATED_PRODUCTION_MEDIA_ACCESS_KEY_ID
+ANNOTATED_PRODUCTION_MEDIA_SECRET_ACCESS_KEY
+ANNOTATED_PRODUCTION_BACKUP_BUCKET
+ANNOTATED_PRODUCTION_BACKUP_REGION
+ANNOTATED_PRODUCTION_BACKUP_ENDPOINT
+ANNOTATED_PRODUCTION_BACKUP_FORCE_PATH_STYLE
+ANNOTATED_PRODUCTION_BACKUP_ACCESS_KEY_ID
+ANNOTATED_PRODUCTION_BACKUP_SECRET_ACCESS_KEY
+```
+
+The source Railway bucket is not treated as the archive destination. A recurring
+cron/GitHub Actions schedule is deliberately not enabled by this repository;
+the owner must choose and authorize the scheduler and its production secret
+scope after reviewing the archive destination.
+
 The PostgreSQL rate-limit ledger stores only a SHA-256 bucket key, the fixed
 window count, and expiry. Audio uploads, publishing, follows, comments, likes,
 claims, moderation changes, and OAuth starts use the same atomic bucket

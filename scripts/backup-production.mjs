@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import pg from 'pg';
-import { GetBucketLifecycleConfigurationCommand, GetBucketVersioningCommand, ListObjectsV2Command, S3Client } from '@aws-sdk/client-s3';
+import { GetBucketLifecycleConfigurationCommand, GetBucketVersioningCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 
 const require = createRequire(import.meta.url);
 const { version: releaseVersion } = require('../package.json');
@@ -14,6 +14,7 @@ const { version: releaseVersion } = require('../package.json');
 const timestamp = (value = new Date()) => value.toISOString().replace(/[:.]/g, '-');
 
 const required = (env, names) => names.filter((name) => !String(env[name] || '').trim());
+const normalizeArchivePrefix = (value, now) => `${String(value || 'annotated').trim().replace(/^\/+|\/+$/g, '') || 'annotated'}/${timestamp(now)}/`;
 
 export const normalizeBackupConfig = ({ env = process.env, now = new Date() } = {}) => {
   const storage = env.ANNOTATED_STORAGE || (env.NODE_ENV === 'production' ? 'postgres' : 'file');
@@ -26,6 +27,20 @@ export const normalizeBackupConfig = ({ env = process.env, now = new Date() } = 
   const outputDir = path.resolve(env.BACKUP_OUTPUT_DIR || path.resolve(process.cwd(), 'backups', timestamp(now)));
   const maxObjects = Number(env.BACKUP_MAX_OBJECTS || 100_000);
   if (!Number.isSafeInteger(maxObjects) || maxObjects < 1) throw new Error('BACKUP_MAX_OBJECTS must be a positive integer.');
+  const archiveBucket = String(env.BACKUP_ARCHIVE_BUCKET || '').trim();
+  if (env.BACKUP_ARCHIVE_REQUIRED === 'true' && !archiveBucket) throw new Error('BACKUP_ARCHIVE_BUCKET is required when BACKUP_ARCHIVE_REQUIRED=true.');
+  if (archiveBucket && archiveBucket === String(env.S3_BUCKET || '').trim()) throw new Error('BACKUP_ARCHIVE_BUCKET must differ from S3_BUCKET.');
+  const archive = archiveBucket ? {
+    bucket: archiveBucket,
+    region: env.BACKUP_ARCHIVE_REGION || env.S3_REGION,
+    endpoint: env.BACKUP_ARCHIVE_ENDPOINT || env.S3_ENDPOINT || undefined,
+    forcePathStyle: env.BACKUP_ARCHIVE_FORCE_PATH_STYLE === 'true' || (env.BACKUP_ARCHIVE_FORCE_PATH_STYLE === undefined && env.S3_FORCE_PATH_STYLE === 'true'),
+    accessKeyId: env.BACKUP_ARCHIVE_ACCESS_KEY_ID || env.S3_ACCESS_KEY_ID,
+    secretAccessKey: env.BACKUP_ARCHIVE_SECRET_ACCESS_KEY || env.S3_SECRET_ACCESS_KEY,
+    prefix: normalizeArchivePrefix(env.BACKUP_ARCHIVE_PREFIX, now),
+    requireVersioning: env.BACKUP_ARCHIVE_REQUIRE_OBJECT_VERSIONING === 'true',
+    requireLifecycle: env.BACKUP_ARCHIVE_REQUIRE_OBJECT_LIFECYCLE === 'true',
+  } : null;
   return {
     databaseUrl: env.DATABASE_URL,
     bucket: env.S3_BUCKET,
@@ -39,6 +54,7 @@ export const normalizeBackupConfig = ({ env = process.env, now = new Date() } = 
     maxObjects,
     requireObjectVersioning: env.BACKUP_REQUIRE_OBJECT_VERSIONING === 'true',
     requireObjectLifecycle: env.BACKUP_REQUIRE_OBJECT_LIFECYCLE === 'true',
+    archive,
     createdAt: now.toISOString(),
   };
 };
@@ -227,7 +243,7 @@ export const assertObjectRetention = ({ retention, requireVersioning = false, re
   if (requireLifecycle && retention?.lifecycle?.status !== 'configured') throw new Error(`Object lifecycle retention is required but is ${retention?.lifecycle?.status || 'unknown'}.`);
 };
 
-export const buildBackupManifest = ({ config, database, dump, objectManifest, gitSha = null } = {}) => ({
+export const buildBackupManifest = ({ config, database, dump, objectManifest, gitSha = null, archive = config.archive } = {}) => ({
   formatVersion: 1,
   createdAt: config.createdAt,
   releaseVersion,
@@ -248,6 +264,12 @@ export const buildBackupManifest = ({ config, database, dump, objectManifest, gi
     restoreDatabaseWith: 'pg_restore --exit-on-error --no-owner --no-privileges --dbname="$RECOVERY_DATABASE_URL" postgres.dump',
     objectBytesRequireProviderVersioning: true,
   },
+  archive: archive ? {
+    bucket: archive.bucket,
+    prefix: archive.prefix,
+    files: ['postgres.dump', 'objects.json', 'manifest.json'],
+    retention: archive.retention || null,
+  } : null,
 });
 
 const createS3Client = (config) => new S3Client({
@@ -256,6 +278,27 @@ const createS3Client = (config) => new S3Client({
   forcePathStyle: config.forcePathStyle,
   credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
 });
+
+export const archiveBackupFiles = async ({ client, archive, outputDir } = {}) => {
+  if (!client || !archive?.bucket || !archive?.prefix || !outputDir) throw new Error('An archive S3 client, destination, and output directory are required.');
+  const files = [
+    { name: 'postgres.dump', contentType: 'application/octet-stream' },
+    { name: 'objects.json', contentType: 'application/json' },
+    { name: 'manifest.json', contentType: 'application/json' },
+  ];
+  for (const file of files) {
+    const filePath = path.join(outputDir, file.name);
+    const details = await stat(filePath);
+    await client.send(new PutObjectCommand({
+      Bucket: archive.bucket,
+      Key: `${archive.prefix}${file.name}`,
+      Body: createReadStream(filePath),
+      ContentLength: details.size,
+      ContentType: file.contentType,
+    }));
+  }
+  return { bucket: archive.bucket, prefix: archive.prefix, files: files.map(({ name }) => `${archive.prefix}${name}`) };
+};
 
 export const createProductionBackup = async ({ env = process.env, now = new Date(), gitSha = env.GIT_COMMIT || env.RAILWAY_GIT_COMMIT_SHA || null } = {}) => {
   const config = normalizeBackupConfig({ env, now });
@@ -279,15 +322,24 @@ export const createProductionBackup = async ({ env = process.env, now = new Date
   assertObjectRetention({ retention, requireVersioning: config.requireObjectVersioning, requireLifecycle: config.requireObjectLifecycle });
   objectManifest.retention = retention;
   await writeJson(path.join(config.outputDir, 'objects.json'), { formatVersion: 1, createdAt: config.createdAt, bucket: config.bucket, ...objectManifest });
-  const manifest = buildBackupManifest({ config, database, dump, objectManifest, gitSha });
+  let archiveClient;
+  let archive;
+  if (config.archive) {
+    archiveClient = createS3Client(config.archive);
+    const archiveRetention = await auditObjectRetention({ client: archiveClient, bucket: config.archive.bucket });
+    assertObjectRetention({ retention: archiveRetention, requireVersioning: config.archive.requireVersioning, requireLifecycle: config.archive.requireLifecycle });
+    archive = { ...config.archive, retention: archiveRetention };
+  }
+  const manifest = buildBackupManifest({ config, database, dump, objectManifest, gitSha, archive });
   await writeJson(path.join(config.outputDir, 'manifest.json'), manifest);
-  return { outputDir: config.outputDir, manifest };
+  const archiveUpload = archive ? await archiveBackupFiles({ client: archiveClient, archive, outputDir: config.outputDir }) : null;
+  return { outputDir: config.outputDir, manifest, archive: archiveUpload };
 };
 
 const isMainModule = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
 if (isMainModule) {
   createProductionBackup()
-    .then(({ outputDir, manifest }) => console.log(JSON.stringify({ status: 'complete', outputDir, database: manifest.database, objectStore: manifest.objectStore }, null, 2)))
+    .then(({ outputDir, manifest, archive }) => console.log(JSON.stringify({ status: 'complete', outputDir, database: manifest.database, objectStore: manifest.objectStore, archive }, null, 2)))
     .catch((error) => {
       console.error(`Production backup failed: ${error.message}`);
       process.exitCode = 1;
