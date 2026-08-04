@@ -12,7 +12,7 @@
       <img class="mark" src="icons/icon-128.png" alt="" aria-hidden="true" />
       <div><strong>annotated<span>.</span></strong><small>SOURCE-FIRST</small></div>
       <span class="local" id="backendStatus" aria-live="polite"><i></i> CONNECTING</span>
-      <div class="auth-actions" id="authActions" hidden><button type="button" data-auth="google">Google</button><button type="button" data-auth="x">X</button></div>
+      <div class="auth-actions" id="authActions" hidden><button type="button" data-auth="google">Google</button><button type="button" data-auth="x">Sign in with X</button><button type="button" id="signOut" hidden>Sign out</button></div>
     </header>
     <main>
       <p class="eyebrow">Capture</p>
@@ -25,16 +25,30 @@
         </div>
         <div><strong id="sourceTitle">Current browser tab</strong><small id="sourceUrl">Reading the page you are on</small></div>
       </section>
+      <div class="source-actions">
+        <div class="source-types" role="group" aria-label="Source type">
+          <button type="button" data-source-type="video" aria-pressed="false">Video</button>
+          <button type="button" data-source-type="article" aria-pressed="true">Article</button>
+          <button type="button" data-source-type="podcast" aria-pressed="false">Podcast</button>
+        </div>
+        <button class="change-source" id="changeSource" type="button" aria-expanded="false">Paste source</button>
+      </div>
+      <form class="source-form" id="sourceForm" hidden>
+        <label for="sourceInput">Source URL</label>
+        <div><input id="sourceInput" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://…" required><button id="loadSource" type="submit">Load source</button></div>
+        <p id="sourceStatus" role="status" aria-live="polite"></p>
+      </form>
       <section class="selection-card" id="selectionCard" hidden>
-        <div class="selection-label">Selected passage from this tab</div>
-        <p id="selectionText"></p>
+        <label class="selection-label" for="selectionText">Selected passage</label>
+        <textarea id="selectionText" maxlength="2000" aria-describedby="selectionHint"></textarea>
+        <p id="selectionHint">Select text on the page or edit the resolved excerpt before publishing.</p>
       </section>
-      <section class="clip-card">
+      <section class="clip-card" id="clipCard">
         <div class="card-heading"><span>Select a moment</span><b><span id="clipLength">0:48</span> / 1:30 max</b></div>
         <div class="range-console">
           <div class="range-console-meta" aria-hidden="true"><span>Source time</span><span>90 sec window</span></div>
           <div class="track"><span id="trackFill"></span><input id="start" type="range" min="0" max="90" value="14" aria-label="Clip start" aria-valuetext="0:14" /><input id="end" type="range" min="0" max="90" value="62" aria-label="Clip end" aria-valuetext="1:02" /></div>
-          <div class="range-scale" aria-hidden="true"><span>0:00</span><span>0:30</span><span>1:00</span><span>1:30</span></div>
+          <div class="range-scale" id="rangeScale" aria-hidden="true"><span>0:00</span><span>0:30</span><span>1:00</span><span>1:30</span></div>
           <div class="time-fields"><label><span>In</span><input id="startNumber" type="number" min="0" max="90" inputmode="numeric" value="14" aria-label="Clip start seconds" /></label><span class="time-selection" aria-hidden="true"><span>Selected</span><strong id="selectedDuration">0:48</strong></span><label><span>Out</span><input id="endNumber" type="number" min="0" max="90" inputmode="numeric" value="62" aria-label="Clip end seconds" /></label></div>
         </div>
       </section>
@@ -57,6 +71,11 @@
       </section>
       <button class="publish" id="publish" type="button"><span>Publish annotation</span><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12h15M13 6l6 6-6 6" /></svg></button>
       <p class="privacy"><i aria-hidden="true"></i> Nothing is published until you choose to publish.</p>
+      <nav class="product-links" aria-label="Annotated product">
+        <button type="button" data-open-view="feed">Timeline</button>
+        <button type="button" data-open-view="published">Published</button>
+        <button type="button" data-open-view="capture">Open web app</button>
+      </nav>
       <div class="queue-status" id="queueStatus" role="status" aria-live="polite" hidden>
         <span class="queue-dot" aria-hidden="true"></span>
         <div><strong id="queueStatusTitle">Capture waiting to retry</strong><small id="queueStatusDetail"></small></div>

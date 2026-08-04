@@ -24,7 +24,8 @@ web app proxies `/api` to `http://localhost:8787`.
 
 To load the Chrome side panel, open `chrome://extensions`, enable Developer
 mode, choose **Load unpacked**, select [`extension/`](extension/), and set its
-API origin to `http://localhost:8787` in the extension options.
+API origin defaults to Railway staging. Set it to `http://localhost:8787` in
+the extension options only when testing against a local backend.
 
 ## Railway POC staging
 

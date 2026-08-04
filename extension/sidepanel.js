@@ -1,5 +1,5 @@
 import { extensionStorage, PENDING_KEY } from './storage.js';
-import { apiOrigin, authHeaders, signIn } from './config.js';
+import { apiOrigin, authHeaders, signIn, signOut } from './config.js';
 import { clampAudioDuration, MAX_AUDIO_SECONDS, preferredAudioMimeType } from './audio.js';
 import { deleteAudioDraft, readAudioDraft, stageAudioDraft } from './media-draft-store.js';
 import { moveClipBoundary, normalizeClipRange } from './clip-range.js';
@@ -27,7 +27,14 @@ const error = document.querySelector('#error');
 const backendStatus = document.querySelector('#backendStatus');
 const selectionCard = document.querySelector('#selectionCard');
 const selectionText = document.querySelector('#selectionText');
+const clipCard = document.querySelector('#clipCard');
+const rangeScale = document.querySelector('#rangeScale');
 const authActions = document.querySelector('#authActions');
+const signOutButton = document.querySelector('#signOut');
+const sourceForm = document.querySelector('#sourceForm');
+const sourceInput = document.querySelector('#sourceInput');
+const sourceStatus = document.querySelector('#sourceStatus');
+const changeSource = document.querySelector('#changeSource');
 const queueStatus = document.querySelector('#queueStatus');
 const queueStatusTitle = document.querySelector('#queueStatusTitle');
 const queueStatusDetail = document.querySelector('#queueStatusDetail');
@@ -50,6 +57,8 @@ let recordingToken = 0;
 let audioUploadInFlight = false;
 let loadedTabUrl = '';
 let clientRequestId = crypto.randomUUID();
+let rangeMax = 90;
+let availableProviders = {};
 
 const format = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
 
@@ -67,6 +76,49 @@ const showError = (message) => {
   error.textContent = message;
   error.hidden = false;
   success.hidden = true;
+};
+
+const setAuthState = (signedIn) => {
+  signOutButton.hidden = !signedIn;
+  authActions.querySelectorAll('[data-auth]').forEach((button) => { button.hidden = signedIn || !availableProviders[button.dataset.auth]; });
+  authActions.hidden = !signedIn && !Object.values(availableProviders).some(Boolean);
+};
+
+const setSourceStatus = (message, isError = false) => {
+  sourceStatus.textContent = message;
+  sourceStatus.dataset.state = isError ? 'error' : 'ready';
+};
+
+const sourceFromUrl = (url, title = '') => {
+  const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
+  return { url, title: title || host || 'Untitled source', host, sourceType: classify(url), duration: 0 };
+};
+
+const resolveSourceUrl = async (url, fallbackTitle = '') => {
+  const { source } = await apiRequest('/api/sources/resolve', { method: 'POST', body: JSON.stringify({ url }) });
+  return {
+    url: source.canonicalUrl || source.sourceUrl || url,
+    title: source.title || fallbackTitle || source.host || 'Untitled source',
+    host: source.host || sourceFromUrl(url).host,
+    sourceType: source.sourceType || classify(url),
+    duration: Math.max(0, Number(source.duration) || 0),
+    excerpt: source.excerpt || '',
+  };
+};
+
+const syncSource = () => {
+  document.querySelector('#sourceTitle').textContent = currentTab.title;
+  document.querySelector('#sourceUrl').textContent = currentTab.url || 'Source URL unavailable';
+  document.querySelector('#sourceIcon').dataset.sourceType = currentTab.sourceType;
+  document.querySelectorAll('[data-source-type]').forEach((button) => {
+    if (button.id === 'sourceIcon') return;
+    const active = button.dataset.sourceType === currentTab.sourceType;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+  clipCard.hidden = currentTab.sourceType === 'article';
+  selectionCard.hidden = currentTab.sourceType !== 'article';
+  selectionText.value = selectedText;
 };
 
 const refreshQueueStatus = async () => {
@@ -92,7 +144,7 @@ const retryQueuedCaptures = async () => {
   const needsAuth = captures.some((capture) => capture.status === 'needs-auth');
   if (needsAuth && !(await extensionStorage.getAuthToken().catch(() => null))) {
     showError('Your session expired. Sign in again before retrying this capture.');
-    authActions.hidden = false;
+    setAuthState(false);
     return;
   }
   for (const capture of captures) await extensionStorage.retryPendingCapture(capture.id);
@@ -299,20 +351,23 @@ const saveDraft = () => {
 };
 
 function syncRange({ save = true } = {}) {
-  const { start: from, end: to } = normalizeClipRange(start.value, end.value, { allowEmpty: currentTab.sourceType === 'article' });
+  const { start: from, end: to } = normalizeClipRange(start.value, end.value, { max: rangeMax, allowEmpty: currentTab.sourceType === 'article' });
   start.value = startNumber.value = from;
   end.value = endNumber.value = to;
   clipLength.textContent = format(to - from);
   selectedDuration.textContent = format(to - from);
   start.setAttribute('aria-valuetext', format(from));
   end.setAttribute('aria-valuetext', format(to));
-  trackFill.style.left = `${from / 90 * 100}%`;
-  trackFill.style.width = `${(to - from) / 90 * 100}%`;
+  trackFill.style.left = `${from / rangeMax * 100}%`;
+  trackFill.style.width = `${(to - from) / rangeMax * 100}%`;
+  for (const input of [start, end, startNumber, endNumber]) input.max = String(rangeMax);
+  [...rangeScale.children].forEach((label, index) => { label.textContent = format(rangeMax * index / 3); });
   if (save) saveDraft();
 }
 
 function moveRange(boundary, value) {
-  const range = moveClipBoundary(start.value, end.value, boundary, value, { allowEmpty: currentTab.sourceType === 'article' });
+  rangeMax = Math.max(rangeMax, Math.ceil(Number(value) || 0), 90);
+  const range = moveClipBoundary(start.value, end.value, boundary, value, { max: rangeMax, allowEmpty: currentTab.sourceType === 'article' });
   start.value = range.start;
   end.value = range.end;
   syncRange();
@@ -342,6 +397,7 @@ async function resetForNewTab(sourceType) {
   audioDurationSeconds = 0;
   audioDraftId = '';
   clientRequestId = crypto.randomUUID();
+  rangeMax = 90;
   note.value = '';
   const defaults = sourceType === 'podcast' ? [10, 64] : sourceType === 'video' ? [14, 62] : [0, 0];
   start.value = startNumber.value = defaults[0];
@@ -360,22 +416,25 @@ async function loadCurrentTab() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) return;
     const url = tab.url || '';
-    const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
-    const sourceType = classify(url);
+    const fallback = sourceFromUrl(url, tab.title || 'Current browser tab');
+    const sourceType = fallback.sourceType;
     if (loadedTabUrl && loadedTabUrl !== url) await resetForNewTab(sourceType);
     loadedTabUrl = url;
-    currentTab = { url, title: tab.title || 'Current browser tab', host, sourceType };
-    document.querySelector('#sourceTitle').textContent = currentTab.title;
-    document.querySelector('#sourceUrl').textContent = url || 'Source URL unavailable';
-    document.querySelector('#sourceIcon').dataset.sourceType = currentTab.sourceType;
+    currentTab = fallback;
+    try {
+      currentTab = await resolveSourceUrl(url, currentTab.title);
+      setSourceStatus('Source details resolved by Annotated.');
+    } catch {
+      setSourceStatus('Using page details; source metadata could not be resolved.', true);
+    }
     selectedText = tab.id ? await readSelection(tab.id) : '';
-    selectionCard.hidden = !selectedText;
-    selectionText.textContent = selectedText;
+    selectedText ||= currentTab.excerpt || '';
+    rangeMax = Math.max(90, Math.ceil(currentTab.duration || 0));
+    syncSource();
     const draft = await extensionStorage.getDraft().catch(() => null);
     if (draft?.sourceUrl === currentTab.url) {
       selectedText = draft.sourceExcerpt || selectedText;
-      selectionCard.hidden = !selectedText;
-      selectionText.textContent = selectedText;
+      selectionText.value = selectedText;
       start.value = startNumber.value = draft.clipStart;
       end.value = endNumber.value = draft.clipEnd;
       note.value = draft.commentary;
@@ -390,6 +449,7 @@ async function loadCurrentTab() {
       button.classList.toggle('active', active);
       button.setAttribute('aria-pressed', String(active));
     });
+      rangeMax = Math.max(rangeMax, Math.ceil(Number(draft.clipEnd) || 0));
       syncRange();
       syncNote();
     }
@@ -413,9 +473,10 @@ async function checkBackend() {
     await apiRequest('/api/health');
     backendStatus.innerHTML = '<i></i> LIVE';
     const auth = await apiRequest('/api/auth/providers').catch(() => ({ providers: {} }));
-    const providers = auth.providers || {};
-    authActions.hidden = !(providers.google || providers.x);
-    authActions.querySelectorAll('[data-auth]').forEach((button) => { button.hidden = !providers[button.dataset.auth]; });
+    availableProviders = auth.providers || {};
+    const signedIn = Boolean(await extensionStorage.getAuthToken().catch(() => null));
+    if (signedIn) await apiRequest('/api/me').catch(async () => { await extensionStorage.clearAuthSession(); });
+    setAuthState(Boolean(await extensionStorage.getAuthToken().catch(() => null)));
     await refreshQueueStatus();
   } catch {
     backendStatus.innerHTML = '<i></i> OFFLINE';
@@ -426,7 +487,7 @@ async function checkBackend() {
 authActions.querySelectorAll('[data-auth]').forEach((button) => button.addEventListener('click', async () => {
   try {
     await signIn(button.dataset.auth);
-    authActions.hidden = true;
+    setAuthState(true);
     error.hidden = true;
     error.textContent = '';
     await chrome.runtime.sendMessage({ type: 'RETRY_PENDING' }).catch(() => {});
@@ -434,6 +495,56 @@ authActions.querySelectorAll('[data-auth]').forEach((button) => button.addEventL
   } catch (authError) {
     showError(authError.message || 'Sign-in failed.');
   }
+}));
+
+signOutButton.addEventListener('click', async () => {
+  try {
+    await signOut();
+    setAuthState(false);
+    error.hidden = true;
+  } catch (signOutError) { showError(signOutError.message || 'Sign out failed.'); }
+});
+
+changeSource.addEventListener('click', () => {
+  sourceForm.hidden = !sourceForm.hidden;
+  changeSource.setAttribute('aria-expanded', String(!sourceForm.hidden));
+  if (!sourceForm.hidden) { sourceInput.value = currentTab.url; sourceInput.focus(); }
+});
+
+sourceForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const url = sourceInput.value.trim();
+  setSourceStatus('Resolving source…');
+  try {
+    const resolved = await resolveSourceUrl(url);
+    if (loadedTabUrl !== resolved.url) await resetForNewTab(resolved.sourceType);
+    currentTab = resolved;
+    loadedTabUrl = resolved.url;
+    selectedText = resolved.excerpt || '';
+    rangeMax = Math.max(90, Math.ceil(resolved.duration || 0));
+    syncSource();
+    syncRange();
+    draftReady = true;
+    saveDraft();
+    setSourceStatus('Source ready.');
+  } catch (resolveError) { setSourceStatus(resolveError.message || 'Source could not be loaded.', true); }
+});
+
+document.querySelectorAll('.source-types [data-source-type]').forEach((button) => button.addEventListener('click', async () => {
+  const sourceType = button.dataset.sourceType;
+  if (sourceType === currentTab.sourceType) return;
+  currentTab = { ...currentTab, sourceType };
+  selectedText = sourceType === 'article' ? selectedText : '';
+  syncSource();
+  syncRange();
+  saveDraft();
+}));
+
+selectionText.addEventListener('input', () => { selectedText = selectionText.value.slice(0, 2000); saveDraft(); });
+
+document.querySelectorAll('[data-open-view]').forEach((button) => button.addEventListener('click', async () => {
+  const origin = await apiOrigin();
+  await chrome.tabs.create({ url: `${origin}/?view=${encodeURIComponent(button.dataset.openView)}` });
 }));
 
 queueRetry.addEventListener('click', () => { void retryQueuedCaptures(); });
@@ -508,7 +619,7 @@ document.querySelector('#publish').addEventListener('click', async () => {
   } catch (publishError) {
     if (publishError.authRequired) {
       await extensionStorage.queueCapture({ ...payload, audioDraftId }).catch(() => {});
-      authActions.hidden = false;
+      setAuthState(false);
       showError('Your session expired. Sign in again; this capture is safe in the local queue.');
       await refreshQueueStatus();
     } else if (publishError.retryable) {

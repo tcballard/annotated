@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compactDraft, compactPending, extensionStorage, MAX_PENDING_ATTEMPTS, MAX_PENDING_CAPTURES, normalizeApiOrigin } from '../extension/storage.js';
-import { signIn } from '../extension/config.js';
+import { compactDraft, compactPending, DEFAULT_API_ORIGIN, extensionStorage, MAX_PENDING_ATTEMPTS, MAX_PENDING_CAPTURES, normalizeApiOrigin } from '../extension/storage.js';
+import { signIn, signOut } from '../extension/config.js';
 
 test('extension drafts remain bounded metadata and never retain media blobs', () => {
   const draft = compactDraft({
@@ -19,6 +19,13 @@ test('extension drafts remain bounded metadata and never retain media blobs', ()
   assert.equal(draft.audioDraftId, 'draft-1');
   assert.equal('blob' in draft, false);
   assert.equal(JSON.stringify(draft).includes('secret audio'), false);
+});
+
+test('extension drafts preserve absolute source time while bounding clip and audio duration', () => {
+  const draft = compactDraft({ clipStart: 3660, clipEnd: 3750, audioDuration: 120 });
+  assert.equal(draft.clipStart, 3660);
+  assert.equal(draft.clipEnd, 3750);
+  assert.equal(draft.audioDuration, 90);
 });
 
 test('pending captures stay bounded and preserve only retry metadata', () => {
@@ -103,7 +110,7 @@ test('deployed extension origins require HTTPS while local development remains u
   assert.throws(() => normalizeApiOrigin('file:///tmp/api'), /http or https/);
 });
 
-test('tampered stored API origins fall back to the local development origin', async () => {
+test('tampered stored API origins fall back to the deployed staging origin', async () => {
   const previousChrome = globalThis.chrome;
   globalThis.chrome = {
     storage: {
@@ -113,9 +120,35 @@ test('tampered stored API origins fall back to the local development origin', as
     },
   };
   try {
-    assert.equal(await extensionStorage.getApiOrigin(), 'http://localhost:8787');
+    assert.equal(await extensionStorage.getApiOrigin(), DEFAULT_API_ORIGIN);
   } finally {
     globalThis.chrome = previousChrome;
+  }
+});
+
+test('extension sign out invalidates the server session then clears browser session storage', async () => {
+  const previousChrome = globalThis.chrome;
+  const previousFetch = globalThis.fetch;
+  let removed = '';
+  globalThis.chrome = {
+    storage: {
+      local: { async get() { return {}; } },
+      session: {
+        async get() { return { annotatedSession: { token: 'session-token' } }; },
+        async remove(key) { removed = key; },
+      },
+    },
+  };
+  globalThis.fetch = async (_url, options) => {
+    assert.equal(options.headers.authorization, 'Bearer session-token');
+    return { ok: true, async json() { return { ok: true }; } };
+  };
+  try {
+    await signOut();
+    assert.equal(removed, 'annotatedSession');
+  } finally {
+    globalThis.chrome = previousChrome;
+    globalThis.fetch = previousFetch;
   }
 });
 

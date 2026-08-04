@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA10kSNtGDmwTQcS2WQ+aVTVTp/nuBl1D5xeIqAV91QQRrXUVuLrspuNGq2PD0YWvHI2ucy5y7NCRzaD48E4jgB7kPm59ThOiXuBv39dgvcuLiH56yueBC0+2roN42APmgvgG7CiSMooeJPw6rIr78blDhc3um4vp3+nf3KSsGFD7gvBlUS7APgSj9jqukbFyhKmVpz+aXoePDzNvG0StCRR9DXFMykjfeTcIn29ifI8sHREd5VhTvxvUer8q/60evZZ8quhwFCIsrioH2AlzK1qFIpNwIB9AgIYXIM4n4heGZbS8jMKs3dL7yoFXUwTJ1q5GXOpn0t+1KnabneTwyhQIDAQAB",
   "name": "annotated — keep the moment",
   "version": "0.1.0",
   "minimum_chrome_version": "114",

@@ -23,14 +23,16 @@ Keep the moment before it disappears. Annotated lets you capture a passage or a 
 
 FEATURES
 • Capture selected text from the active page.
+• Paste another source and resolve its canonical metadata through Annotated.
 • Choose a bounded video or podcast moment, with a 90-second maximum.
 • Add a short written note or a recorded audio note.
 • Save a draft when the service is unavailable and retry it later.
 • Keep queued captures safe when a sign-in session expires, then retry after sign-in.
 • Open the published annotation page and share its source-backed link.
+• Follow the operating system's light or dark appearance automatically.
 
 HOW TO USE
-1. Load the extension and set the Annotated API origin in its settings.
+1. Load the extension; the release build connects to Annotated staging by default.
 2. Open a page and click the Annotated toolbar icon to open the sidebar.
 3. Select text or adjust the moment controls, then add your context.
 4. Choose Publish annotation when you are ready to share it.
@@ -148,14 +150,14 @@ remain external gates.
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 0.1.0 | 2026-08-04 | Initial sidebar capture plus bounded retry queue, session-expiry recovery, selected-text capture, the light chronograph range control shared with the web capture desk, written/audio notes, and source-backed publishing flow. | Draft |
+| 0.1.0 | 2026-08-04 | Initial sidebar capture plus deployed staging default, stable extension identity, server-resolved source switching, bounded retry queue, sign-in/sign-out recovery, selected-text capture, system light/dark appearance, the chronograph range control shared with the web capture desk, written/audio notes, and source-backed publishing flow. | Draft |
 
 ## Review Notes
 
 ### Known Issues / Limitations
 
 - Current screenshots, public privacy-policy URL verification, and a monitored publisher email are still required before submission. The approved, checksummed brand kit is preserved at `assets/brand/annotated-brand-kit/`; the extension icons are copied verbatim from its Chrome-specific exports by `scripts/generate-extension-icons.mjs`, and the supplied promo artwork is staged in `store-assets/`. The policy source is included in `public/privacy.html` and copied into `dist/` by the Vite build.
-- The extension requires a configured Annotated backend. Local development uses `http://localhost:8787`; deployed API origins must be HTTPS.
+- The release build defaults to `https://annotated-staging.up.railway.app`; local development may use `http://localhost:8787`, and other deployed API origins must be HTTPS.
 - X OAuth, PostgreSQL/S3 media delivery, real provider fixture extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates. Google is intentionally disabled for this POC. Queued captures now remain visible when authentication expires and can be retried after sign-in. The production image now includes a pinned, SHA-256-verified `yt-dlp` runtime, but that does not replace a real provider fixture run.
 - The broad page host permissions are intentional because the product works on the user-selected active page, but the sidebar only reads and publishes data after an explicit user action.
 - If Google sign-in is enabled for the extension, update the OAuth client with the Chrome Web Store-assigned extension ID after publishing.

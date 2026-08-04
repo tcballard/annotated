@@ -199,3 +199,101 @@
   .range-console .time-fields label { grid-template-columns: 1fr; }
   .range-console .time-fields input { text-align: left; }
 }
+
+.auth-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; margin-left: auto; }
+.auth-actions button,
+.source-actions button,
+.source-form button,
+.product-links button {
+  min-height: 44px;
+  padding: 7px 9px;
+  border: 1px solid var(--color-line);
+  border-radius: 2px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  text-transform: uppercase;
+}
+.auth-actions button:hover,
+.source-actions button:hover,
+.source-form button:hover,
+.product-links button:hover { border-color: var(--color-text); background: var(--color-accent); }
+
+.source-actions { display: flex; align-items: stretch; gap: 7px; margin: 10px 0 14px; }
+.source-types { display: grid; grid-template-columns: repeat(3, 1fr); flex: 1; gap: 4px; }
+.source-types button[aria-pressed="true"] { border-color: var(--color-text); background: var(--color-text); color: var(--color-surface); }
+.change-source { flex: 0 0 auto; }
+.source-form { margin: -4px 0 14px; padding: 12px; border: 1px solid var(--color-line); background: var(--color-surface); }
+.source-form label { display: block; color: var(--color-muted); font-family: var(--font-mono); font-size: 8px; letter-spacing: .08em; text-transform: uppercase; }
+.source-form > div { display: flex; gap: 6px; margin-top: 7px; }
+.source-form input { min-width: 0; min-height: 44px; flex: 1; padding: 8px 9px; border: 1px solid var(--color-line); background: var(--color-bg); color: var(--color-text); font-size: 12px; }
+.source-form p { min-height: 14px; margin: 7px 0 0; color: var(--color-muted); font-size: 9px; }
+.source-form p[data-state="error"] { color: #9a3f2e; }
+
+.selection-card textarea { display: block; width: 100%; min-height: 88px; resize: vertical; margin-top: 8px; padding: 9px; border: 1px solid rgba(49, 94, 68, .28); background: var(--color-surface); color: var(--color-text); font-family: Georgia, serif; font-size: 13px; line-height: 1.35; }
+.selection-card p { max-height: none; overflow: visible; color: var(--color-muted); font-family: var(--font-mono); font-size: 8px; }
+.card-heading { color: var(--color-muted); }
+
+.product-links { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 12px; }
+.product-links button { padding-right: 4px; padding-left: 4px; }
+
+@media (max-width: 360px) {
+  .panel-header { flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; }
+  .auth-actions { width: 100%; justify-content: flex-start; margin-left: 0; }
+  .source-actions { align-items: stretch; flex-direction: column; }
+  .source-form > div { flex-direction: column; }
+  .product-links { grid-template-columns: 1fr; }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-text: #f3f1ed;
+    --color-muted: #aba79f;
+    --color-bg: #171817;
+    --color-surface: #222321;
+    --color-line: #44443f;
+    --color-accent: #d16a54;
+    --color-success: #243a2e;
+  }
+  body { background: var(--color-bg); color: var(--color-text); }
+  .panel-header,
+  .current-source,
+  .source-form,
+  .clip-card,
+  .note-card,
+  .queue-status,
+  .success { background: var(--color-surface); color: var(--color-text); }
+  .mark { background: var(--color-bg); }
+  .source-icon,
+  .range-console,
+  .range-console .time-fields input,
+  .source-form input,
+  .selection-card textarea { background: #1c1d1c; color: var(--color-text); }
+  .selection-card { border-color: #476452; background: #203027; }
+  .selection-label,
+  .selection-card p,
+  .audio-composer small,
+  .audio-duration { color: #a9c9b3; }
+  .selection-card textarea { border-color: #476452; }
+  .audio-composer { border-color: #476452; background: #203027; }
+  .panel-error { border-color: #7d493f; background: #35231f; color: #efad9e; }
+  .success { border-color: #476452; }
+  .success small,
+  .success a { color: #a9c9b3; }
+  .range-console {
+    --range-surface: #222321;
+    --range-surface-raised: #1a1b1a;
+    --range-ink: #f3f1ed;
+    --range-muted: #aba79f;
+    --range-line: #44443f;
+    --range-tick: rgba(243, 241, 237, .30);
+    --range-tick-strong: rgba(243, 241, 237, .16);
+    --range-selection: rgba(209, 106, 84, .24);
+    box-shadow: 0 5px 12px rgba(0, 0, 0, .25);
+  }
+  .time-selection strong { color: #e1816c; }
+  .publish { background: var(--color-text); color: var(--color-bg); }
+  .publish:hover { background: var(--color-accent); color: #171817; }
+}

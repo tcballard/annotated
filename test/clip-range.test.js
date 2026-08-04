@@ -28,3 +28,9 @@ test('extension and web range guards share the same crossing behavior', () => {
   assert.deepEqual(extensionRange.moveClipBoundary(14, 62, 'end', 2), { start: 14, end: 15 });
   assert.deepEqual(extensionRange.normalizeClipRange(0, 0, { allowEmpty: true }), { start: 0, end: 0 });
 });
+
+test('absolute media positions can select a bounded window beyond the first 90 seconds', () => {
+  assert.deepEqual(normalizeClipRange(1200, 1400, { max: 3600 }), { start: 1200, end: 1290 });
+  assert.deepEqual(moveClipBoundary(1200, 1290, 'start', 1100, { max: 3600 }), { start: 1200, end: 1290 });
+  assert.deepEqual(moveClipBoundary(1200, 1290, 'end', 1500, { max: 3600 }), { start: 1200, end: 1290 });
+});

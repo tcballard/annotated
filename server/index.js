@@ -19,6 +19,7 @@ import { canUseAudioAsset } from './media-access.js';
 import { metricsSnapshot, recordRequest } from './observability.js';
 import { findIdempotentAnnotation } from './idempotency.js';
 import { findActiveClaim, validateClaimTransition } from './moderation.js';
+import { resolveCorsOrigin } from './cors.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
@@ -27,11 +28,12 @@ const { version: releaseVersion } = require('../package.json');
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || '127.0.0.1';
 const publicOrigin = process.env.PUBLIC_ORIGIN || `http://localhost:${port}`;
-const corsOrigin = process.env.CORS_ORIGIN || '*';
+const defaultCorsOrigin = resolveCorsOrigin('');
 
 const send = (response, status, body, headers = {}) => {
   const payload = typeof body === 'string' ? body : JSON.stringify(body);
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...securityHeaders({ api: true }), 'access-control-allow-origin': corsOrigin, 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type, authorization, x-request-id', ...(corsOrigin === '*' ? {} : { 'access-control-allow-credentials': 'true', vary: 'Origin' }), ...headers });
+  const corsOrigin = response.annotatedCorsOrigin || defaultCorsOrigin;
+  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...securityHeaders({ api: true }), 'access-control-allow-origin': corsOrigin, 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type, authorization, x-request-id', ...(corsOrigin === '*' || corsOrigin === 'null' ? {} : { 'access-control-allow-credentials': 'true', vary: 'Origin' }), ...headers });
   response.end(payload);
 };
 
@@ -425,7 +427,9 @@ const server = http.createServer(async (request, response) => {
     console.info(JSON.stringify({ event: 'http_request', requestId: id, method: request.method, path: url.pathname, status: response.statusCode, durationMs: Math.round(durationMs) }));
   });
   try {
-    if (url.pathname.startsWith('/api/') && corsOrigin !== '*' && request.headers.origin && request.headers.origin !== corsOrigin) return send(response, 403, { error: 'Request origin is not allowed.' }, { 'access-control-allow-origin': 'null' });
+    const requestCorsOrigin = resolveCorsOrigin(request.headers.origin || '');
+    response.annotatedCorsOrigin = requestCorsOrigin || 'null';
+    if (url.pathname.startsWith('/api/') && request.headers.origin && !requestCorsOrigin) return send(response, 403, { error: 'Request origin is not allowed.' });
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) return send(response, 204, '');
     if (request.method === 'GET' && url.pathname.startsWith('/media/')) return serveMedia(response, url.pathname.slice('/media/'.length));
     if (url.pathname.startsWith('/api/')) {

@@ -1585,3 +1585,35 @@ body {
   .range-console .time-fields label { grid-template-columns: 1fr; }
   .range-console .time-fields input { text-align: left; }
 }
+
+/* Follow the operating-system appearance without storing a second preference. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ink: #f0eee8;
+    --ink-soft: #cfcbc2;
+    --muted: #aaa69e;
+    --paper: #171817;
+    --paper-deep: #20211f;
+    --surface: #252623;
+    --line: #44443f;
+    --line-dark: #686760;
+    --orange: #d7735d;
+    --orange-deep: #ed927d;
+    --mint: #263a31;
+    --blue: #27373c;
+    --yellow: #403923;
+    --shadow: 0 8px 22px rgba(0, 0, 0, .25);
+    --shadow-dark: 0 12px 28px rgba(0, 0, 0, .4);
+    --range-tick: rgba(240, 238, 232, .30);
+    --range-tick-strong: rgba(240, 238, 232, .16);
+    --range-selection: rgba(215, 115, 93, .26);
+  }
+
+  .app-header, .clip-editor, .highlight-preview { background: var(--surface); }
+  .commentary-editor textarea::placeholder,
+  .comment-row input::placeholder { color: #918e87; }
+  .feed-video, .annotation-hero.video { filter: saturate(.82) brightness(.82); }
+  .share-url { border-color: rgba(240, 238, 232, .22); background: rgba(23, 24, 23, .38); }
+  .share-card p { color: var(--ink-soft); }
+}
