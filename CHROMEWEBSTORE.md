@@ -1,6 +1,6 @@
 # Chrome Web Store Listing — annotated — keep the moment
 
-> Last Updated: 2026-08-02
+> Last Updated: 2026-08-04
 >
 > Status: v0.1.0 pre-submission draft. It has not been submitted, reviewed, or
 > published. This document is the source of truth for a future Chrome Web Store
@@ -70,7 +70,8 @@ English
 | Screenshot 1 | 1280×800 or 640×400 | 🟡 Needs capture | `store-assets/screenshot-1.png` |
 | Screenshot 2 | 1280×800 or 640×400 | ⬜ Not created | `store-assets/screenshot-2.png` |
 | Screenshot 3 | 1280×800 or 640×400 | ⬜ Not created | `store-assets/screenshot-3.png` |
-| Small Promo Tile | 440×280 | ⬜ Not created | `store-assets/promo-440x280.png` |
+| Small Promo Tile | 440×280 | ✅ Ready | `store-assets/promo-440x280.png` |
+| Marquee Promo Tile | 1400×560 | ✅ Ready | `store-assets/marquee-1400x560.png` |
 
 ### Screenshot Notes
 
@@ -153,7 +154,7 @@ remain external gates.
 
 ### Known Issues / Limitations
 
-- Screenshots, promo artwork, public privacy-policy URL verification, and monitored publisher email are still required before submission. The supplied mark is preserved at `assets/brand/annotated-mark-source.jpg`, with square derivatives in `assets/brand/` and deterministic copies produced by `scripts/generate-extension-icons.mjs`; the policy source is included in `public/privacy.html` and copied into `dist/` by the Vite build.
+- Current screenshots, public privacy-policy URL verification, and a monitored publisher email are still required before submission. The approved, checksummed brand kit is preserved at `assets/brand/annotated-brand-kit/`; the extension icons are copied verbatim from its Chrome-specific exports by `scripts/generate-extension-icons.mjs`, and the supplied promo artwork is staged in `store-assets/`. The policy source is included in `public/privacy.html` and copied into `dist/` by the Vite build.
 - The extension requires a configured Annotated backend. Local development uses `http://localhost:8787`; deployed API origins must be HTTPS.
 - X OAuth, PostgreSQL/S3 media delivery, real provider fixture extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates. Google is intentionally disabled for this POC. Queued captures now remain visible when authentication expires and can be retried after sign-in. The production image now includes a pinned, SHA-256-verified `yt-dlp` runtime, but that does not replace a real provider fixture run.
 - The broad page host permissions are intentional because the product works on the user-selected active page, but the sidebar only reads and publishes data after an explicit user action.

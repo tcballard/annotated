@@ -793,16 +793,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
    action stayed close together. This layer gives that grammar to Annotated
    without turning the product into a nostalgia skin or a card dashboard. */
 :root {
-  --ink: #292c2a;
-  --ink-soft: #505852;
-  --muted: #7c847d;
-  --paper: #efede7;
-  --paper-deep: #e4e1d8;
+  --ink: #212121;
+  --ink-soft: #4f4f4c;
+  --muted: #777773;
+  --paper: #f3f1ed;
+  --paper-deep: #e8e5df;
   --surface: #fbfaf5;
-  --line: #d2d0c7;
-  --line-dark: #4b4d47;
-  --orange: #b45f49;
-  --orange-deep: #914737;
+  --line: #d5d1ca;
+  --line-dark: #484744;
+  --orange: #c15a45;
+  --orange-deep: #984432;
   --mint: #dfe8df;
   --blue: #e2e8e6;
   --yellow: #e9e2cf;
@@ -812,7 +812,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   --radius-md: 6px;
   --radius-lg: 10px;
   --motion: 150ms cubic-bezier(.2, .7, .2, 1);
-  --focus-ring: 0 0 0 3px rgba(180, 95, 73, .2);
+  --focus-ring: 0 0 0 3px rgba(193, 90, 69, .2);
 }
 
 html, body {

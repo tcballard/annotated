@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-labelledby="title desc">
+  <title id="title">Annotated primary logo</title>
+  <desc id="desc">A bold geometric lowercase a followed by a terracotta period.</desc>
+  
+  <g id="annotated-mark">
+    <path id="letter-a" d="M 334 -218 Q 283 -218 252 -207 Q 221 -196 221 -166 Q 221 -155 226 -147.5 Q 231 -140 239 -135 Q 247 -130 256.5 -127.5 Q 266 -125 274 -125 Q 307 -125 327 -146 Q 347 -167 347 -200 L 347 -218 Z M 332 -334 Q 332 -358 315.5 -369.5 Q 299 -381 272 -381 Q 240 -381 211.5 -367.5 Q 183 -354 161 -336 L 46 -450 Q 94 -496 160 -521 Q 226 -546 296 -546 Q 371 -546 420 -525 Q 469 -504 497.5 -467 Q 526 -430 537.5 -381 Q 549 -332 549 -277 L 549 0 L 340 0 L 340 -42 L 338 -42 Q 318 -12 281 1 Q 244 14 209 14 Q 178 14 145.5 5 Q 113 -4 86.5 -24 Q 60 -44 43 -76 Q 26 -108 26 -155 Q 26 -210 54.5 -244.5 Q 83 -279 127 -298.5 Q 171 -318 225.5 -325 Q 280 -332 332 -332 Z" transform="translate(60.285714 794.000000) scale(1.142857)" fill="#212121"/>
+    <circle id="period" cx="772" cy="690" r="120" fill="#C15A45"/>
+  </g>
+</svg>

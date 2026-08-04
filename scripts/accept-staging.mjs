@@ -112,7 +112,7 @@ assert.ok(Array.isArray(feed.annotations));
 assert.equal(feed.annotations.length <= 3, true);
 
 const { body: root } = await request('/');
-assert.match(root, /annotated-mark-32\.png/);
+assert.match(root, /\/brand\/favicon\.svg/);
 assert.match(root, /keep the moment/i);
 
 const { body: privacy } = await request('/privacy.html');

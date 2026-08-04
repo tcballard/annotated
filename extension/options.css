@@ -1,12 +1,12 @@
 :root {
   color-scheme: light;
-  --canvas: #eeece6;
+  --canvas: #f3f1ed;
   --surface: #fffefa;
-  --paper: #f4f1e9;
-  --ink: #222522;
+  --paper: #f3f1ed;
+  --ink: #212121;
   --muted: #757a73;
   --line: #d7d8d0;
-  --accent: #c95e47;
+  --accent: #c15a45;
   --accent-soft: #f4d8cc;
   --focus: #174f68;
   --display: Georgia, 'Times New Roman', serif;

@@ -65,6 +65,8 @@ acceptance source, not this README.
 
 ## Useful references
 
+- [Approved brand kit](assets/brand/annotated-brand-kit/README.md)
+- [Brand guidelines](assets/brand/annotated-brand-kit/guidelines/annotated-brand-guidelines.pdf)
 - [Product contract](PRODUCT.md)
 - [Acceptance evidence](ACCEPTANCE_EVIDENCE.md)
 - [Dated acceptance-gap audit](ACCEPTANCE_GAP_AUDIT_2026-08-04.md)
