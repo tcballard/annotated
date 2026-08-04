@@ -274,7 +274,7 @@ const setSource = (type) => {
   if (type === 'article') { state.clipStart = 0; state.clipEnd = 0; state.articleExcerpt = sourceData.article.excerpt; }
   state.showSourceInput = false;
   persist();
-  render();
+  renderCapture();
 };
 
 const source = () => state.customSource || sourceData[state.sourceType];
@@ -456,8 +456,10 @@ const podcastCanvas = () => `
     <div class="media-player"><span class="player-time">${formatTime(state.clipStart)}</span><div class="player-line"><span class="player-progress" style="width: 24%"></span></div><span class="player-time">46:04</span></div>
   </div>`;
 
+const sourceCanvasMarkup = () => state.sourceType === 'video' ? videoCanvas() : state.sourceType === 'article' ? articleCanvas() : podcastCanvas();
+
 const sourceCanvas = () => {
-  const canvas = state.sourceType === 'video' ? videoCanvas() : state.sourceType === 'article' ? articleCanvas() : podcastCanvas();
+  const canvas = sourceCanvasMarkup();
   return `<section class="source-stage source-spine-stage">
     <div class="stage-header"><div><span class="eyebrow">Source</span><h1>${escapeHTML(source().title)}</h1></div><button class="ghost-button" data-action="toggle-source-input">${icon('link')} Change</button></div>
     ${state.showSourceInput ? `<div class="source-input-row"><label for="source-url">Paste a source URL</label><div class="source-input-wrap">${icon('link')}<input id="source-url" data-action="source-url" value="${escapeHTML(state.sourceUrl)}" /><button data-action="load-source" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Load'}</button></div><p>Metadata stays attached to the original link.</p>${state.sourceError ? `<p class="source-error" role="alert">${escapeHTML(state.sourceError)}</p>` : ''}</div>` : ''}
@@ -596,6 +598,67 @@ const toast = () => state.toast ? `<div class="toast" role="status"><span class=
 
 const render = () => {
   app.innerHTML = `${appHeader()}${authStateView()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : state.activeView === 'profile' ? profileView() : publishedView()}</main></div>${toast()}`;
+};
+
+const elementFromMarkup = (markup) => {
+  const template = document.createElement('template');
+  template.innerHTML = markup.trim();
+  return template.content.firstElementChild;
+};
+
+const renderCapture = () => {
+  if (state.activeView !== 'capture') {
+    render();
+    return;
+  }
+
+  const sourceStage = app.querySelector('.source-spine-stage');
+  const sidebar = app.querySelector('.source-spine-note');
+  if (!sourceStage || !sidebar) {
+    render();
+    return;
+  }
+
+  // Keep the shell, grid, and scroll context in place. Replacing the entire
+  // app for a source-tab click causes a visible blank paint in Chrome while
+  // the large preview is reconstructed. Only the source-specific regions
+  // need to change here; delegated event listeners continue to work.
+  const sourceTitle = sourceStage.querySelector('.stage-header h1');
+  if (sourceTitle) sourceTitle.textContent = source().title;
+
+  const sourceInput = sourceStage.querySelector('.source-input-row');
+  if (!state.showSourceInput && sourceInput) sourceInput.remove();
+  if (state.showSourceInput && !sourceInput) {
+    render();
+    return;
+  }
+
+  const browser = sourceStage.querySelector('.browser-chrome');
+  const nextBrowser = elementFromMarkup(browserChrome());
+  if (browser && nextBrowser) browser.replaceWith(nextBrowser);
+
+  const browserPage = sourceStage.querySelector('.browser-page');
+  if (browserPage) browserPage.innerHTML = sourceCanvasMarkup();
+
+  const nextStage = elementFromMarkup(sourceCanvas());
+  const currentFooter = sourceStage.querySelector('.source-spine-footer');
+  const nextFooter = nextStage?.querySelector('.source-spine-footer');
+  if (currentFooter && nextFooter) currentFooter.replaceWith(nextFooter);
+
+  sidebar.querySelectorAll('.source-type').forEach((buttonElement) => {
+    const active = buttonElement.dataset.type === state.sourceType;
+    buttonElement.classList.toggle('is-active', active);
+    buttonElement.setAttribute('aria-pressed', String(active));
+  });
+  const currentRange = sidebar.querySelector('.clip-editor, .highlight-preview');
+  const nextRange = elementFromMarkup(timeRange());
+  if (currentRange && nextRange) currentRange.replaceWith(nextRange);
+
+  const railSource = app.querySelector('.rail-source');
+  const railGlyph = railSource?.querySelector('.source-glyph');
+  const railHost = railSource?.querySelector('span:last-child');
+  if (railGlyph) railGlyph.innerHTML = icon(state.sourceType);
+  if (railHost) railHost.textContent = source().host;
 };
 
 const setClipBoundary = (boundary, value) => {

@@ -82,6 +82,19 @@ test('deployment documents the non-destructive production backup audit', async (
   assert.match(workflow, /RECOVERY_DATABASE_URL:\s+postgresql:\/\/annotated:annotated@127\.0\.0\.1:5432\/annotated_recovery_ci/);
 });
 
+test('operator backup archive requires a distinct retained archive bucket', async () => {
+  const backup = await readFile(new URL('../scripts/backup-production.mjs', import.meta.url), 'utf8');
+  const env = await readFile(new URL('../.env.example', import.meta.url), 'utf8');
+  assert.match(backup, /BACKUP_ARCHIVE_REQUIRED/);
+  assert.match(backup, /BACKUP_ARCHIVE_BUCKET must differ from S3_BUCKET/);
+  assert.match(backup, /BACKUP_ARCHIVE_REQUIRE_OBJECT_VERSIONING/);
+  assert.match(backup, /BACKUP_ARCHIVE_REQUIRE_OBJECT_LIFECYCLE/);
+  assert.match(backup, /archiveBackupFiles/);
+  assert.match(env, /BACKUP_ARCHIVE_REQUIRED=true/);
+  assert.match(env, /BACKUP_ARCHIVE_BUCKET=annotated-backups/);
+  assert.match(env, /BACKUP_ARCHIVE_REQUIRE_OBJECT_VERSIONING=true/);
+});
+
 test('deployment documents the private Railway Buckets POC profile', async () => {
   const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
   const storage = await readFile(new URL('../STORAGE.md', import.meta.url), 'utf8');

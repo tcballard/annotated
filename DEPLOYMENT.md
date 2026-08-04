@@ -4,7 +4,7 @@ The container is deliberately configuration-only: it does not contain provider c
 
 Before starting a production container:
 
-1. Load `DATABASE_URL`, `ANNOTATED_STORAGE=postgres`, and the enabled OAuth provider values from the deployment secret manager. Start with `OAUTH_PROVIDERS=google` and Google credentials; add `x` only after its client, callback, and secrets are configured.
+1. Load `DATABASE_URL`, `ANNOTATED_STORAGE=postgres`, and the enabled OAuth provider values from the deployment secret manager. For the current POC use `OAUTH_PROVIDERS=x` with the X client, callback, and secrets; add Google later only after its client and callback are configured.
 2. Load `ANNOTATED_ASSET_STORAGE=s3`, the S3/R2 bucket/endpoint/credentials, `PUBLIC_ORIGIN`, `APP_ORIGIN`, and a non-wildcard `CORS_ORIGIN`.
 3. Run `npm run db:migrate` from the same release artifact against the target database. Migration `004_rate_limit_buckets` creates the shared abuse-control ledger; do not route production traffic until it is applied.
 4. Start the container (the image binds `HOST=0.0.0.0`) and require `/api/ready` to return 200 before routing traffic; readiness now verifies the latest migration, performs a database health query, checks the S3-compatible bucket, and probes `ffmpeg`, `ffprobe`, and the configured `YTDLP_BIN` provider extractor. A missing or non-executable media runtime returns 503 instead of allowing provider jobs to fail after deployment. Audio uploads accept only the supported recorder/media MIME types, enforce the 25 MB payload cap, and use PostgreSQL-backed rate-limit buckets when production is configured with PostgreSQL; local development and tests retain the bounded in-process fallback. Provider extraction, FFmpeg, and FFprobe commands are killed after `MEDIA_WORKER_PROCESS_TIMEOUT_MS` (300 seconds by default), then persisted as retryable failures; keep that deadline below the worker lease. Forward structured `http_request` logs and `/api/health` telemetry to the deployment's log/metrics sink.
@@ -54,7 +54,7 @@ credential.
    `PUBLIC_ORIGIN`, `APP_ORIGIN`, `CORS_ORIGIN`, and the Google callback. Add
    `staging.annotated.tcballard.dev` later at the current DNS provider once the
    POC works; no Cloudflare zone transfer is required.
-5. Set the real Google OAuth credentials before production startup, run
+5. Set the real X OAuth credentials before production startup, run
    migrations from the release artifact, deploy, and require `/api/ready` to
    return 200 before trying the media acceptance flow. It confirms PostgreSQL,
    the private bucket, and the media runtime are usable with deployed settings.
@@ -194,6 +194,39 @@ checking the migration ledger. This proves the command boundary, artifact
 shape, and database recovery path; it is not a scheduled production backup,
 provider retention policy, object-byte recovery, or isolated live recovery of
 the deployed service.
+
+## Operator-run production backup archive
+
+`npm run backup:production` can archive a verified backup to a distinct
+S3-compatible destination when `BACKUP_ARCHIVE_REQUIRED=true` is set. It
+requires the production database/media secrets plus a distinct
+`BACKUP_ARCHIVE_BUCKET` and archive credentials, uploads only `postgres.dump`,
+`objects.json`, and `manifest.json` under a dated prefix, and then the operator
+should run `npm run backup:verify`. Archive versioning and lifecycle are strict
+gates: the command fails before upload if the archive provider does not report
+both policies. Configure these secrets in the trusted runner or secret manager
+before an owner-authorized run:
+
+```text
+ANNOTATED_PRODUCTION_DATABASE_URL
+ANNOTATED_PRODUCTION_MEDIA_BUCKET
+ANNOTATED_PRODUCTION_MEDIA_REGION
+ANNOTATED_PRODUCTION_MEDIA_ENDPOINT
+ANNOTATED_PRODUCTION_MEDIA_FORCE_PATH_STYLE
+ANNOTATED_PRODUCTION_MEDIA_ACCESS_KEY_ID
+ANNOTATED_PRODUCTION_MEDIA_SECRET_ACCESS_KEY
+ANNOTATED_PRODUCTION_BACKUP_BUCKET
+ANNOTATED_PRODUCTION_BACKUP_REGION
+ANNOTATED_PRODUCTION_BACKUP_ENDPOINT
+ANNOTATED_PRODUCTION_BACKUP_FORCE_PATH_STYLE
+ANNOTATED_PRODUCTION_BACKUP_ACCESS_KEY_ID
+ANNOTATED_PRODUCTION_BACKUP_SECRET_ACCESS_KEY
+```
+
+The source Railway bucket is not treated as the archive destination. A recurring
+cron/GitHub Actions schedule is deliberately not enabled by this repository;
+the owner must choose and authorize the scheduler and its production secret
+scope after reviewing the archive destination.
 
 The PostgreSQL rate-limit ledger stores only a SHA-256 bucket key, the fixed
 window count, and expiry. Audio uploads, publishing, follows, comments, likes,
