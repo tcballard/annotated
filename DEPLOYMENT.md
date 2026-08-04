@@ -71,10 +71,11 @@ credential.
      ACCEPTANCE_MEDIA_SMOKE=1 node scripts/accept-staging-media.mjs
    ```
 
-   It creates one direct-audio podcast fixture, waits for the production
-   worker to transcode it, verifies the private `/media/:id` redirect and
-   signed object response, then removes the fixture and object. It is not a
-   substitute for authenticated OAuth publishing or browser playback.
+   It creates direct-audio and direct-video fixtures, waits for the production
+   worker to transcode them (including the video 240p/90-second guard), verifies
+   each private `/media/:id` redirect and signed object response, then removes
+   the fixtures and objects. It is not a substitute for authenticated OAuth
+   publishing or browser playback.
 
 8. For a controlled shared-rate-limit smoke, run the guarded script inside the
    same staging app container after confirming the target is staging:

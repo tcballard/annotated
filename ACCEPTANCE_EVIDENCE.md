@@ -317,6 +317,14 @@ The local browser run exercised the user-facing flows below:
   media redirect produced a signed object URL, and the object returned HTTP
   200 as `audio/webm` with 10,037 bytes. Cleanup removed the temporary
   annotation, job, and object; this does not prove deployed YouTube extraction.
+- PR #80 deployment `26e9e2af-b371-4d42-a38b-de291115ed33` passed the expanded
+  service-side smoke with both direct audio and direct video fixtures. The
+  podcast output reached `ready` and delivered `audio/webm` (10,037 bytes); the
+  Sintel MP4 output reached `ready` and delivered `video/mp4` (15,897 bytes).
+  Both private media routes returned signed Railway Bucket objects and cleanup
+  removed each temporary annotation, job, and object. The worker's existing
+  FFprobe gate therefore ran in the deployed container for the video 240p/
+  90-second contract; YouTube extraction and browser playback remain external.
 - Deployment tests verify Vite builds before production pruning, the container
   runs as an unprivileged user, local state/secrets are excluded from its build
   context, and the Dockerfile pins the official yt-dlp 2026.06.09 amd64/arm64
