@@ -129,6 +129,8 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.equal(published.response.status, 201);
   assert.ok(published.payload.annotation.id);
   assert.ok(published.payload.annotation.slug);
+  assert.equal(published.payload.annotation.sourceUrl, annotationPayload.sourceUrl);
+  assert.equal(published.payload.annotation.canonicalUrl, annotationPayload.sourceUrl);
 
   const retried = await request(baseUrl, '/api/annotations', { method: 'POST', body: annotationPayload });
   assert.equal(retried.response.status, 200);
@@ -137,10 +139,14 @@ test('local API serves the acceptance-critical health, identity, publish, social
   const detail = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}`);
   assert.equal(detail.response.status, 200);
   assert.equal(detail.payload.annotation.id, published.payload.annotation.id);
+  assert.equal(detail.payload.annotation.sourceUrl, annotationPayload.sourceUrl);
+  assert.equal(detail.payload.annotation.canonicalUrl, annotationPayload.sourceUrl);
 
   const feed = await request(baseUrl, '/api/feed?limit=10');
   assert.equal(feed.response.status, 200);
   assert.equal(feed.payload.annotations.length, 1);
+  assert.equal(feed.payload.annotations[0].sourceUrl, annotationPayload.sourceUrl);
+  assert.equal(feed.payload.annotations[0].canonicalUrl, annotationPayload.sourceUrl);
 
   const profile = await request(baseUrl, '/api/profiles/tcballard');
   assert.equal(profile.response.status, 200);
@@ -187,4 +193,50 @@ test('local API serves the acceptance-critical health, identity, publish, social
 
   const updatedReporterClaims = await request(baseUrl, '/api/claims');
   assert.equal(updatedReporterClaims.payload.claims[0].status, 'in_review');
+
+  // The public contract must preserve the original source for every brief-supported
+  // source type. The UI uses this field for its “Open source” citation link.
+  const sourceCitationFixtures = [
+    {
+      sourceType: 'video',
+      sourceUrl: 'https://example.com/acceptance-video-source',
+      sourceTitle: 'Acceptance video source',
+      mediaUrl: 'https://example.com/acceptance-video.mp4',
+      clientRequestId: 'acceptance-source-video',
+    },
+    {
+      sourceType: 'podcast',
+      sourceUrl: 'https://example.com/acceptance-podcast-source',
+      sourceTitle: 'Acceptance podcast source',
+      mediaUrl: 'https://example.com/acceptance-podcast.mp3',
+      clientRequestId: 'acceptance-source-podcast',
+    },
+  ];
+  for (const fixture of sourceCitationFixtures) {
+    const created = await request(baseUrl, '/api/annotations', {
+      method: 'POST',
+      body: {
+        ...fixture,
+        commentaryMode: 'text',
+        commentary: `Source citation contract for ${fixture.sourceType}.`,
+        clipStart: 0,
+        clipEnd: 0,
+      },
+    });
+    assert.equal(created.response.status, 201);
+    assert.equal(created.payload.annotation.sourceUrl, fixture.sourceUrl);
+    assert.equal(created.payload.annotation.canonicalUrl, fixture.sourceUrl);
+    assert.match(created.payload.annotation.url, /\/a\/[a-z0-9-]+$/);
+
+    const publicDetail = await request(baseUrl, `/api/annotations/${created.payload.annotation.slug}`);
+    assert.equal(publicDetail.response.status, 200);
+    assert.equal(publicDetail.payload.annotation.sourceUrl, fixture.sourceUrl);
+    assert.equal(publicDetail.payload.annotation.canonicalUrl, fixture.sourceUrl);
+
+    const filteredFeed = await request(baseUrl, `/api/feed?sourceType=${fixture.sourceType}`);
+    assert.equal(filteredFeed.response.status, 200);
+    assert.equal(filteredFeed.payload.annotations.length, 1);
+    assert.equal(filteredFeed.payload.annotations[0].sourceUrl, fixture.sourceUrl);
+    assert.equal(filteredFeed.payload.annotations[0].canonicalUrl, fixture.sourceUrl);
+  }
 });
