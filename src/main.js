@@ -424,12 +424,12 @@ const appRail = () => `
 const browserChrome = () => `
   <div class="browser-chrome">
     <div class="traffic-lights"><i></i><i></i><i></i></div>
-    <div class="browser-tabs"><span class="browser-tab is-active"><span class="tab-favicon">${state.sourceType === 'video' ? '▶' : state.sourceType === 'article' ? 'V' : '◉'}</span>${escapeHTML(source().host)}</span><span class="browser-tab muted">new tab</span></div>
+    <div class="browser-tabs"><span class="browser-tab is-active"><span class="tab-favicon">${state.sourceType === 'video' ? '▶' : state.sourceType === 'article' ? 'V' : '◉'}</span><span class="browser-tab-host">${escapeHTML(source().host)}</span></span><span class="browser-tab muted">new tab</span></div>
     <div class="browser-toolbar"><span>‹</span><span>›</span><span>↻</span><div class="address-bar">${escapeHTML(state.sourceUrl)}</div><span>☆</span><span>⋮</span></div>
   </div>`;
 
 const videoCanvas = () => `
-  <div class="media-canvas video-canvas">
+  <div class="media-canvas video-canvas" data-source-canvas="video" ${state.sourceType === 'video' ? '' : 'hidden'}>
     <div class="video-backdrop"><div class="video-silhouette"></div><div class="video-shelf shelf-one"></div><div class="video-shelf shelf-two"></div><div class="video-window"></div></div>
     <div class="media-overline"><span>${icon('video')} VIDEO ESSAY</span><span>J-CAL CONVERSATIONS</span></div>
     <button class="hero-play" data-action="toggle-preview" aria-label="Play source preview">${icon('play')}</button>
@@ -438,7 +438,7 @@ const videoCanvas = () => `
   </div>`;
 
 const articleCanvas = () => `
-  <div class="media-canvas article-canvas">
+  <div class="media-canvas article-canvas" data-source-canvas="article" ${state.sourceType === 'article' ? '' : 'hidden'}>
     <div class="article-topline"><span>${icon('article')} THE VERGE</span><span>TECH · OPINION</span></div>
     <h3>The internet is becoming a place you can’t search</h3>
     <p class="article-dek">We used to browse toward a question. Now the answer arrives first, and the path disappears.</p>
@@ -449,14 +449,17 @@ const articleCanvas = () => `
   </div>`;
 
 const podcastCanvas = () => `
-  <div class="media-canvas podcast-canvas">
+  <div class="media-canvas podcast-canvas" data-source-canvas="podcast" ${state.sourceType === 'podcast' ? '' : 'hidden'}>
     <div class="podcast-orbit"><span></span><span></span><span></span></div>
     <div class="podcast-copy"><div class="media-overline"><span>${icon('podcast')} DECODER RING</span><span>EPISODE 142</span></div><h3>The quiet advantage of paying attention</h3><p>A small moment from a long conversation, pulled out because it stayed with you.</p></div>
     <div class="waveform" aria-hidden="true">${Array.from({ length: 42 }, (_, i) => `<i style="height:${18 + ((i * 17) % 54)}%"></i>`).join('')}</div>
     <div class="media-player"><span class="player-time">${formatTime(state.clipStart)}</span><div class="player-line"><span class="player-progress" style="width: 24%"></span></div><span class="player-time">46:04</span></div>
   </div>`;
 
-const sourceCanvasMarkup = () => state.sourceType === 'video' ? videoCanvas() : state.sourceType === 'article' ? articleCanvas() : podcastCanvas();
+// Keep all three previews mounted. Source switching becomes a state change on
+// stable elements instead of tearing down and rebuilding the largest painted
+// region in the capture desk.
+const sourceCanvasMarkup = () => `${videoCanvas()}${articleCanvas()}${podcastCanvas()}`;
 
 const sourceCanvas = () => {
   const canvas = sourceCanvasMarkup();
@@ -471,17 +474,14 @@ const sourceCanvas = () => {
 const articleExcerpt = () => String(state.articleExcerpt ?? source().excerpt ?? '').trim();
 
 const timeRange = () => {
-  if (state.sourceType === 'article') {
-    const excerpt = articleExcerpt();
-    return `<div class="highlight-preview"><div class="highlight-mark"></div><label for="article-excerpt">Selected passage</label><textarea id="article-excerpt" data-action="article-excerpt" maxlength="2000" aria-describedby="article-excerpt-hint">${escapeHTML(excerpt)}</textarea><span id="article-excerpt-hint">Highlight selected · ${excerpt.length} characters · edit before publishing</span></div>`;
-  }
+  const excerpt = articleExcerpt();
   const max = MAX_CLIP_SECONDS;
   const length = Math.max(0, state.clipEnd - state.clipStart);
-  return `<div class="clip-editor">
-    <div class="clip-editor-head"><span class="clip-editor-label">${icon(state.sourceType)}<span>Select a moment</span></span><strong class="duration-badge ${length > 90 ? 'is-warning' : ''}" role="status" aria-live="polite"><span>${formatTime(length)}</span><span aria-hidden="true">/</span><span>1:30 max</span></strong></div>
+  return `<div class="clip-editor" ${state.sourceType === 'article' ? 'hidden' : ''}>
+    <div class="clip-editor-head"><span class="clip-editor-label"><span class="clip-editor-icon">${icon(state.sourceType)}</span><span>Select a moment</span></span><strong class="duration-badge ${length > 90 ? 'is-warning' : ''}" role="status" aria-live="polite"><span>${formatTime(length)}</span><span aria-hidden="true">/</span><span>1:30 max</span></strong></div>
     <div class="range-track"><span class="range-fill" style="left:${(state.clipStart / max) * 100}%; width:${((state.clipEnd - state.clipStart) / max) * 100}%"></span><input aria-label="Clip start" aria-valuetext="${formatTime(state.clipStart)}" type="range" min="0" max="${MAX_CLIP_SECONDS}" value="${state.clipStart}" data-action="clip-start" /><input aria-label="Clip end" aria-valuetext="${formatTime(state.clipEnd)}" type="range" min="0" max="${MAX_CLIP_SECONDS}" value="${state.clipEnd}" data-action="clip-end" /></div>
     <div class="time-fields"><label><span>Start</span><input type="number" min="0" max="${MAX_CLIP_SECONDS}" inputmode="numeric" value="${state.clipStart}" data-action="clip-start-number" aria-label="Clip start seconds" /></label><span class="time-separator" aria-hidden="true">→</span><label><span>End</span><input type="number" min="0" max="${MAX_CLIP_SECONDS}" inputmode="numeric" value="${state.clipEnd}" data-action="clip-end-number" aria-label="Clip end seconds" /></label></div>
-  </div>`;
+  </div><div class="highlight-preview" ${state.sourceType === 'article' ? '' : 'hidden'}><div class="highlight-mark"></div><label for="article-excerpt">Selected passage</label><textarea id="article-excerpt" data-action="article-excerpt" maxlength="2000" aria-describedby="article-excerpt-hint">${escapeHTML(excerpt)}</textarea><span id="article-excerpt-hint">Highlight selected · ${excerpt.length} characters · edit before publishing</span></div>`;
 };
 
 const commentaryEditor = () => `
@@ -600,12 +600,6 @@ const render = () => {
   app.innerHTML = `${appHeader()}${authStateView()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : state.activeView === 'profile' ? profileView() : publishedView()}</main></div>${toast()}`;
 };
 
-const elementFromMarkup = (markup) => {
-  const template = document.createElement('template');
-  template.innerHTML = markup.trim();
-  return template.content.firstElementChild;
-};
-
 const renderCapture = () => {
   if (state.activeView !== 'capture') {
     render();
@@ -619,10 +613,8 @@ const renderCapture = () => {
     return;
   }
 
-  // Keep the shell, grid, and scroll context in place. Replacing the entire
-  // app for a source-tab click causes a visible blank paint in Chrome while
-  // the large preview is reconstructed. Only the source-specific regions
-  // need to change here; delegated event listeners continue to work.
+  // Keep the shell, previews, controls, and scroll context in place. Source
+  // changes only update text, attributes, and visibility on mounted elements.
   const sourceTitle = sourceStage.querySelector('.stage-header h1');
   if (sourceTitle) sourceTitle.textContent = source().title;
 
@@ -633,26 +625,45 @@ const renderCapture = () => {
     return;
   }
 
-  const browser = sourceStage.querySelector('.browser-chrome');
-  const nextBrowser = elementFromMarkup(browserChrome());
-  if (browser && nextBrowser) browser.replaceWith(nextBrowser);
+  const favicon = sourceStage.querySelector('.tab-favicon');
+  const browserTabHost = sourceStage.querySelector('.browser-tab-host');
+  const addressBar = sourceStage.querySelector('.address-bar');
+  if (favicon) favicon.textContent = state.sourceType === 'video' ? '▶' : state.sourceType === 'article' ? 'V' : '◉';
+  if (browserTabHost) browserTabHost.textContent = source().host;
+  if (addressBar) addressBar.textContent = state.sourceUrl;
 
-  const browserPage = sourceStage.querySelector('.browser-page');
-  if (browserPage) browserPage.innerHTML = sourceCanvasMarkup();
+  sourceStage.querySelectorAll('[data-source-canvas]').forEach((canvas) => {
+    canvas.hidden = canvas.dataset.sourceCanvas !== state.sourceType;
+  });
+  const activePlayerTime = sourceStage.querySelector(`[data-source-canvas="${state.sourceType}"] .media-player .player-time`);
+  if (activePlayerTime) activePlayerTime.textContent = formatTime(state.clipStart);
+  const articleQuote = sourceStage.querySelector('[data-source-canvas="article"] blockquote');
+  if (articleQuote) articleQuote.textContent = `“${articleExcerpt() || sourceData.article.excerpt}”`;
 
-  const nextStage = elementFromMarkup(sourceCanvas());
-  const currentFooter = sourceStage.querySelector('.source-spine-footer');
-  const nextFooter = nextStage?.querySelector('.source-spine-footer');
-  if (currentFooter && nextFooter) currentFooter.replaceWith(nextFooter);
+  const footer = sourceStage.querySelector('.source-spine-footer');
+  const footerPill = footer?.querySelector('.source-pill');
+  const footerByline = footer?.querySelector('.source-byline');
+  const footerLink = footer?.querySelector('.source-link');
+  if (footerPill) footerPill.innerHTML = `${icon(state.sourceType)} ${escapeHTML(source().label)}`;
+  if (footerByline) footerByline.innerHTML = `${escapeHTML(source().author)} <span>·</span> ${escapeHTML(source().date)}`;
+  if (footerLink) footerLink.href = source().url;
 
   sidebar.querySelectorAll('.source-type').forEach((buttonElement) => {
     const active = buttonElement.dataset.type === state.sourceType;
     buttonElement.classList.toggle('is-active', active);
     buttonElement.setAttribute('aria-pressed', String(active));
   });
-  const currentRange = sidebar.querySelector('.clip-editor, .highlight-preview');
-  const nextRange = elementFromMarkup(timeRange());
-  if (currentRange && nextRange) currentRange.replaceWith(nextRange);
+  const clipEditor = sidebar.querySelector('.clip-editor');
+  const highlightPreview = sidebar.querySelector('.highlight-preview');
+  if (clipEditor) clipEditor.hidden = state.sourceType === 'article';
+  if (highlightPreview) highlightPreview.hidden = state.sourceType !== 'article';
+  const clipEditorIcon = sidebar.querySelector('.clip-editor-icon');
+  if (clipEditorIcon) clipEditorIcon.innerHTML = icon(state.sourceType);
+  const excerptField = highlightPreview?.querySelector('[data-action="article-excerpt"]');
+  const excerptHint = highlightPreview?.querySelector('#article-excerpt-hint');
+  if (excerptField) excerptField.value = articleExcerpt();
+  if (excerptHint) excerptHint.textContent = `Highlight selected · ${articleExcerpt().length} characters · edit before publishing`;
+  refreshClipControls();
 
   const railSource = app.querySelector('.rail-source');
   const railGlyph = railSource?.querySelector('.source-glyph');
@@ -688,7 +699,7 @@ const refreshClipControls = () => {
   }
   const duration = editor.querySelector('.duration-badge > span:first-child');
   if (duration) duration.textContent = formatTime(state.clipEnd - state.clipStart);
-  const playerTime = app.querySelector('.media-canvas .media-player .player-time');
+  const playerTime = app.querySelector(`[data-source-canvas="${state.sourceType}"] .media-player .player-time`);
   if (playerTime) playerTime.textContent = formatTime(state.clipStart);
 };
 

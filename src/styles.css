@@ -923,6 +923,11 @@ body {
   background: var(--surface);
 }
 
+.browser-page > [hidden],
+.source-spine-note > [hidden] {
+  display: none !important;
+}
+
 .media-canvas, .podcast-canvas {
   min-height: clamp(340px, calc(100vh - 390px), 422px);
 }

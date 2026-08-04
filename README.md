@@ -67,6 +67,7 @@ acceptance source, not this README.
 
 - [Product contract](PRODUCT.md)
 - [Acceptance evidence](ACCEPTANCE_EVIDENCE.md)
+- [Dated acceptance-gap audit](ACCEPTANCE_GAP_AUDIT_2026-08-04.md)
 - [Extension surface map](EXTENSION_SURFACE_MAP.md)
 - [Chrome Web Store readiness](CHROMEWEBSTORE.md)
 - [Storage boundary](STORAGE.md)
