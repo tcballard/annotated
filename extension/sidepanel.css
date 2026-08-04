@@ -46,3 +46,25 @@ body { padding: 0 16px 20px; background: var(--color-bg); }
 .publish:hover { background: var(--color-accent); color: var(--color-text); }
 .success { border-color: var(--color-line); background: var(--color-surface); }
 .success-icon { background: var(--color-text); color: var(--color-success); }
+
+/* Keep the browser side panel in the same source-first notebook language as
+   the web capture desk: warm paper, quiet rules, and one restrained signal. */
+:root {
+  --color-text: #292c2a;
+  --color-muted: #7c847d;
+  --color-bg: #efede7;
+  --color-surface: #fbfaf5;
+  --color-line: #d2d0c7;
+  --color-accent: #b45f49;
+  --color-success: #dfe8df;
+}
+
+body { background: var(--color-bg); }
+.panel-header { border-bottom-color: var(--color-line); background: var(--color-surface); color: var(--color-text); }
+.mark { border-color: var(--color-text); background: var(--color-text); color: var(--color-surface); }
+.panel-header small, .local { color: var(--color-muted); }
+.current-source, .clip-card, .note-card { border-bottom-color: var(--color-line); }
+.track > span { background: var(--color-accent); }
+.publish { border-color: var(--color-text); background: var(--color-text); color: var(--color-surface); }
+.publish:hover { background: var(--color-accent); color: var(--color-text); }
+.success { border-color: var(--color-line); background: var(--color-surface); }

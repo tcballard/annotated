@@ -381,13 +381,13 @@ const appHeader = () => `
       <button class="brand-mark" data-action="set-view" data-view="capture" aria-label="Go to capture"><span>a</span></button>
       <div>
         <div class="brand-name">annotated<span class="brand-dot">.</span></div>
-        <div class="brand-caption">keep the moment · add the meaning</div>
+        <div class="brand-caption">source-first notes</div>
       </div>
     </div>
     <nav class="primary-nav" aria-label="Primary navigation">
       ${button('Capture', 'set-view', `nav-link ${state.activeView === 'capture' ? 'is-active' : ''}`, 'data-view="capture"')}
-      ${button('Discover', 'set-view', `nav-link ${state.activeView === 'feed' ? 'is-active' : ''}`, 'data-view="feed"')}
-      ${button('My annotation', 'set-view', `nav-link ${state.activeView === 'published' ? 'is-active' : ''}`, 'data-view="published"')}
+      ${button('Timeline', 'set-view', `nav-link ${state.activeView === 'feed' ? 'is-active' : ''}`, 'data-view="feed"')}
+      ${button('Published', 'set-view', `nav-link ${state.activeView === 'published' ? 'is-active' : ''}`, 'data-view="published"')}
       ${canModerate() ? button('Moderation', 'set-view', `nav-link ${state.activeView === 'moderation' ? 'is-active' : ''}`, 'data-view="moderation"') : ''}
     </nav>
     <div class="header-actions">
@@ -404,7 +404,7 @@ const appRail = () => `
     <div class="rail-kicker">The rule</div>
     <p class="rail-note">Every clip keeps a live link to where it came from.</p>
     <div class="rail-source"><span class="source-glyph">${icon(state.sourceType)}</span><span>${source().host}</span></div>
-    <div class="rail-bottom">v0.2 local slice<br>Chrome sidebar-first</div>
+    <div class="rail-bottom">source-first notes<br>Chrome sidebar-first</div>
   </aside>`;
 
 const browserChrome = () => `
@@ -444,11 +444,11 @@ const podcastCanvas = () => `
 
 const sourceCanvas = () => {
   const canvas = state.sourceType === 'video' ? videoCanvas() : state.sourceType === 'article' ? articleCanvas() : podcastCanvas();
-  return `<section class="source-stage">
+  return `<section class="source-stage source-spine-stage">
     <div class="stage-header"><div><span class="eyebrow">Source</span><h1>${escapeHTML(source().title)}</h1></div><button class="ghost-button" data-action="toggle-source-input">${icon('link')} Change</button></div>
     ${state.showSourceInput ? `<div class="source-input-row"><label for="source-url">Paste a source URL</label><div class="source-input-wrap">${icon('link')}<input id="source-url" data-action="source-url" value="${escapeHTML(state.sourceUrl)}" /><button data-action="load-source" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Load'}</button></div><p>Metadata stays attached to the original link.</p>${state.sourceError ? `<p class="source-error" role="alert">${escapeHTML(state.sourceError)}</p>` : ''}</div>` : ''}
     <div class="browser-frame">${browserChrome()}<div class="browser-page">${canvas}</div></div>
-    <div class="source-footer"><div><span class="source-pill">${icon(state.sourceType)} ${source().label}</span><span class="source-byline">${escapeHTML(source().author)} <span>·</span> ${escapeHTML(source().date)}</span></div><a href="${escapeHTML(source().url)}" target="_blank" rel="noreferrer" class="source-link">Open original ${icon('external')}</a></div>
+    <div class="source-footer source-spine-footer"><div><span class="source-pill">${icon(state.sourceType)} ${source().label}</span><span class="source-byline">${escapeHTML(source().author)} <span>·</span> ${escapeHTML(source().date)}</span></div><a href="${escapeHTML(source().url)}" target="_blank" rel="noreferrer" class="source-link">Open original ${icon('external')}</a></div>
   </section>`;
 };
 
@@ -470,8 +470,8 @@ const commentaryEditor = () => `
   </div>`;
 
 const sidebar = () => `
-  <aside class="extension-sidebar" aria-label="Annotated capture sidebar">
-    <div class="sidebar-heading"><div><span class="eyebrow">Capture</span><h2>Add context.</h2></div><div class="sidebar-heading-actions"><span class="capture-number">01</span><button class="icon-button" data-action="sidebar-help" aria-label="Sidebar help">${icon('more')}</button></div></div>
+  <aside class="extension-sidebar source-spine-note" aria-label="Annotated capture sidebar">
+    <div class="sidebar-heading"><div><span class="eyebrow">Your note</span><h2>Leave your context.</h2></div><div class="sidebar-heading-actions"><span class="capture-number">STEP 01</span><button class="icon-button" data-action="sidebar-help" aria-label="Sidebar help">${icon('more')}</button></div></div>
     <div class="source-type-grid" role="group" aria-label="Source type">${sourceTypeButton('video')}${sourceTypeButton('article')}${sourceTypeButton('podcast')}</div>
     ${timeRange()}
     ${commentaryEditor()}
@@ -480,8 +480,8 @@ const sidebar = () => `
   </aside>`;
 
 const captureView = () => `
-  <div class="view-head"><div><span class="eyebrow">Capture</span><h2>Keep the moment. Add the meaning.</h2></div><span class="view-index">01 / 03</span></div>
-  <div class="capture-layout">${sourceCanvas()}${sidebar()}</div>
+  <div class="view-head"><div><span class="eyebrow">Capture desk</span><h2>Capture a moment.</h2><p class="view-dek">Choose the source, set the moment, and leave your context.</p></div><span class="view-index">01 / 03</span></div>
+  <div class="capture-layout source-spine-layout">${sourceCanvas()}${sidebar()}</div>
   <div class="capture-footnote"><span>Choose the exact moment. Add your context.</span><span>Max 90 seconds · source link retained</span></div>`;
 
 const feedCard = (item, index) => {
@@ -496,6 +496,7 @@ const feedCard = (item, index) => {
     : `<div class="feed-media feed-audio"><div class="feed-audio-art">${icon('podcast')}</div><div class="mini-wave">${Array.from({ length: 25 }, (_, i) => `<i style="height:${16 + ((i * 23) % 50)}%"></i>`).join('')}</div><span class="feed-duration">${escapeHTML(item.duration)}</span><span class="feed-media-status">${escapeHTML(fallbackStatus)}</span></div>`;
   return `
   <article class="feed-card ${index === 0 ? 'featured-card' : ''}">
+    <span class="feed-spine-marker" aria-hidden="true"></span>
     <div class="feed-card-top"><span class="source-pill">${icon(item.type.toLowerCase())} ${item.label}</span><button class="icon-button" aria-label="More options">${icon('more')}</button></div>
     <div class="feed-source-row"><div class="feed-avatar avatar-${index}">${escapeHTML(item.initials)}</div><div>${item.authorId && item.authorHandle ? `<a class="profile-link" href="/u/${encodeURIComponent(item.authorHandle)}">${escapeHTML(item.author)}</a>` : `<strong>${escapeHTML(item.author)}</strong>`}<span>${escapeHTML(item.handle)} · ${escapeHTML(item.time)}</span></div>${item.authorId && item.authorId !== state.user?.id ? `<button class="follow-button ${state.followingIds[item.authorId] ? 'is-following' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>` : ''}</div>
     ${item.type === 'Video' ? videoMedia : item.type === 'Article' && media.kind !== 'audio' ? `<div class="feed-media feed-quote"><span>“</span><p>${escapeHTML(item.quote)}</p><small>Highlight from ${escapeHTML(item.host)}</small></div>` : audioMedia}
@@ -514,7 +515,7 @@ const feedView = () => {
   const profileHandle = state.user?.handle || '';
   const profileAction = profileHandle ? `<a class="dark-button" href="/u/${encodeURIComponent(profileHandle)}">View your profile ${icon('arrow')}</a>` : `<button class="dark-button" data-action="set-view" data-view="capture">Open capture desk ${icon('arrow')}</button>`;
   return `
-  <div class="view-head feed-head"><div><span class="eyebrow">Public feed</span><h2>What people kept.</h2><p>Moments with enough context to be worth opening.</p></div><div class="feed-controls"><button class="filter-button ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true">Following</button><button class="filter-button ${state.feedFollowing ? '' : 'is-active'}" data-action="feed-filter" data-following="false">For you</button><button class="search-button" data-action="search" aria-label="Search feed" aria-expanded="${state.showFeedSearch}">${icon('search')}</button></div></div>
+  <div class="view-head feed-head"><div><span class="eyebrow">Timeline</span><h2>What people kept.</h2><p>Moments with enough context to be worth opening.</p></div><div class="feed-controls"><button class="filter-button ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true">Following</button><button class="filter-button ${state.feedFollowing ? '' : 'is-active'}" data-action="feed-filter" data-following="false">For you</button><button class="search-button" data-action="search" aria-label="Search timeline" aria-expanded="${state.showFeedSearch}">${icon('search')}</button></div></div>
   ${state.showFeedSearch ? `<form class="feed-search-row" data-action="feed-search-form"><label for="feed-search">Search annotations</label><div><input id="feed-search" data-action="feed-search" value="${escapeHTML(state.feedQuery)}" placeholder="Try a source, author, or idea" maxlength="80" /><button class="dark-button" type="submit">Search ${icon('arrow')}</button>${state.feedQuery ? '<button class="ghost-button" type="button" data-action="clear-feed-search">Clear</button>' : ''}</div></form>` : ''}
   <div class="feed-layout"><main class="feed-list">${visibleItems.length ? visibleItems.map(feedCard).join('') : `<div class="feed-empty"><span class="eyebrow">Nothing found</span><h3>${emptyMessage}</h3><p>${emptyDescription}</p>${state.feedQuery ? '<button class="ghost-button" data-action="clear-feed-search">Clear search</button>' : ''}</div>`}${state.feedCursor ? '<button class="ghost-button" data-action="feed-more">Load more</button>' : ''}</main><aside class="feed-aside"><div class="aside-card profile-card"><div class="profile-top"><div class="profile-avatar">${escapeHTML((profileName || 'A').slice(0, 2).toUpperCase())}</div><span class="profile-stamp">${state.user ? 'SIGNED IN' : 'LOCAL'}</span></div><h3>${escapeHTML(profileName)}</h3><p>${state.user ? 'Your source-backed moments will live here.' : 'Sign in when you are ready to keep a public profile.'}</p>${profileAction}</div><div class="aside-card rule-card"><span class="eyebrow">The annotated rule</span><h3>A clip without its source is just a rumour.</h3><div class="rule-line"></div><p>Every public page points back to the original. Context travels with the moment.</p></div></aside></div>`;
 };
@@ -564,7 +565,7 @@ const publishedView = () => {
   const authorName = state.publishedAnnotation?.author?.displayName || 'Tom Ballard';
   const hasNote = Boolean((state.publishedAnnotation?.commentary || state.commentary).trim()) || state.recordedAudio;
   return `
-    <div class="view-head published-head"><div><span class="eyebrow">Your public page</span><h2>${state.published ? 'The moment, with your margin note.' : 'Your first annotation is waiting.'}</h2><p>${state.published ? 'A permanent link back to the source, with the context only you could add.' : 'Capture something from the page you are on, then publish it here.'}</p></div>${state.published ? `<button class="ghost-button" data-action="set-view" data-view="capture">${icon('back')} Capture another</button>` : ''}</div>
+    <div class="view-head published-head"><div><span class="eyebrow">Published</span><h2>${state.published ? 'The moment, with your note.' : 'Your first annotation is waiting.'}</h2><p>${state.published ? 'A permanent link back to the source, with the context only you could add.' : 'Capture something from the page you are on, then publish it here.'}</p></div>${state.published ? `<button class="ghost-button" data-action="set-view" data-view="capture">${icon('back')} Capture another</button>` : ''}</div>
     ${state.published ? `<div class="annotation-layout"><article class="annotation-page"><div class="annotation-page-bar"><span class="source-pill">${icon(state.sourceType)} ${publishedSource.label}</span><span>Published just now</span></div><div class="annotation-hero ${state.sourceType}">${annotationHero()}</div><div class="annotation-body"><div class="annotation-byline"><div class="feed-avatar avatar-0">TB</div><div>${authorHandle ? `<a class="profile-link" href="/u/${encodeURIComponent(authorHandle)}">${escapeHTML(authorName)}</a>` : `<strong>${escapeHTML(authorName)}</strong>`}<span>@${escapeHTML(authorHandle || 'tcballard')} · just now</span></div><button class="icon-button" aria-label="More options">${icon('more')}</button></div><h3>${escapeHTML(publishedSource.title)}</h3>${hasNote ? `<p class="annotation-copy">${state.publishedAnnotation?.commentary ? escapeHTML(state.publishedAnnotation.commentary) : state.commentary ? escapeHTML(state.commentary) : 'An audio annotation attached to this moment.'}</p>` : '<p class="annotation-copy empty-copy">No commentary added.</p>'}<div class="source-citation"><span>${icon('link')} Source</span><a href="${escapeHTML(publishedSource.url)}" target="_blank" rel="noreferrer">${escapeHTML(publishedSource.host)} ${icon('external')}</a></div></div><div class="annotation-actions"><button data-action="toggle-like" data-slug="${escapeHTML(state.publishedSlug)}" class="feed-action ${state.publishedAnnotation?.likedByMe || state.liked ? 'is-liked' : ''}">${icon('heart')} ${state.publishedAnnotation?.likedByMe || state.liked ? 'Liked' : 'Like'}</button><button class="feed-action" data-action="focus-comment">${icon('message')} ${publishedComments.length} comments</button><button class="feed-action" data-action="share">${icon('link')} Copy link</button></div><div class="annotation-comments">${publishedComments.length ? publishedComments.map((comment) => `<div class="commenter-avatar">TB</div><p><strong>@${escapeHTML(comment.author?.handle || comment.authorId)}</strong> ${escapeHTML(comment.body)}</p>`).join('') : '<p class="empty-copy">No comments yet. Add the first considered response.</p>'}</div><form class="comment-row annotation-comment-row" data-action="comment-form"><input aria-label="Add a comment" placeholder="Add a considered comment…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" /><button aria-label="Post comment">${icon('arrow')}</button></form></article><aside class="annotation-aside"><div class="claim-card"><span class="eyebrow">Source & rights</span><h3>Something wrong with this annotation?</h3><p>Every page keeps the source visible. If this clip misuses your work, file a claim and we’ll review it.</p><button class="claim-button" data-action="toggle-claim">File a claim ${icon('arrow')}</button></div><div class="share-card"><span class="eyebrow">Share this page</span><div class="share-url"><strong>${escapeHTML(publicLabel)}</strong><button data-action="copy-link" aria-label="Copy page link">${icon('link')}</button></div><p>It opens with the clip, the source, and the note.</p></div></aside></div>` : `<div class="empty-published"><div class="empty-symbol">a<span>.</span></div><h3>Nothing published yet.</h3><p>Start with the page you are already reading. The sidebar will do the rest.</p><button class="dark-button" data-action="set-view" data-view="capture">Open capture desk ${icon('arrow')}</button></div>`}
     ${state.claimOpen ? claimModal() : ''}`;
 };
