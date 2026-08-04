@@ -127,6 +127,8 @@ const initialState = {
   recordingSeconds: 0,
   clipUrl: '',
   mediaStatus: 'not-applicable',
+  mediaError: '',
+  isRetryingMedia: false,
   published: false,
   liked: false,
   following: false,
@@ -330,6 +332,8 @@ const hydrateAnnotation = (annotation) => {
   state.audioDraftId = '';
   state.clipUrl = annotation.clipUrl || '';
   state.mediaStatus = annotation.mediaStatus || 'not-applicable';
+  state.mediaError = String(annotation.mediaError || '').slice(0, 280);
+  state.isRetryingMedia = false;
 };
 
 const bootstrap = async () => {
@@ -538,12 +542,13 @@ const feedView = () => {
 const annotationHero = () => {
   const clipUrl = state.publishedAnnotation?.clipUrl || state.clipUrl;
   const audioUrl = state.publishedAnnotation?.audioUrl || state.audioUrl;
-  const status = state.mediaStatus === 'failed' ? 'Clip unavailable — source adapter required.' : state.mediaStatus === 'processing' ? 'Preparing a 240p clip…' : 'Clip queued for processing…';
+  const status = state.mediaStatus === 'failed' ? 'Clip unavailable.' : state.mediaStatus === 'cancelled' ? 'Clip processing was cancelled.' : state.mediaStatus === 'processing' ? 'Preparing a 240p clip…' : 'Clip queued for processing…';
+  const mediaRecovery = state.mediaStatus === 'failed' ? `<div class="media-recovery"><span>${escapeHTML(state.mediaError || 'The source could not be prepared.')}</span><button data-action="retry-media" ${state.isRetryingMedia ? 'disabled' : ''}>${state.isRetryingMedia ? 'Retrying…' : 'Retry clip'}</button></div>` : '';
   if (state.sourceType === 'article') return `<div class="annotation-article-text"><span class="quote-mark">“</span><p>${escapeHTML(articleExcerpt() || sourceData.article.excerpt)}</p><span>Highlighted passage</span></div>`;
   if (state.sourceType === 'video') return clipUrl
     ? `<video class="annotation-video-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></video>`
-    : `<div class="annotation-video-bg"><div class="video-silhouette small"></div><span class="media-status">${status}</span></div><button class="annotation-play" data-action="toggle-preview">${icon('play')}</button><span class="annotation-clip-time">${formatTime(state.clipStart)} — ${formatTime(state.clipEnd)}</span>`;
-  return `<div class="annotation-audio"><div class="podcast-orbit small"><span></span><span></span><span></span></div>${clipUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></audio>` : audioUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : icon('play')}<div class="mini-wave large">${Array.from({ length: 34 }, (_, i) => `<i style="height:${16 + ((i * 19) % 58)}%"></i>`).join('')}</div>${clipUrl && audioUrl ? `<audio class="commentary-audio" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : !clipUrl ? `<span class="media-status">${status}</span>` : ''}</div>`;
+    : `<div class="annotation-video-bg"><div class="video-silhouette small"></div><span class="media-status">${status}</span>${mediaRecovery}</div><button class="annotation-play" data-action="toggle-preview">${icon('play')}</button><span class="annotation-clip-time">${formatTime(state.clipStart)} — ${formatTime(state.clipEnd)}</span>`;
+  return `<div class="annotation-audio"><div class="podcast-orbit small"><span></span><span></span><span></span></div>${clipUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></audio>` : audioUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : icon('play')}<div class="mini-wave large">${Array.from({ length: 34 }, (_, i) => `<i style="height:${16 + ((i * 19) % 58)}%"></i>`).join('')}</div>${clipUrl && audioUrl ? `<audio class="commentary-audio" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : !clipUrl ? `<span class="media-status">${status}</span>${mediaRecovery}` : ''}</div>`;
 };
 
 const moderationView = () => {
@@ -998,6 +1003,25 @@ app.addEventListener('click', (event) => {
         }
       })();
     } else { state.following = !state.following; render(); }
+    return;
+  }
+  if (action === 'retry-media') {
+    if (!state.publishedSlug || state.serverStatus !== 'online' || state.isRetryingMedia) return;
+    if (requestSignIn('retry this clip')) return;
+    state.isRetryingMedia = true;
+    render();
+    (async () => {
+      try {
+        const result = await api.retryMedia(state.publishedSlug);
+        hydrateAnnotation(result.annotation);
+        watchMediaProcessing();
+        notify('Clip retry queued.');
+      } catch (error) {
+        if (!recoverAuthError(error, 'Sign in to retry this clip.')) notify(error.message || 'Clip retry could not be queued.');
+        state.isRetryingMedia = false;
+        render();
+      }
+    })();
     return;
   }
   if (action === 'focus-comment') { document.querySelector('[data-action="comment-draft"]')?.focus(); return; }
