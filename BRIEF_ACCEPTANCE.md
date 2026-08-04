@@ -61,6 +61,7 @@ Status meanings: `done` has current code and direct validation evidence; `partia
 - 2026-08-04: `node --test test/api-acceptance.test.js` now also verifies follow/unfollow profile counts, the following-feed filter, comment persistence, and idempotent like/unlike behavior against a local server. This closes the local social interaction contract; multi-user OAuth and deployed evidence remain external.
 - 2026-08-04: Article capture now keeps a real selected passage in the web draft, persists it through reloads, requires it at the API boundary, and prevents the extension from publishing an article with no page selection. `node --test test/validation.test.js test/chrome-extension.test.js` covers the bounds and guard; browser selection evidence remains external.
 - 2026-08-04: Failed media jobs now expose a bounded owner-only retry endpoint and public landing-page recovery control. The API acceptance fixture verifies the failed-job transition to `queued` and rejects a duplicate retry after the original job is superseded; media policy tests cover the owner/status guard.
+- 2026-08-04: Feed pagination and search now have a bounded API contract. `limit` is clamped to 1–50, malformed cursors and limits fall back safely, cursor pages do not repeat records, and a normalized query returns only matching source/commentary context. `node --test test/api-acceptance.test.js test/source-processing.test.js` covers the end-to-end search and cursor flow; deployed multi-user/browser evidence remains external.
 
 ## Explicit non-goals from the brief
 

@@ -10,7 +10,7 @@ import { normalizeAudioMimeType, serveStoredMedia, writeIncomingMedia } from './
 import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
-import { matchesFeedQuery, normalizeFeedQuery } from './feed.js';
+import { matchesFeedQuery, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery } from './feed.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, parseCookies, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, requestId, securityHeaders } from './hardening.js';
@@ -157,8 +157,8 @@ const handleApi = async (request, response, pathname) => {
     const store = await readStore();
     const viewer = await currentUser(request);
     const query = new URL(request.url || '/', publicOrigin).searchParams;
-    const limit = Math.min(50, Math.max(1, Number(query.get('limit') || 20)));
-    const offset = Math.max(0, Number(query.get('cursor') || 0));
+    const limit = normalizeFeedLimit(query.get('limit'));
+    const offset = normalizeFeedCursor(query.get('cursor'));
     const sourceType = query.get('sourceType');
     const search = normalizeFeedQuery(query.get('q'));
     const followingOnly = query.get('following') === 'true' && viewer;

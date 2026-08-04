@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { classifySource, parseSourceUrl, resolveSource } from '../server/source-resolver.js';
 import { resolveInput, validatePlayableInput } from '../server/media-worker.js';
-import { matchesFeedQuery, normalizeFeedQuery } from '../server/feed.js';
+import { matchesFeedQuery, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery } from '../server/feed.js';
 import { findIdempotentAnnotation } from '../server/idempotency.js';
 import { findActiveClaim, validateClaimTransition } from '../server/moderation.js';
 
@@ -184,6 +184,20 @@ test('feed search matches source and author context with a bounded query', () =>
   assert.equal(matchesFeedQuery(annotation, users, 'unrelated'), false);
   assert.equal(normalizeFeedQuery('  one   two '), 'one two');
   assert.equal(normalizeFeedQuery('x'.repeat(100)).length, 80);
+});
+
+test('feed pagination bounds reject malformed values without producing invalid slices', () => {
+  assert.equal(normalizeFeedLimit(undefined), 20);
+  assert.equal(normalizeFeedLimit(''), 20);
+  assert.equal(normalizeFeedLimit('bad'), 20);
+  assert.equal(normalizeFeedLimit('0'), 1);
+  assert.equal(normalizeFeedLimit('500'), 50);
+  assert.equal(normalizeFeedLimit('2.5'), 20);
+  assert.equal(normalizeFeedCursor(undefined), 0);
+  assert.equal(normalizeFeedCursor('bad'), 0);
+  assert.equal(normalizeFeedCursor('-4'), 0);
+  assert.equal(normalizeFeedCursor('3'), 3);
+  assert.equal(normalizeFeedCursor('2.5'), 0);
 });
 
 test('idempotent annotation lookup is scoped to the author and request ID', () => {
