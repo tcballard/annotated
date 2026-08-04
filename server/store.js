@@ -58,7 +58,7 @@ const postgresSchema = `
     ON annotated_records ((payload->>'authorId'), (payload->>'clientRequestId'))
     WHERE collection = 'annotations';
 `;
-export const latestMigrationVersion = '003_idempotency_index';
+export const latestMigrationVersion = '004_rate_limit_buckets';
 
 const recordCollections = Object.keys(emptyStore);
 const recordId = (collection, value, index) => String(value?.id || value?.tokenHash || `${collection}-${index}`);

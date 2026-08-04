@@ -8,9 +8,9 @@ selected passage or a bounded media moment, add a written or recorded-audio
 note, and publish a source-backed annotation that can be discussed, followed,
 or challenged.
 
-> **v0.1.0 is a draft release baseline.** The web app and Chrome extension run
-> locally and have automated evidence, but they are not a deployed service or a
-> Chrome Web Store submission.
+> **v0.1.0 is a draft release baseline.** Local development and a Railway POC
+> staging service are available with automated evidence; this is not a public
+> production release or a Chrome Web Store submission.
 
 ## Try it locally
 
@@ -26,6 +26,22 @@ To load the Chrome side panel, open `chrome://extensions`, enable Developer
 mode, choose **Load unpacked**, select [`extension/`](extension/), and set its
 API origin to `http://localhost:8787` in the extension options.
 
+## Railway POC staging
+
+The current staging build is available at
+[`annotated-staging.up.railway.app`](https://annotated-staging.up.railway.app).
+It uses Railway PostgreSQL and a private Railway Storage Bucket for the
+production-shaped persistence boundary. From a clean checkout, run the
+non-mutating public smoke with:
+
+```bash
+STAGING_ORIGIN=https://annotated-staging.up.railway.app npm run acceptance:staging
+```
+
+Staging is evidence for the API, readiness, source-resolution, and configured
+OAuth boundaries. It is not a promise of successful provider consent, docked
+Chrome behavior, microphone capture, or production traffic.
+
 ## What the v0.1.0 draft covers
 
 - Article, video, and podcast capture modes; text selection and 90-second media
@@ -36,7 +52,9 @@ API origin to `http://localhost:8787` in the extension options.
 - A Manifest V3 side panel with bounded local recovery metadata and
   browser-local audio staging.
 - Production-shaped PostgreSQL/S3, OAuth, media-worker, and deployment
-  boundaries that are configured separately from local development.
+  boundaries that are configured separately from local development. The
+  current Railway POC enables X sign-in only; Google remains an optional
+  adapter for a later release.
 
 ## Release boundary
 

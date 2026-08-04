@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { buildFfmpegArgs, checkMediaRuntime, mediaJobLeaseExpired, runMediaCommand, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe } from '../server/media-worker.js';
+import { buildFfmpegArgs, buildProviderArgs, canRetryMediaJob, checkMediaRuntime, mediaJobLeaseExpired, runMediaCommand, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe, validateProviderRuntimeConfig } from '../server/media-worker.js';
 import { normalizeAudioMimeType } from '../server/media-store.js';
 
 test('audio uploads accept recorder parameters but reject non-audio content types', () => {
@@ -22,6 +26,39 @@ test('podcast transcodes remove video and use the requested bounded duration', (
   assert.ok(args.includes('-vn'));
 });
 
+test('provider arguments make runtime egress configuration explicit', () => {
+  const args = buildProviderArgs(
+    { sourceType: 'video', provider: 'youtube' },
+    'https://www.youtube.com/watch?v=example',
+    { jsRuntime: 'node', proxy: 'socks5h://proxy.example:1080', cookiesFile: '/run/secrets/youtube.cookies', playerClient: 'web_safari' },
+  );
+  assert.deepEqual(args, [
+    '--no-playlist',
+    '--js-runtimes', 'node',
+    '--proxy', 'socks5h://proxy.example:1080',
+    '--cookies', '/run/secrets/youtube.cookies',
+    '--extractor-args', 'youtube:player_client=web_safari',
+    '--format', 'best[height<=240]/best',
+    '--get-url', 'https://www.youtube.com/watch?v=example',
+  ]);
+  const podcastArgs = buildProviderArgs(
+    { sourceType: 'podcast', provider: 'podcast' },
+    'https://podcast.example/episode',
+    { playerClient: 'web_safari' },
+  );
+  assert.equal(podcastArgs.includes('--extractor-args'), false);
+});
+
+test('provider runtime configuration rejects unsafe or unusable deployment values', () => {
+  assert.deepEqual(validateProviderRuntimeConfig({ proxy: 'https://proxy.example', cookiesFile: '/run/secrets/youtube.cookies', jsRuntime: 'node', playerClient: 'web_safari' }), {
+    proxy: 'https://proxy.example', cookiesFile: '/run/secrets/youtube.cookies', jsRuntime: 'node', playerClient: 'web_safari',
+  });
+  assert.throws(() => validateProviderRuntimeConfig({ proxy: 'file:///tmp/proxy' }), /http, https, or socks/);
+  assert.throws(() => validateProviderRuntimeConfig({ cookiesFile: 'relative.cookies' }), /absolute file path/);
+  assert.throws(() => validateProviderRuntimeConfig({ jsRuntime: 'node --unsafe' }), /unsupported characters/);
+  assert.throws(() => validateProviderRuntimeConfig({ playerClient: 'web;rm' }), /unsupported characters/);
+});
+
 test('production readiness checks ffmpeg, ffprobe, and the configured provider extractor', async () => {
   const calls = [];
   const runtime = await checkMediaRuntime({
@@ -31,7 +68,7 @@ test('production readiness checks ffmpeg, ffprobe, and the configured provider e
       return { stdout: `${command} version test`, stderr: '' };
     },
   });
-  assert.deepEqual(calls.map(({ command }) => command), ['ffmpeg', 'ffprobe', 'yt-dlp']);
+  assert.deepEqual(calls.map(({ command }) => command), ['ffmpeg', 'ffprobe', process.env.YTDLP_BIN || 'yt-dlp']);
   assert.deepEqual(runtime, { status: 'ready', checks: ['ffmpeg', 'ffprobe', 'provider extractor'] });
 });
 
@@ -39,6 +76,13 @@ test('production readiness fails explicitly when a media runtime binary is unava
   await assert.rejects(
     () => checkMediaRuntime({ includeProvider: true, runCommand: async (command) => { throw new Error(`${command} not found`); } }),
     /Media runtime ffmpeg is unavailable: ffmpeg not found/,
+  );
+});
+
+test('production readiness fails when configured provider cookies are not mounted', async () => {
+  await assert.rejects(
+    () => checkMediaRuntime({ includeProvider: true, providerConfig: { cookiesFile: '/run/secrets/missing-youtube.cookies' }, runCommand: async () => ({ stdout: '', stderr: '' }) }),
+    /provider cookies are unavailable/,
   );
 });
 
@@ -61,6 +105,14 @@ test('cancelled media jobs abort before a late worker completion can publish', (
   assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'cancelled' }] }, new Set()), true);
   assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'processing' }] }, new Set(['job-1'])), true);
   assert.equal(shouldAbortMediaJob(job, { mediaJobs: [{ id: 'job-1', status: 'processing' }] }, new Set()), false);
+});
+
+test('failed media jobs can only be retried by their annotation owner', () => {
+  const annotation = { id: 'annotation-1', authorId: 'owner-1' };
+  assert.equal(canRetryMediaJob({ id: 'job-1', annotationId: 'annotation-1', status: 'failed' }, annotation, 'owner-1'), true);
+  assert.equal(canRetryMediaJob({ id: 'job-1', annotationId: 'annotation-1', status: 'ready' }, annotation, 'owner-1'), false);
+  assert.equal(canRetryMediaJob({ id: 'job-1', annotationId: 'annotation-1', status: 'failed' }, annotation, 'owner-2'), false);
+  assert.equal(canRetryMediaJob({ id: 'job-1', annotationId: 'other', status: 'failed' }, annotation, 'owner-1'), false);
 });
 
 test('media jobs use a persistent lease for restart recovery and multi-worker claims', () => {
@@ -86,4 +138,30 @@ test('media output inspection enforces duration, audio, and video height boundar
   assert.throws(() => validateMediaProbe('video', { format: { duration: '90.1' }, streams: [{ codec_type: 'video', height: 240 }, { codec_type: 'audio' }] }), /90-second/);
   assert.throws(() => validateMediaProbe('video', { format: { duration: '12' }, streams: [{ codec_type: 'video', height: 480 }, { codec_type: 'audio' }] }), /240p/);
   assert.throws(() => validateMediaProbe('podcast', { format: { duration: '12' }, streams: [{ codec_type: 'video', height: 120 }, { codec_type: 'audio' }] }), /video stream/);
+});
+
+test('a generated video fixture is transcoded and passes the real FFprobe contract', { skip: !['ffmpeg', 'ffprobe'].every((command) => spawnSync(command, ['-version'], { stdio: 'ignore' }).status === 0) }, async (t) => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'annotated-media-fixture-'));
+  const inputPath = path.join(directory, 'source.mp4');
+  const outputPath = path.join(directory, 'clip.mp4');
+  t.after(() => rm(directory, { recursive: true, force: true }));
+
+  await runMediaCommand('ffmpeg', [
+    '-hide_banner', '-loglevel', 'error', '-y',
+    '-f', 'lavfi', '-i', 'color=c=0x2f4b4a:s=640x360:r=24:d=2',
+    '-f', 'lavfi', '-i', 'sine=frequency=880:sample_rate=48000:duration=2',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', inputPath,
+  ]);
+  const args = buildFfmpegArgs({ sourceType: 'video', clipStart: 0.25, clipEnd: 1.75 }, inputPath, outputPath);
+  await runMediaCommand('ffmpeg', args);
+  const probeResult = await runMediaCommand('ffprobe', [
+    '-v', 'error', '-show_entries', 'format=duration:stream=codec_type,height,width', '-of', 'json', outputPath,
+  ]);
+  const probe = JSON.parse(probeResult.stdout);
+  const inspected = validateMediaProbe('video', probe);
+  const video = probe.streams.find((stream) => stream.codec_type === 'video');
+  assert.ok(inspected.duration > 1);
+  assert.ok(inspected.duration <= 90.05);
+  assert.equal(video.height, 240);
+  assert.ok(video.width <= 480);
 });

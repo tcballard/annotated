@@ -51,6 +51,7 @@ test('extension runtime source avoids remote-code and service-worker timer patte
   assert.doesNotMatch(await read('background.js'), /set(?:Timeout|Interval)\s*\(/);
   assert.match(await read('sidepanel.html'), /<script type="module" src="sidepanel\.js"><\/script>/);
   assert.match(await read('options.html'), /<script type="module" src="options\.js"><\/script>/);
+  assert.match(await read('options.html'), /<link rel="stylesheet" href="options\.css">/);
 });
 
 test('side panel keeps hidden states hidden and uses a coherent icon language', async () => {
@@ -79,6 +80,24 @@ test('side panel keeps hidden states hidden and uses a coherent icon language', 
   assert.match(runtime, /recordIcon\.hidden\s*=\s*isRecording/);
   assert.match(runtime, /stopIcon\.hidden\s*=\s*!isRecording/);
   assert.match(runtime, /button\.setAttribute\('aria-pressed', String\(active\)\)/);
+  assert.match(runtime, /currentTab\.sourceType === 'article' && !selectedText\.trim\(\)/);
+});
+
+test('extension settings surface explains the API boundary and recovery states', async () => {
+  const html = await read('options.html');
+  const runtime = await read('options.js');
+  const styles = await read('options.css');
+  assert.match(html, /<form id="settingsForm"[^>]*novalidate>/);
+  assert.match(html, /<label for="apiOrigin">API origin<\/label>/);
+  assert.match(html, /id="apiOriginHint"/);
+  assert.match(html, /id="status"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(html, /id="reset"[^>]*>Use local default<\/button>/);
+  assert.match(runtime, /form\.addEventListener\('submit'/);
+  assert.match(runtime, /DEFAULT_API_ORIGIN/);
+  assert.match(runtime, /setStatus\(error\.message/);
+  assert.match(styles, /prefers-reduced-motion/);
+  assert.match(styles, /:focus-visible/);
+  assert.match(styles, /min-height: 44px/);
 });
 
 test('Chrome Web Store record covers every manifest permission and the privacy gate', async () => {

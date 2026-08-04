@@ -1,10 +1,161 @@
 # Acceptance evidence
 
-Last run: 2026-08-02
+Last run: 2026-08-04
 
 This record supplements [`BRIEF_ACCEPTANCE.md`](./BRIEF_ACCEPTANCE.md). It is
 evidence from the current stacked branch, not a claim that the external
 production gates are complete.
+
+## Railway staging acceptance
+
+The current distributed-limits stack was deployed to the existing Railway
+staging service (`annotated-poc`, environment `staging`) as deployment
+`35651b01-9801-4a04-b2b2-46d29a2d4d06` at
+`https://annotated-staging.up.railway.app`. The non-mutating acceptance command
+below passed on 2026-08-04:
+
+```text
+npm run acceptance:staging
+{
+  "origin": "https://annotated-staging.up.railway.app",
+  "version": "0.1.0",
+  "persistence": "postgres",
+  "providerState": { "google": false, "x": true },
+  "oauthPreflight": [{ "provider": "x", "startStatus": 302, "cancellationStatus": 302 }],
+  "feedAnnotations": 0
+}
+```
+
+It verifies `/api/health`, `/api/ready`, `/api/auth/providers`, the root brand
+asset, `/privacy.html`, an empty server-backed feed, and the expected `401`
+identity and claims boundaries. This is deployed API evidence; it does not
+replace live OAuth consent, docked Chrome, microphone, offline replay, or
+provider fixture/browser playback evidence.
+
+The distributed-limits layer adds migration `004_rate_limit_buckets` and routes
+mutation/OAuth limits through an atomic PostgreSQL bucket ledger in production.
+Keys are SHA-256 hashed, the production path fails closed if the ledger cannot
+be reached, and local development/tests retain the explicit in-process
+fallback. `node --test test/rate-limit.test.js test/hardening.test.js
+test/storage.test.js` passed this contract. On deployment
+`35651b01-9801-4a04-b2b2-46d29a2d4d06`, the guarded
+`accept-staging-rate-limit.mjs` smoke returned `shared: true`, allowed the
+first two attempts, denied the third, and removed its temporary bucket. This
+is single-instance PostgreSQL evidence; multi-replica and edge WAF coverage
+remain external.
+
+The backup/recovery layer adds a non-destructive `npm run backup:production`
+command for a trusted runner. It refuses development adapters, invokes
+`pg_dump` without a shell, captures the latest migration and per-collection
+counts, inventories the private S3-compatible bucket with bounded pagination,
+and writes a `0600` custom-format dump, sorted object manifest, bucket
+versioning/lifecycle audit, and SHA-256 manifest without mutating production.
+`npm run backup:verify` checks the artifact offline with `pg_restore --list`,
+and its guarded recovery mode requires an `annotated_recovery*` database name
+before restoring and checking the migration ledger. `node --test
+test/backup.test.js test/backup-verification.test.js` covers the configuration
+guard, pagination, retention contract, command boundary, and secret-free
+manifest verification. A provider-side retention policy and isolated restore
+drill have not been run, so durable recovery remains an external gate.
+
+On 2026-08-04, a read-only Railway CLI audit against the existing staging
+bucket reported `versioning: Disabled`, `lifecycle: not-configured`, and an
+empty object inventory (`count: 0`, `bytes: 0`). The strict retention flags
+therefore correctly remain off for this POC and would fail closed if enabled.
+The current workstation has neither a `pg_dump` binary nor a running Docker
+daemon, so no custom-format staging dump was claimed; run the backup command
+from a trusted PostgreSQL-client runner before the next migration.
+
+PR #83's hosted Node job
+[30880966114](https://github.com/tcballard/annotated/actions/runs/30880966114)
+now exercises this boundary against ephemeral PostgreSQL and MinIO. The job
+reported `pg_dump (PostgreSQL) 16.14` and `pg_restore (PostgreSQL) 16.14`,
+created an 8,625-byte custom-format dump, captured the `004_rate_limit_buckets`
+migration ledger and collection snapshot, and produced the manifest checksum
+`6845be5df0329a0ddc9b410b2fff434363fa07b5d43e083851b095fe87e199c0`.
+`npm run backup:verify` returned `status: verified` with the same checksum and
+`objectCount: 0`. This is hosted artifact and restore-list evidence; it is not
+a scheduled production backup, provider retention policy, object-byte recovery,
+or isolated live restore.
+
+The recovery-drill branch extends the same hosted job with an explicitly named
+`annotated_recovery_ci` database. CI creates that empty target, runs
+`RUN_RECOVERY_DRILL=true`, restores with `pg_restore --exit-on-error`, and
+checks the restored migration ledger against the backup manifest. This proves
+the isolated database-recovery path without pointing `pg_restore` at the source
+database; scheduled production snapshots, provider retention, object-byte
+recovery, and deployed-service recovery remain external.
+
+PR #84's passing hosted Node job
+[30881337135](https://github.com/tcballard/annotated/actions/runs/30881337135)
+created `annotated_recovery_ci` and restored the custom-format dump with
+`pg_restore --exit-on-error`. The verifier reported `recovery.status: restored`
+and `latestMigration: 004_rate_limit_buckets`, matching the source manifest;
+the restore target was separate from the source database. This is hosted
+isolated database-recovery evidence, not a scheduled production backup,
+provider retention policy, object-byte recovery, or deployed-service recovery.
+
+The operator-run archive contract requires a distinct archive bucket, checks
+archive versioning and lifecycle before upload, archives the three verified
+artifacts under a dated prefix, and supports a follow-up `npm run backup:verify`.
+No recurring production scheduler is enabled; the owner must authorize the
+scheduler, secret scope, and destination before a live run is counted.
+
+The source-citation acceptance contract now publishes article, video, and
+podcast fixtures and verifies that both `sourceUrl` and `canonicalUrl` survive
+publish, public detail, and source-type-filtered feed responses. The API test
+passed locally; deployed browser evidence that each public surface follows the
+source link remains external.
+
+The same API acceptance test now seeds a second local profile and verifies
+follow/unfollow persistence, follower counts, the following-feed filter,
+comment persistence, and idempotent like/unlike counts. This proves the local
+social interaction contract; OAuth-backed multi-user and deployed evidence
+remain external.
+
+Article capture now has an editable, persisted selected-passage field in the
+web desk, and the extension refuses to publish an article until page text is
+selected. The server bounds `sourceExcerpt` at 2,000 characters and requires
+it for article annotations; validation and extension contract tests pass.
+This closes the local selection contract while real-page selection evidence
+remains external.
+
+Failed media jobs now retain an explicit bounded error and expose an
+owner-scoped retry endpoint. The public landing page renders the error and a
+`Retry clip` action; retrying supersedes the failed job before queueing a fresh
+attempt, and duplicate retries are rejected. The API acceptance fixture and
+media-policy tests cover this recovery contract; deployed provider recovery
+remains external.
+
+The claim-surface deployment also serves the feed/profile card contract from
+the same PostgreSQL-backed staging service. The claim action preserves the
+selected annotation slug and submits through the persisted claim endpoint;
+staging smoke confirms the route is live while authenticated moderation and
+multi-user browser evidence remain external.
+
+For each enabled provider it also starts an OAuth request, verifies the PKCE
+state/verifier cookies and provider authorize host, then exercises an ephemeral
+`access_denied` callback and verifies the same-origin return. This proves the
+deployed start/cancellation boundary, not successful user consent or identity
+creation.
+
+The same deployed API resolved the public YouTube fixture
+`https://www.youtube.com/watch?v=jNQXAC9IVRw` as `video`, `youtube`, and
+`ready-for-range`, and resolved `https://example.com/` as an `article` with
+`text-ready` metadata. A direct-audio podcast worker smoke is also recorded
+below; YouTube extraction and browser playback remain intentionally unclaimed.
+
+The repository also contains a guarded `accept-staging-media.mjs` command for
+the Railway container. It is explicitly restricted to the staging host and
+production PostgreSQL/S3 settings; when run, it creates and cleans one direct
+audio podcast fixture while checking the worker output, private media redirect,
+signed object delivery, and object/database cleanup. This does not claim
+authenticated OAuth publishing or YouTube extraction.
+
+On 2026-08-04, deployment `3e0dddde-4edd-465d-b596-8977668f1789` passed the
+guarded command. It reached `jobStatus: ready` and `mediaStatus: ready`, served
+the private redirect and signed object with HTTP 200, and delivered 10,037 bytes
+of `audio/webm` before cleaning the fixture.
 
 ## Clean-checkout validation
 
@@ -32,6 +183,25 @@ transitions. It passed as part of the 62-test local run. The Docker daemon was n
 available in this environment, so the production image was validated through
 the hosted smoke workflow recorded below; the Dockerfile build order, non-root
 user, and context boundary are also covered by static tests.
+
+The 2026-08-04 docs-boundary update corrects the README, release record, and
+deployment runbook to describe the verified Railway POC staging service without
+calling it a public production release. `node --test test/deployment.test.js`
+and the full local suite cover the wording and release-boundary contract.
+
+The deployed image's read-only YouTube provider probe reached the pinned
+extractor but received HTTP 429/bot verification from YouTube; this is recorded
+as an unverified provider gate, not treated as a passing extraction claim.
+
+The provider boundary now makes the operational remedy explicit and testable:
+`YTDLP_JS_RUNTIME` defaults to `node`, while `YTDLP_PROXY`,
+`YTDLP_COOKIES_FILE`, and `YTDLP_PLAYER_CLIENT` are validated configuration
+inputs. Proxy/cookie values are passed to `yt-dlp` as argument-array options;
+cookie files must be absolute secret-mounted paths and are excluded from the
+Docker build context. Readiness rejects a configured-but-unmounted cookie file.
+This is deployment plumbing, not successful provider evidence: staging has no
+proxy or cookie configured and the bounded client probes still receive YouTube
+429/sign-in challenges.
 
 ## Browser acceptance run
 
@@ -90,6 +260,12 @@ The local browser run exercised the user-facing flows below:
 - Media-policy tests cover the FFprobe boundary for duration, required audio,
   audio-only outputs, and the 240px video-height limit; the generated artifact
   is inspected before the worker marks it ready.
+- The 2026-08-03 media-policy run now generates a 640×360 local fixture,
+  transcodes a 1.5-second clip with the production worker arguments, and
+  validates the real FFprobe report: duration under 90 seconds, 240px video
+  height, width no greater than 480px, and an audio stream. The test skips only
+  when `ffmpeg` or `ffprobe` is unavailable; the current run passed without a
+  skip.
 - The pinned yt-dlp 2026.06.09 host-compatible release resolved the public
   YouTube fixture `jNQXAC9IVRw` with the production format selector, downloaded
   the real 240p/audio source, and transcoded a 10-second MP4 using the worker's
@@ -145,6 +321,59 @@ The local browser run exercised the user-facing flows below:
   and author-scoped retry lookup; web and extension drafts preserve the key.
 - Moderation tests cover active-claim deduplication and restricted terminal
   reopening; new claims and status changes append audit records in the store.
+- The 2026-08-04 claim UI contract test verifies that feed/profile annotation
+  cards render a visible `File a claim` action, preserve the card slug, and
+  submit through the existing persisted claim endpoint. The public landing
+  page keeps its existing claim card. The same branch is deployed to Railway
+  staging and passed `npm run acceptance:staging`; live authenticated browser
+  interaction remains an external gate.
+- The 2026-08-04 feed contract tests verify that malformed `limit`/`cursor`
+  values fall back safely, limits remain bounded, cursor pages advance without
+  duplicates, and normalized search matches source and commentary context.
+  This is local API evidence; deployed multi-user and browser feed evidence
+  remains an external gate.
+- The extension settings surface now uses the supplied mark, keeps the API
+  origin form keyboard-accessible with explicit local/production guidance, and
+  exposes save, validation, reset, and failure states. Static extension tests
+  cover the page contract; an installed packaged-browser review remains an
+  external gate.
+- The following-feed contract now rejects anonymous requests when production
+  authentication is required, while the web filter asks the user to sign in
+  before changing views and recovers expired sessions visibly. Local feed-auth
+  and UI contract tests cover the boundary; multi-user browser evidence remains
+  external.
+- Railway staging deployment `eca36a58-963e-4744-a142-1de7064d36eb` built the
+  current stack tip and passed the guarded public smoke. A direct deployed
+  request to `/api/feed?following=true` returned HTTP 401 with the expected
+  sign-in error; the public feed remained readable and empty. This is deployed
+  API evidence, not authenticated OAuth/browser proof.
+- The same deployment passed the guarded media smoke from inside the Railway
+  service: a direct podcast fixture reached a ready worker job, the private
+  media redirect produced a signed object URL, and the object returned HTTP
+  200 as `audio/webm` with 10,037 bytes. Cleanup removed the temporary
+  annotation, job, and object; this does not prove deployed YouTube extraction.
+- PR #80 deployment `26e9e2af-b371-4d42-a38b-de291115ed33` passed the expanded
+  service-side smoke with both direct audio and direct video fixtures. The
+  podcast output reached `ready` and delivered `audio/webm` (10,037 bytes); the
+  Sintel MP4 output reached `ready` and delivered `video/mp4` (15,897 bytes).
+  Both private media routes returned signed Railway Bucket objects and cleanup
+  removed each temporary annotation, job, and object. The worker's existing
+  FFprobe gate therefore ran in the deployed container for the video 240p/
+  90-second contract; YouTube extraction and browser playback remain external.
+- PR #81 deployment `665c9c5e-4f1c-4554-8393-d7aa5fb8cac5` passed the expanded
+  non-mutating public acceptance command. Its source preflight classified the
+  YouTube fixture as `video`/`youtube`/`ready-for-range`, the article fixture as
+  `article`/`text-ready` with the submitted canonical URL preserved, and the
+  direct podcast fixture as `podcast`/`ready-for-range` with its media URL
+  preserved. The first run exposed a missing article canonical fallback;
+  `f65ea06` fixes it and adds a regression test. This is deployed source
+  resolution evidence, not YouTube extraction or browser playback evidence.
+- PR #82's guarded retention command was deployed to Railway staging and failed
+  closed without changing the bucket. `PutBucketVersioning` returned
+  `BucketAlreadyExists`/HTTP 409, while `PutBucketLifecycleConfiguration`
+  reports that the provider only accepts expiration rules. The command now
+  emits a bounded capability diagnosis and the runbook explicitly says not to
+  count Railway's current bucket as durable versioned-retention evidence.
 - Deployment tests verify Vite builds before production pruning, the container
   runs as an unprivileged user, local state/secrets are excluded from its build
   context, and the Dockerfile pins the official yt-dlp 2026.06.09 amd64/arm64
@@ -155,7 +384,9 @@ The local browser run exercised the user-facing flows below:
 - `.github/workflows/ci.yml` now makes that external image gate reproducible in
   GitHub Actions: it runs the clean Node/package checks and builds both
   `linux/amd64` and `linux/arm64` images under QEMU, then executes the pinned
-  provider binary in each image. Both the push and pull-request runs for PR32
+  provider binary in each image. It also runs the generated-media/FFprobe
+  fixture contract inside each image after the container-network readiness
+  smoke. Both the push and pull-request runs for PR32
   passed on 2026-08-01 (for example,
   [run 30721572499](https://github.com/tcballard/annotated/actions/runs/30721572499)).
 - PR33’s hosted Node job ran all 58 tests with zero skips, including the real

@@ -1,7 +1,8 @@
 # annotated v0.1.0 release boundary
 
-> **Status:** draft release baseline. It is not tagged, deployed, submitted to
-> the Chrome Web Store, or declared production-ready.
+> **Status:** draft release baseline. Railway POC staging is deployed and
+> evidenced, but this release is not tagged, submitted to the Chrome Web Store,
+> or declared production-ready.
 
 `package.json`, `package-lock.json`, and `extension/manifest.json` all identify
 the current code as `0.1.0`. The API health response reads that package version
@@ -16,8 +17,9 @@ rather than carrying a separate release number.
   feed, profile, follow, like, comment, and sharing flows.
 - Local development adapters plus tested PostgreSQL/S3-compatible production
   boundaries, asynchronous media-job states, and deployment configuration.
-- Google-first OAuth configuration with an explicitly configured X provider
-  path; no provider credential is embedded in the repository or extension.
+- X-only OAuth configuration for the current POC, with a provider-neutral
+  Google adapter retained for a future expansion; no provider credential is
+  embedded in the repository or extension.
 
 The detailed product contract is in [PRODUCT.md](PRODUCT.md), and the live
 brief comparison is in [BRIEF_ACCEPTANCE.md](BRIEF_ACCEPTANCE.md).
@@ -45,10 +47,12 @@ records the current results and their limits.
 
 These are release gates, not features to imply through versioning or copy:
 
-- A deployed Google/X OAuth client, real consent/callback/logout/expiry proof,
-  and a configured public application origin.
-- A deployed PostgreSQL/object-storage/CDN environment with operational backup
-  and recovery evidence.
+- Complete deployed X OAuth consent/callback/logout/expiry proof and a
+  configured public application origin. Google remains intentionally disabled
+  for this POC.
+- A production-grade PostgreSQL/object-storage/CDN environment with operational
+  backup and recovery evidence; Railway staging is a POC boundary, not that
+  production environment.
 - Installed-Chrome evidence for a docked side panel, microphone capture,
   offline retry, and service-worker lifecycle recovery.
 - Real public source/provider runs and deployed playback for YouTube, news, and

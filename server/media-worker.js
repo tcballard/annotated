@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { mkdir } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { access, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mediaWorkDirectory, removeMediaFile, removeStoredMedia, storeMediaFile } from './media-store.js';
@@ -14,6 +15,10 @@ const retryDelayMs = Math.max(100, Number(process.env.MEDIA_WORKER_RETRY_DELAY_M
 const workerId = process.env.MEDIA_WORKER_ID || randomUUID();
 const leaseMs = Math.max(30_000, Number(process.env.MEDIA_WORKER_LEASE_MS || 600_000));
 const processTimeoutMs = Math.max(10_000, Number(process.env.MEDIA_WORKER_PROCESS_TIMEOUT_MS || 300_000));
+const ytdlpProxy = String(process.env.YTDLP_PROXY || '').trim();
+const ytdlpCookiesFile = String(process.env.YTDLP_COOKIES_FILE || '').trim();
+const ytdlpJsRuntime = String(process.env.YTDLP_JS_RUNTIME || 'node').trim();
+const ytdlpPlayerClient = String(process.env.YTDLP_PLAYER_CLIENT || '').trim();
 const queue = [];
 const activeProcesses = new Map();
 const cancelledJobs = new Set();
@@ -23,6 +28,48 @@ const directMediaUrl = (value) => /\.(?:mp4|webm|mov|m3u8|mp3|m4a|wav|ogg|aac|fl
 const outputFor = (sourceType, id) => sourceType === 'video'
   ? { fileName: `${id}.mp4`, mimeType: 'video/mp4' }
   : { fileName: `${id}.webm`, mimeType: 'audio/webm' };
+
+const providerProtocols = new Set(['http:', 'https:', 'socks4:', 'socks4a:', 'socks5:', 'socks5h:']);
+const providerArgPattern = /^[A-Za-z0-9._,-]+$/;
+
+export const validateProviderRuntimeConfig = ({ proxy = ytdlpProxy, cookiesFile = ytdlpCookiesFile, jsRuntime = ytdlpJsRuntime, playerClient = ytdlpPlayerClient } = {}) => {
+  const normalized = {
+    proxy: String(proxy || '').trim(),
+    cookiesFile: String(cookiesFile || '').trim(),
+    jsRuntime: String(jsRuntime || '').trim(),
+    playerClient: String(playerClient || '').trim(),
+  };
+  if (normalized.proxy) {
+    let parsed;
+    try { parsed = new URL(normalized.proxy); } catch { throw new Error('YTDLP_PROXY must be a valid proxy URL.'); }
+    if (!providerProtocols.has(parsed.protocol) || !parsed.hostname) throw new Error('YTDLP_PROXY must use an http, https, or socks proxy URL.');
+  }
+  if (normalized.cookiesFile && (!path.isAbsolute(normalized.cookiesFile) || normalized.cookiesFile.includes('\0'))) {
+    throw new Error('YTDLP_COOKIES_FILE must be an absolute file path.');
+  }
+  if (normalized.jsRuntime && !providerArgPattern.test(normalized.jsRuntime)) throw new Error('YTDLP_JS_RUNTIME contains unsupported characters.');
+  if (normalized.playerClient && !providerArgPattern.test(normalized.playerClient)) throw new Error('YTDLP_PLAYER_CLIENT contains unsupported characters.');
+  return normalized;
+};
+
+export const buildProviderArgs = (job, sourceUrl, config = {}) => {
+  const runtime = validateProviderRuntimeConfig({
+    proxy: config.proxy ?? ytdlpProxy,
+    cookiesFile: config.cookiesFile ?? ytdlpCookiesFile,
+    jsRuntime: config.jsRuntime ?? ytdlpJsRuntime,
+    playerClient: config.playerClient ?? ytdlpPlayerClient,
+  });
+  const format = job.sourceType === 'video' ? 'best[height<=240]/best' : 'bestaudio/best';
+  const args = ['--no-playlist'];
+  if (runtime.jsRuntime) args.push('--js-runtimes', runtime.jsRuntime);
+  if (runtime.proxy) args.push('--proxy', runtime.proxy);
+  if (runtime.cookiesFile) args.push('--cookies', runtime.cookiesFile);
+  if (runtime.playerClient && (job.provider === 'youtube' || /(?:youtube\.com|youtu\.be)/i.test(sourceUrl))) {
+    args.push('--extractor-args', `youtube:player_client=${runtime.playerClient}`);
+  }
+  args.push('--format', format, '--get-url', sourceUrl);
+  return args;
+};
 
 export const buildFfmpegArgs = (job, input, outputPath) => {
   const duration = Math.max(0, Math.min(90, Number(job.clipEnd) - Number(job.clipStart)));
@@ -99,12 +146,18 @@ const run = (command, args, { maxOutput = 64_000, jobId = '', timeoutMs = proces
 
 export { run as runMediaCommand };
 
-export const checkMediaRuntime = async ({ runCommand = run, includeProvider = process.env.NODE_ENV === 'production' } = {}) => {
+export const checkMediaRuntime = async ({ runCommand = run, includeProvider = process.env.NODE_ENV === 'production', providerConfig } = {}) => {
   const checks = [
     ['ffmpeg', 'ffmpeg', ['-version']],
     ['ffprobe', 'ffprobe', ['-version']],
   ];
-  if (includeProvider) checks.push(['provider extractor', ytdlpBinary, ['--version']]);
+  if (includeProvider) {
+    const runtime = validateProviderRuntimeConfig(providerConfig);
+    if (runtime.cookiesFile) {
+      try { await access(runtime.cookiesFile, fsConstants.R_OK); } catch (error) { throw new Error(`Media runtime provider cookies are unavailable: ${error.message}`); }
+    }
+    checks.push(['provider extractor', ytdlpBinary, ['--version']]);
+  }
   for (const [label, command, args] of checks) {
     try {
       await runCommand(command, args, { maxOutput: 2_000 });
@@ -141,8 +194,7 @@ export const resolveInput = async (job, { lookup } = {}) => {
   if (mediaUrl && (directMediaUrl(mediaUrl) || (job.sourceType === 'podcast' && job.provider === 'podcast'))) return mediaUrl;
   if (directMediaUrl(sourceUrl)) return sourceUrl;
   if (job.provider === 'youtube' || job.provider === 'podcast' || job.sourceType === 'podcast' || /(?:youtube\.com|youtu\.be)/i.test(sourceUrl)) {
-    const format = job.sourceType === 'video' ? 'best[height<=240]/best' : 'bestaudio/best';
-    const result = await run(ytdlpBinary, ['--no-playlist', '--format', format, '--get-url', sourceUrl], { jobId: job.id });
+    const result = await run(ytdlpBinary, buildProviderArgs(job, sourceUrl), { jobId: job.id });
     const input = result.stdout.trim().split(/\s+/)[0];
     if (!input) throw new Error('The media provider returned no playable stream.');
     return validatePlayableInput(input, { lookup });
@@ -222,6 +274,7 @@ const runJob = async (job) => {
   } catch (error) {
     if (storedAsset) await removeStoredMedia(storedAsset).catch(() => {});
     await removeMediaFile(outputPath);
+    const boundedError = String(error?.message || 'Media processing failed.').slice(0, 500);
     const latest = await readStore();
     if (shouldAbortMediaJob(job, latest)) {
       cancelledJobs.delete(job.id);
@@ -235,8 +288,8 @@ const runJob = async (job) => {
       recordedFailure = true;
       return {
         ...store,
-        annotations: store.annotations.map((item) => item.id === job.annotationId ? { ...item, mediaStatus: retry ? 'queued' : 'failed', mediaError: retry ? `Retrying media processing (${attempts}/${maxAttempts}).` : error.message } : item),
-        mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: retry ? 'queued' : 'failed', workerId: null, leaseUntil: null, attempts, error: error.message, retryAt: retry ? new Date(Date.now() + retryDelayMs * attempts).toISOString() : null, completedAt: retry ? null : new Date().toISOString() } : item),
+        annotations: store.annotations.map((item) => item.id === job.annotationId ? { ...item, mediaStatus: retry ? 'queued' : 'failed', mediaError: retry ? `Retrying media processing (${attempts}/${maxAttempts}).` : boundedError } : item),
+        mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: retry ? 'queued' : 'failed', workerId: null, leaseUntil: null, attempts, error: boundedError, retryAt: retry ? new Date(Date.now() + retryDelayMs * attempts).toISOString() : null, completedAt: retry ? null : new Date().toISOString() } : item),
       };
     });
     if (!recordedFailure) {
@@ -258,6 +311,48 @@ const drain = () => {
 export async function enqueueMediaJob(input) {
   const job = { id: randomUUID(), ...input, attempts: 0, status: 'queued', createdAt: new Date().toISOString() };
   await updateStore((store) => ({ ...store, mediaJobs: [...(store.mediaJobs || []), job], annotations: store.annotations.map((annotation) => annotation.id === input.annotationId ? { ...annotation, mediaStatus: 'queued', mediaError: null } : annotation) }));
+  queue.push(job);
+  drain();
+  return job;
+}
+
+export const canRetryMediaJob = (job, annotation, userId) => Boolean(
+  job
+  && annotation
+  && job.annotationId === annotation.id
+  && job.status === 'failed'
+  && annotation.authorId === userId
+);
+
+export async function retryMediaJobForAnnotation(annotationId, userId) {
+  let job = null;
+  await updateStore((store) => {
+    const annotation = (store.annotations || []).find((item) => item.id === annotationId);
+    const failed = [...(store.mediaJobs || [])]
+      .reverse()
+      .find((item) => canRetryMediaJob(item, annotation, userId));
+    if (!failed) return store;
+    job = {
+      id: randomUUID(),
+      annotationId: failed.annotationId,
+      sourceUrl: failed.sourceUrl,
+      sourceType: failed.sourceType,
+      sourceMediaUrl: failed.sourceMediaUrl,
+      mediaUrl: failed.mediaUrl,
+      provider: failed.provider,
+      clipStart: failed.clipStart,
+      clipEnd: failed.clipEnd,
+      attempts: 0,
+      status: 'queued',
+      createdAt: new Date().toISOString(),
+    };
+    return {
+      ...store,
+      annotations: store.annotations.map((item) => item.id === annotationId ? { ...item, mediaStatus: 'queued', mediaError: null } : item),
+      mediaJobs: [...(store.mediaJobs || []).map((item) => item.id === failed.id ? { ...item, status: 'superseded', completedAt: new Date().toISOString() } : item), job],
+    };
+  });
+  if (!job) return null;
   queue.push(job);
   drain();
   return job;

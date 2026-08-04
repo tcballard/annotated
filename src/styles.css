@@ -520,6 +520,37 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   }
 }
 
+.feed-source-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.feed-claim-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--orange-deep);
+  font-family: var(--mono);
+  font-size: 9px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.feed-claim-link:hover {
+  color: var(--ink);
+}
+
+.claim-context {
+  margin-bottom: 6px !important;
+  color: var(--ink) !important;
+  font-family: var(--mono) !important;
+  font-size: 10px !important;
+  text-transform: uppercase;
+}
+
 /* Brand mark and range editor hardening. The mark stays raster-faithful to
    the supplied asset; the range controls keep their DOM identity while the
    pointer moves so dragging cannot reset focus or swap the handles. */
@@ -1271,3 +1302,10 @@ body {
     top: 13px;
   }
 }
+.highlight-preview label { display: block; color: var(--ink-soft); font-family: var(--mono); font-size: 10px; text-transform: uppercase; }
+.highlight-preview textarea { display: block; width: 100%; min-height: 76px; resize: vertical; margin-top: 8px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink-soft); font-family: Georgia, serif; font-size: 15px; line-height: 1.3; }
+.highlight-preview textarea:focus { box-shadow: 0 2px 0 var(--orange); }
+.media-recovery { display: grid; gap: 9px; max-width: 260px; margin-top: 12px; padding: 10px; border: 1px solid rgba(255,253,249,.35); background: rgba(17,21,21,.58); color: var(--surface); font-family: var(--mono); font-size: 9px; line-height: 1.35; text-transform: none; }
+.media-recovery button { justify-self: start; padding: 6px 9px; border: 1px solid var(--surface); background: transparent; color: var(--surface); font-family: var(--mono); font-size: 9px; text-transform: uppercase; }
+.media-recovery button:hover:not(:disabled) { background: var(--surface); color: var(--ink); }
+.media-recovery button:disabled { cursor: wait; opacity: .65; }

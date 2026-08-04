@@ -62,15 +62,15 @@ test('production authentication fails fast when either required provider is abse
   assert.match(`${result.stderr}${result.stdout}`, /Production authentication requires/);
 });
 
-test('Google is the production default and X is an opt-in sibling provider', () => {
+test('X is the current production default and Google remains an opt-in sibling provider', () => {
   const saved = envSnapshot();
-  process.env.OAUTH_PROVIDERS = 'google';
-  process.env.GOOGLE_CLIENT_ID = 'google-client';
-  process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
-  delete process.env.X_CLIENT_ID;
-  delete process.env.X_CLIENT_SECRET;
+  delete process.env.OAUTH_PROVIDERS;
+  process.env.X_CLIENT_ID = 'x-client';
+  process.env.X_CLIENT_SECRET = 'x-secret';
+  delete process.env.GOOGLE_CLIENT_ID;
+  delete process.env.GOOGLE_CLIENT_SECRET;
   try {
-    assert.deepEqual(providerStatus(), { google: true, x: false });
+    assert.deepEqual(providerStatus(), { google: false, x: true });
     const result = spawnSync(process.execPath, ['-e', "import('./server/auth.js').then((auth) => auth.assertAuthConfiguration())"], {
       cwd: process.cwd(),
       env: { ...process.env, NODE_ENV: 'production', ANNOTATED_STORAGE: 'file', AUTH_REQUIRED: 'true', APP_ORIGIN: 'https://annotated.example.com' },
