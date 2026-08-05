@@ -30,13 +30,19 @@ export const rateLimit = (key, { limit = 60, windowMs = 60_000 } = {}) => {
   return { allowed: current.count <= limit, retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)) };
 };
 
+// Framing is refused everywhere real. The one exception is local
+// development with ANNOTATED_DEV_ALLOW_FRAMING=1 — the react-native-web
+// preview of the mobile app embeds shell-mode pages in an iframe — and it
+// can never apply in production.
+const devFramingAllowed = () => process.env.ANNOTATED_DEV_ALLOW_FRAMING === '1' && !production;
+
 export const securityHeaders = ({ api = false } = {}) => ({
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'strict-origin-when-cross-origin',
-  'x-frame-options': 'DENY',
+  ...(devFramingAllowed() ? {} : { 'x-frame-options': 'DENY' }),
   'permissions-policy': 'camera=(), geolocation=(), payment=()',
   'cross-origin-resource-policy': api ? 'same-site' : 'same-origin',
-  ...(api ? {} : { 'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" }),
+  ...(api ? {} : { 'content-security-policy': `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' https:; frame-ancestors ${devFramingAllowed() ? '*' : "'none'"}; base-uri 'none'; form-action 'self'` }),
 });
 
 export { production };

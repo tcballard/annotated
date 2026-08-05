@@ -102,6 +102,14 @@ npx eas-cli build --profile development --platform ios
 npx expo start --dev-client
 ```
 
+No device to hand? The app also runs in a browser via react-native-web —
+same components, DOM-rendered (WebView surfaces become iframes; grant the
+local server `ANNOTATED_DEV_ALLOW_FRAMING=1` so shell pages allow it):
+
+```bash
+EXPO_PUBLIC_ORIGIN=http://localhost:8787 npx expo start --web
+```
+
 ## What to test on the device
 
 1. Install, open — a native timeline with the pill pane switcher, native

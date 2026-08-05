@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useShareIntent } from 'expo-share-intent';
+import { useShareIntent } from '../lib/share-intent';
 import { SessionEpochContext } from '../components/WebScreen';
 import { card, ink, paper } from '../lib/tokens';
 
