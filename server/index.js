@@ -14,6 +14,7 @@ import { followingFeedRequiresAuth, matchesFeedQuery, matchesFeedUrl, normalizeF
 import { ogCardData, renderOgCardCached } from './og-card.js';
 import { injectAnnotationMeta } from './permalink-meta.js';
 import { allowsIndexing, canViewAnnotation, isPubliclyListed } from './visibility.js';
+import { matchesPersonQuery, normalizeHost, publicAnnotationsForHost, rankAnnotators } from './discovery.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, parseCookies, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, requestId, securityHeaders } from './hardening.js';
@@ -205,6 +206,53 @@ const handleApi = async (request, response, pathname) => {
     const candidates = store.annotations.filter((item) => item.status === 'published' && isPubliclyListed(item) && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id) && matchesFeedQuery(item, store.users || [], search) && matchesFeedUrl(item, urlKey)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const page = candidates.slice(offset, offset + limit);
     return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null, query: search || null });
+  }
+
+  // Source hub: a host's public annotations and its annotators, discovery by
+  // shared attention rather than by directory.
+  const hubMatch = pathname.match(/^\/api\/sources\/([^/]+)$/);
+  if (hubMatch && request.method === 'GET' && hubMatch[1] !== 'resolve') {
+    const host = normalizeHost(decodeURIComponent(hubMatch[1]));
+    if (!host) return notFound(response);
+    const store = await readStore();
+    const viewer = await currentUser(request);
+    const all = publicAnnotationsForHost(store.annotations, host).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const query = new URL(request.url || '/', publicOrigin).searchParams;
+    const limit = normalizeFeedLimit(query.get('limit'));
+    const offset = normalizeFeedCursor(query.get('cursor'));
+    const page = all.slice(offset, offset + limit);
+    const annotators = rankAnnotators(all, store.users || [], 5).map((entry) => ({
+      ...(publicUser(entry.user) || { id: entry.authorId, handle: entry.authorId, displayName: entry.authorId }),
+      annotationCount: entry.count,
+      opens: entry.opens,
+      isFollowing: Boolean(viewer && (store.follows || []).some((follow) => follow.followerId === viewer.id && follow.followingId === entry.authorId)),
+    }));
+    return send(response, 200, {
+      source: { host, annotationCount: all.length, opens: all.reduce((total, item) => total + (Number(item.openCount) || 0), 0) },
+      annotators,
+      annotations: page.map((item) => withComments(item, store, viewer?.id)),
+      nextCursor: offset + page.length < all.length ? String(offset + page.length) : null,
+    });
+  }
+
+  // People discovery: annotators ranked by opens of the original; a query
+  // narrows by handle or display name.
+  if (request.method === 'GET' && pathname === '/api/people') {
+    const store = await readStore();
+    const viewer = await currentUser(request);
+    const search = normalizeFeedQuery(new URL(request.url || '/', publicOrigin).searchParams.get('q'));
+    const publicAnnotations = store.annotations.filter((item) => item.status === 'published' && isPubliclyListed(item));
+    const people = rankAnnotators(publicAnnotations, store.users || [], 50)
+      .filter((entry) => entry.user && matchesPersonQuery(entry.user, search))
+      .slice(0, 10)
+      .map((entry) => ({
+        ...publicUser(entry.user),
+        annotationCount: entry.count,
+        opens: entry.opens,
+        followers: (store.follows || []).filter((follow) => follow.followingId === entry.user.id).length,
+        isFollowing: Boolean(viewer && (store.follows || []).some((follow) => follow.followerId === viewer.id && follow.followingId === entry.user.id)),
+      }));
+    return send(response, 200, { people, query: search || null });
   }
 
   const profileMatch = pathname.match(/^\/api\/profiles\/([^/]+)$/);

@@ -443,4 +443,30 @@ test('local API serves the acceptance-critical health, identity, publish, social
     body: { sourceUrl: 'https://example.com/chart-page-2', sourceType: 'article', sourceTitle: 'Chart page 2', sourceExcerpt: 'p', commentaryMode: 'text', commentary: 'x', screenshotAssetId: 'not-a-real-asset', clientRequestId: 'acceptance-screenshot-2' },
   });
   assert.equal(stolenShot.response.status, 422);
+
+  // ── discovery: source hubs and people, public record only ──
+  const hub = await request(baseUrl, '/api/sources/EXAMPLE.com');
+  assert.equal(hub.response.status, 200);
+  assert.equal(hub.payload.source.host, 'example.com');
+  assert.ok(hub.payload.source.annotationCount >= 3);
+  assert.ok(hub.payload.annotations.length >= 3);
+  assert.equal(hub.payload.annotations.some((item) => item.slug === unlisted.payload.annotation.slug), false);
+  assert.equal(hub.payload.annotations.some((item) => item.slug === priv.payload.annotation.slug), false);
+  assert.ok(hub.payload.annotators.length >= 1);
+  assert.equal(hub.payload.annotators[0].handle, 'tcballard');
+  assert.ok(hub.payload.annotators[0].opens >= 2, 'hub annotators carry their opens totals');
+  const emptyHub = await request(baseUrl, '/api/sources/nothing-here.example');
+  assert.equal(emptyHub.response.status, 200);
+  assert.equal(emptyHub.payload.annotations.length, 0);
+
+  const people = await request(baseUrl, '/api/people');
+  assert.equal(people.response.status, 200);
+  assert.ok(people.payload.people.length >= 1);
+  assert.equal(people.payload.people[0].handle, 'tcballard');
+  assert.ok(people.payload.people[0].opens >= 2);
+  assert.equal('email' in people.payload.people[0], false);
+  const peopleSearch = await request(baseUrl, '/api/people?q=ballard');
+  assert.equal(peopleSearch.payload.people.length, 1);
+  const peopleMiss = await request(baseUrl, '/api/people?q=nobody-matches');
+  assert.equal(peopleMiss.payload.people.length, 0);
 });
