@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+const feedItem = await readFile(new URL('../src/feed-item.js', import.meta.url), 'utf8');
 
 test('feed screenshots enlarge in a lightbox with keyboard and inert handling', () => {
   assert.match(main, /data-action="open-lightbox"/);
@@ -17,7 +18,7 @@ test('feed screenshots enlarge in a lightbox with keyboard and inert handling', 
 });
 
 test('audio notes carry their duration on the card', () => {
-  assert.match(main, /audioDuration: Number\(annotation\.audioDuration\) \|\| 0/);
+  assert.match(feedItem, /audioDuration: Number\(annotation\.audioDuration\) \|\| 0/);
   assert.match(main, /srcaudio-time/);
   assert.match(main, /Audio note\$\{item\.audioDuration \? ` · \$\{escapeHTML\(formatTime\(item\.audioDuration\)\)\}` : ''\}/);
   assert.match(css, /\.srcaudio-time/);
@@ -58,8 +59,8 @@ test('on phones the feed switcher docks into the thumb zone and swipes flick pan
 
 test('hosted audio renders a seekable waveform from server peaks', () => {
   assert.match(main, /const waveform = \(peaks\)/);
-  assert.match(main, /audioPeaks: Array\.isArray\(annotation\.audioPeaks\)/);
-  assert.match(main, /clipPeaks: Array\.isArray\(annotation\.clipPeaks\)/);
+  assert.match(feedItem, /audioPeaks: Array\.isArray\(annotation\.audioPeaks\)/);
+  assert.match(feedItem, /clipPeaks: Array\.isArray\(annotation\.clipPeaks\)/);
   assert.match(main, /data-action="wave-seek"/);
   assert.match(main, /addEventListener\('timeupdate'/, 'progress paints without re-render');
   assert.match(main, /audio\.currentTime = ratio \* audio\.duration/);
