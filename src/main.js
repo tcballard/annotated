@@ -39,6 +39,8 @@ const icons = {
   back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
   mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg>',
   stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>',
+  bell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
+  heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>',
 };
 
 const escapeHTML = (value = '') => String(value)
@@ -131,6 +133,9 @@ const initialState = {
   feedSort: 'recent',
   feedTopic: null,
   feedTopics: [],
+  notifications: [],
+  notificationsLoading: false,
+  unseenNotifications: 0,
   trendingSources: [],
   topic: '',
   feedCursor: null,
@@ -252,7 +257,8 @@ const chromeAuth = () => {
     const face = state.user.avatarUrl
       ? `<img src="${escapeHTML(state.user.avatarUrl)}" alt="" referrerpolicy="no-referrer" />`
       : initials;
-    return `<span class="auth"><button class="me ${state.user.avatarUrl ? 'has-photo' : ''}" data-action="logout" aria-label="Sign out ${escapeHTML(state.user.handle || '')}" title="Sign out">${face}</button></span>`;
+    const bell = `<button class="bell ${state.activeView === 'notifications' ? 'is-active' : ''}" data-action="open-notifications" aria-label="Notifications${state.unseenNotifications ? ` (${state.unseenNotifications} unseen)` : ''}">${icon('bell')}${state.unseenNotifications ? `<span class="n">${state.unseenNotifications > 9 ? '9+' : state.unseenNotifications}</span>` : ''}</button>`;
+    return `<span class="auth">${bell}<button class="me ${state.user.avatarUrl ? 'has-photo' : ''}" data-action="logout" aria-label="Sign out ${escapeHTML(state.user.handle || '')}" title="Sign out">${face}</button></span>`;
   }
   const providers = enabledProviders(state.authProviders);
   if (!providers.length) return `<span class="auth"><span class="connection-note">${state.serverStatus === 'offline' ? 'offline' : 'local'}</span></span>`;
@@ -300,6 +306,7 @@ const DOC_VIEWS = { about: '/about', extension: '/extension', audit: '/audit', r
 const routeFor = (view) => view === 'feed' ? '/'
   : view === 'capture' ? '/capture'
   : view === 'library' ? '/library'
+  : view === 'notifications' ? '/notifications'
   : view === 'moderation' ? '/moderation'
   : DOC_VIEWS[view] ? DOC_VIEWS[view]
   : view === 'published' && state.publishedSlug ? `/a/${encodeURIComponent(state.publishedSlug)}`
@@ -315,6 +322,7 @@ const navigate = (view, { push = true } = {}) => {
   if (view === 'library') loadLibrary().then(render);
   if (view === 'hub') loadHub().then(render);
   if (view === 'transparency') loadTransparency().then(render);
+  if (view === 'notifications') loadNotifications().then(render);
   render();
   window.scrollTo(0, 0);
 };
@@ -337,6 +345,8 @@ const applyLocation = () => {
     state.activeView = 'capture';
   } else if (window.location.pathname === '/library' || requestedView === 'published' || requestedView === 'library') {
     state.activeView = 'library';
+  } else if (window.location.pathname === '/notifications') {
+    state.activeView = 'notifications';
   } else if (window.location.pathname === '/moderation') {
     state.activeView = 'moderation';
   } else if (Object.values(DOC_VIEWS).includes(window.location.pathname)) {
@@ -412,6 +422,14 @@ const bootstrap = async () => {
     if (state.activeView === 'library') await loadLibrary();
     if (state.activeView === 'hub' && state.hubHost) await loadHub();
     if (state.activeView === 'transparency') await loadTransparency();
+    if (state.activeView === 'notifications') await loadNotifications();
+    // The bell badge: one light read; opening the view clears it for real.
+    if (state.user && state.activeView !== 'notifications') {
+      api.notifications().then((result) => {
+        state.unseenNotifications = Number(result.unseenCount) || 0;
+        if (state.unseenNotifications) render();
+      }).catch(() => {});
+    }
     // A Web Share Target launch (or any shared link) lands on
     // /capture?url=…&text=…&title=… — pick out the URL, clean the address
     // bar, and resolve immediately so the share is one publish away.
@@ -1095,6 +1113,54 @@ const termsView = () => docPage('Terms', 'short and honest', `
   <p class="doc-footnote">Questions about these terms: the <a href="https://github.com/tcballard/annotated/issues" target="_blank" rel="noreferrer">public tracker</a>.</p>
 `);
 
+// Notifications — the same derived feed the app's bell shows: responses,
+// likes, and follows aimed at you. Opening the view moves the server-side
+// seen watermark, which is what clears the badge everywhere.
+const loadNotifications = async () => {
+  if (state.serverStatus !== 'online' || !state.user) return;
+  state.notificationsLoading = true;
+  try {
+    const result = await api.notifications();
+    state.notifications = result.notifications || [];
+    state.unseenNotifications = 0;
+    api.notificationsSeen().catch(() => {});
+  } catch { /* the empty state below covers it */ }
+  state.notificationsLoading = false;
+};
+
+const notificationSentence = (item) => {
+  const name = escapeHTML(item.actor?.displayName || `@${item.actor?.handle || 'someone'}`);
+  const title = escapeHTML(item.annotation?.sourceTitle || 'your annotation');
+  if (item.type === 'response') return `${name} responded to your annotation of <b>${title}</b>`;
+  if (item.type === 'like') return `${name} liked your annotation of <b>${title}</b>`;
+  return `${name} followed you`;
+};
+
+const notificationIcon = (type) => type === 'response' ? 'respond' : type === 'like' ? 'heart' : 'follow';
+
+const notificationsView = () => {
+  if (!state.user) {
+    return `<div class="page single"><div class="perma-empty"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h2>Nothing to ring about yet.</h2><p>Sign in to see responses, likes, and new followers.</p>${authLinks('btn')}</div></div>`;
+  }
+  if (state.notificationsLoading) return `<div class="page single">${skeletonPost()}${skeletonPost()}</div>`;
+  const rows = state.notifications.length
+    ? state.notifications.map((item) => `
+      <button class="notif-row" data-action="${item.annotation?.slug ? 'open-annotation' : 'open-profile'}" ${item.annotation?.slug ? `data-slug="${escapeHTML(item.annotation.slug)}"` : `data-handle="${escapeHTML(item.actor?.handle || '')}"`}>
+        ${icon(notificationIcon(item.type), 'notif-kind')}
+        ${avatarHtml(item.actor || {})}
+        <span class="notif-main">
+          <span class="notif-text">${notificationSentence(item)} <span class="meta">· ${escapeHTML(relTime(item.createdAt))}</span></span>
+          ${item.body ? `<span class="notif-quote">&ldquo;${escapeHTML(item.body)}&rdquo;</span>` : ''}
+        </span>
+      </button>`).join('')
+    : `<div class="card"><h2>All quiet.</h2><p>When readers respond, like your annotations, or follow you, it lands here.</p></div>`;
+  return `
+  <div class="page single">
+    <h1 class="sr-only">Notifications</h1>
+    <div class="notif-rows">${rows}</div>
+  </div>`;
+};
+
 const footerView = () => `
   <footer>
     <a href="/about" data-action="set-view" data-view="about">About</a>
@@ -1120,6 +1186,7 @@ const render = () => {
     : state.activeView === 'rights' ? rightsView()
     : state.activeView === 'terms' ? termsView()
     : state.activeView === 'transparency' ? transparencyView()
+    : state.activeView === 'notifications' ? notificationsView()
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
   app.innerHTML = `${SHELL_MODE ? '' : chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${state.claimOpen ? claimModal() : ''}${lightboxView()}${toast()}`;
@@ -1632,6 +1699,10 @@ app.addEventListener('click', (event) => {
   const action = target.dataset.action;
 
   if (target.dataset.stopClick === 'true') return;
+  if (action === 'open-notifications') {
+    navigate('notifications');
+    return;
+  }
   if (action === 'dismiss-auth') {
     state.authNotice = '';
     state.authPrompt = '';

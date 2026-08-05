@@ -1201,6 +1201,17 @@ document.addEventListener('keydown', (event) => {
 
 /* ── boot ──────────────────────────────────────────────────────────── */
 
+// Opening the panel counts as seeing your notifications: the server-side
+// watermark moves, and the background worker drops the toolbar badge.
+const markNotificationsSeen = async () => {
+  try {
+    const headers = await authHeaders();
+    if (!headers.authorization) return;
+    await fetch(`${await apiOrigin()}/api/notifications/seen`, { method: 'POST', headers });
+    await chrome.runtime.sendMessage({ type: 'NOTIFICATIONS_SEEN' });
+  } catch { /* offline or signed out — the badge keeps its count */ }
+};
+
 const boot = async () => {
   syncSource();
   syncNote();
@@ -1210,6 +1221,7 @@ const boot = async () => {
   await loadCurrentTab();
   await loadTimeline('recent');
   await refreshQueueStatus();
+  await markNotificationsSeen();
 };
 
 void boot();

@@ -142,6 +142,69 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .chrome .me:hover { background: #565D68; }
 
+.chrome .bell {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #B9BEC6;
+}
+
+.chrome .bell:hover, .chrome .bell.is-active { color: #fff; background: #565D68; }
+
+.chrome .bell .icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+
+/* The unseen dot is a moment marker — new activity happened — so it wears
+   the accent, same as the app's bell badge. */
+.chrome .bell .n {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 99px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notif-rows { display: flex; flex-direction: column; gap: 8px; }
+
+.notif-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  background: var(--card);
+  border-radius: var(--radius-inner);
+  padding: 12px;
+  box-shadow: var(--shadow);
+  transition: box-shadow .14s ease;
+}
+
+.notif-row:hover { box-shadow: var(--shadow-lift); }
+
+.notif-row .notif-kind { margin-top: 8px; }
+
+.notif-row .notif-kind svg { width: 16px; height: 16px; fill: none; stroke: var(--ink-soft); stroke-width: 2; }
+
+.notif-row .avatar { width: 34px; height: 34px; font-size: 14px; }
+
+.notif-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+
+.notif-text { font-size: 14px; color: var(--ink); line-height: 1.4; }
+
+.notif-quote { font-style: italic; color: var(--ink-soft); font-size: 13px; line-height: 1.4; }
+
 .connection-note { color: #8B919A; font-size: 11.5px; }
 
 /* ── auth notices ───────────────────────────────────────────────────── */
