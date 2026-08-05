@@ -94,6 +94,7 @@ const initialState = {
   articleExcerpt: '',
   commentary: '',
   commentaryMode: 'text',
+  visibility: 'public',
   isRecording: false,
   recordedAudio: false,
   audioAssetId: '',
@@ -145,7 +146,8 @@ const initialState = {
 };
 
 const draftStorageKey = 'annotated-draft-v1';
-const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'articleExcerpt', 'commentary', 'commentaryMode', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId', 'clientRequestId'];
+const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'articleExcerpt', 'commentary', 'commentaryMode', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId', 'clientRequestId', 'visibility'];
+const VISIBILITIES = ['public', 'unlisted', 'private'];
 
 const saved = (() => {
   try {
@@ -182,6 +184,7 @@ const persist = () => {
       articleExcerpt: state.articleExcerpt,
       commentary: state.commentary,
       commentaryMode: state.commentaryMode,
+      visibility: state.visibility,
       audioAssetId: state.audioAssetId,
       audioUrl: state.audioUrl,
       audioDuration: state.audioDuration,
@@ -199,6 +202,7 @@ const clearDraft = () => {
   state.articleExcerpt = '';
   state.commentary = '';
   state.commentaryMode = 'text';
+  state.visibility = 'public';
   state.clipStart = 0;
   state.clipEnd = 0;
   state.audioAssetId = '';
@@ -341,6 +345,8 @@ const annotationToFeedItem = (annotation) => ({
   opens: Number(annotation.opens) || 0,
   comments: Array.isArray(annotation.comments) ? annotation.comments.length : 0,
   authorId: annotation.author?.id || annotation.authorId || '',
+  visibility: VISIBILITIES.includes(annotation.visibility) ? annotation.visibility : 'public',
+  screenshotUrl: annotation.screenshotUrl || '',
 });
 
 const chipFor = (item) => item.type === 'article'
@@ -553,7 +559,7 @@ const permalinkView = () => {
     return `<div class="page single"><div class="perma-empty"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h2>${state.publishedSlug ? 'This annotation is unavailable.' : 'Nothing here yet.'}</h2><p>${state.publishedSlug ? 'It may have been removed, or the link is wrong.' : 'Capture a moment and it will get its own page, with the source attached.'}</p><button class="btn" data-action="set-view" data-view="capture">Capture a moment</button></div></div>`;
   }
   const item = annotationToFeedItem(annotation);
-  const isMedia = annotation.sourceType !== 'article';
+  const isMedia = annotation.sourceType !== 'article' && (annotation.mediaStatus || 'not-applicable') !== 'not-applicable';
   const isMine = annotation.author?.id === state.user?.id;
   const comments = annotation.comments || [];
   const commentaryAudio = annotation.commentaryMode === 'audio' && annotation.audioUrl
@@ -562,9 +568,11 @@ const permalinkView = () => {
   const note = annotation.commentary
     ? `<p class="note">${escapeHTML(annotation.commentary)}</p>`
     : commentaryAudio ? '' : '<p class="note empty-note">An audio annotation of this moment.</p>';
-  const clip = isMedia
-    ? `<div class="clip">${playerBlock(annotation)}<div class="srcstrip"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type])}${item.host ? ` · ${escapeHTML(item.host)}` : ''}</span><a class="open" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}">${escapeHTML(openOriginalLabel(item))} ↗</a></div></div>`
-    : `<div class="clip"><div class="srcstrip"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· article${item.host ? ` · ${escapeHTML(item.host)}` : ''}</span><a class="open" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}">${escapeHTML(openOriginalLabel(item))} ↗</a></div></div>`;
+  const srcstrip = `<div class="srcstrip"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ` · ${escapeHTML(item.host)}` : ''}</span><a class="open" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}">${escapeHTML(openOriginalLabel(item))} ↗</a></div>`;
+  const screenshot = item.screenshotUrl && !isMedia
+    ? `<a class="shot" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}"><img src="${escapeHTML(item.screenshotUrl)}" alt="Screenshot of ${escapeHTML(item.sourceTitle)}" loading="lazy" /></a>`
+    : '';
+  const clip = `<div class="clip">${isMedia ? playerBlock(annotation) : screenshot}${srcstrip}</div>`;
   const pull = item.quote ? `<blockquote class="pull">&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
   const respondArea = state.user || !state.authRequired
     ? `<form class="respform" data-action="comment-form"><input aria-label="Add a response" placeholder="Add a considered response…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" maxlength="500" /><button class="btn" aria-label="Post response">Respond</button></form>`
@@ -576,7 +584,7 @@ const permalinkView = () => {
         <div class="avatar" aria-hidden="true">${escapeHTML(item.initials)}</div>
         <div class="who">
           <a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a>
-          <span class="meta">${escapeHTML(item.time)} · public</span>
+          <span class="meta">${escapeHTML(item.time)} · ${escapeHTML(item.visibility)}${item.visibility === 'private' ? ' · only you can see this' : ''}</span>
         </div>
         ${!isMine && item.authorId ? `<button class="follow" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>` : ''}
       </div>
@@ -685,6 +693,7 @@ const captureView = () => {
       <div class="cap-foot">
         <button class="btn" data-action="publish" ${blocker || state.isPublishing ? 'disabled' : ''}>${state.isPublishing ? 'Publishing…' : 'Publish'}</button>
         ${state.commentaryMode === 'text' ? `<span class="count" data-note-count>${state.commentary.length}/280</span>` : ''}
+        <span class="type-select"><select data-action="visibility" aria-label="Who can see this annotation">${VISIBILITIES.map((option) => `<option value="${option}" ${state.visibility === option ? 'selected' : ''}>${option}</option>`).join('')}</select></span>
         <span class="mode" role="group" aria-label="Note type">
           <button class="${state.commentaryMode === 'text' ? 'is-on' : ''}" data-action="commentary-mode" data-mode="text" aria-pressed="${state.commentaryMode === 'text'}">Text</button>
           <span aria-hidden="true">·</span>
@@ -713,7 +722,7 @@ const libraryView = () => {
       <div class="librow">
         <span class="chip">${escapeHTML(chipFor(item))}</span>
         <div class="librow-main">
-          <div class="librow-title"><a href="/a/${encodeURIComponent(item.slug)}" data-action="open-annotation-link" data-slug="${escapeHTML(item.slug)}">${escapeHTML(item.sourceTitle)}</a></div>
+          <div class="librow-title"><a href="/a/${encodeURIComponent(item.slug)}" data-action="open-annotation-link" data-slug="${escapeHTML(item.slug)}">${escapeHTML(item.sourceTitle)}</a>${item.visibility !== 'public' ? ` <span class="vis-tag">${escapeHTML(item.visibility)}</span>` : ''}</div>
           <div class="librow-note">${escapeHTML(item.commentary || 'Audio note')}</div>
         </div>
         <div class="libstats"><span><strong>${item.opens}</strong> opens</span><span><strong>${item.comments}</strong> responses</span></div>
@@ -1086,6 +1095,7 @@ const publishAnnotation = async () => {
       clipEnd: state.clipEnd,
       commentary: state.commentaryMode === 'text' ? state.commentary : '',
       commentaryMode: state.commentaryMode,
+      visibility: state.visibility,
       audioAssetId: state.commentaryMode === 'audio' ? state.audioAssetId : undefined,
       audioDuration: state.commentaryMode === 'audio' ? state.audioDuration : undefined,
       mediaUrl: currentSource.mediaUrl || undefined,
@@ -1453,6 +1463,11 @@ app.addEventListener('change', (event) => {
     if (other) other.value = formatTime(action === 'clip-in' ? state.clipEnd : state.clipStart);
     persist();
     refreshCaptureBits();
+  }
+  if (action === 'visibility') {
+    state.visibility = VISIBILITIES.includes(event.target.value) ? event.target.value : 'public';
+    persist();
+    return;
   }
   if (action === 'source-type') {
     state.sourceType = event.target.value;

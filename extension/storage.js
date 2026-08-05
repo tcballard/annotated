@@ -30,6 +30,8 @@ export const compactDraft = (draft = {}) => ({
   audioDuration: boundedDuration(draft.audioDuration),
   audioDraftId: boundedString(draft.audioDraftId, 80),
   clientRequestId: boundedString(draft.clientRequestId, 80),
+  visibility: ['public', 'unlisted', 'private'].includes(draft.visibility) ? draft.visibility : 'public',
+  screenshotAssetId: boundedString(draft.screenshotAssetId, 80),
   anchorParagraph: Math.max(0, Math.min(9999, Number(draft.anchorParagraph) || 0)),
   anchorPrefix: boundedString(draft.anchorPrefix, 300),
   anchorSuffix: boundedString(draft.anchorSuffix, 300),

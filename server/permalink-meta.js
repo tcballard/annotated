@@ -27,9 +27,11 @@ export const permalinkMeta = (annotation, author, publicOrigin) => {
   return { title, description, url, imageUrl: `${publicOrigin}/og/${encodeURIComponent(annotation.slug)}.png` };
 };
 
-export const injectAnnotationMeta = (html, annotation, author, publicOrigin) => {
+export const injectAnnotationMeta = (html, annotation, author, publicOrigin, { index = true } = {}) => {
   const meta = permalinkMeta(annotation, author, publicOrigin);
   const tags = [
+    // Unlisted pages unfurl for link-holders but ask crawlers not to list them.
+    ...(index ? [] : ['<meta name="robots" content="noindex" />']),
     `<link rel="canonical" href="${escapeHtml(meta.url)}" />`,
     `<meta property="og:type" content="article" />`,
     `<meta property="og:site_name" content="annotated" />`,

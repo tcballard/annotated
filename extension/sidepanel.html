@@ -84,6 +84,22 @@
           </div>
         </div>
 
+        <!-- screenshot: a page image that still carries its source link -->
+        <div id="shotRow">
+          <button class="grabber shot" id="shotButton" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 8h3.2l1.8-2.5h6L16.8 8H20a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle cx="12" cy="13" r="3.4" /></svg>
+            Screenshot the visible page
+          </button>
+          <div class="passage" id="shotCard" hidden>
+            <div class="passage-head"><span class="chip">SHOT</span><span>Screenshot attached</span>
+              <button class="passage-clear" id="shotClear" type="button" aria-label="Remove the screenshot">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" /></svg>
+              </button>
+            </div>
+            <img class="shot-preview" id="shotPreview" alt="Captured screenshot preview" hidden />
+          </div>
+        </div>
+
         <!-- the note -->
         <textarea class="cap-note" id="note" maxlength="280" aria-label="Your note" placeholder="What did you notice?"></textarea>
         <div class="recorder" id="audioComposer" hidden>
@@ -100,6 +116,11 @@
         <div class="cap-foot">
           <button class="publish" id="publish" type="button" disabled>Publish</button>
           <span class="count" id="noteCount">0/280</span>
+          <span class="type-select"><select id="visibilitySelect" aria-label="Who can see this annotation">
+            <option value="public">public</option>
+            <option value="unlisted">unlisted</option>
+            <option value="private">private</option>
+          </select></span>
           <span class="mode" role="group" aria-label="Note type">
             <button class="is-on" id="modeText" data-mode="text" type="button" aria-pressed="true">Text</button>
             <span aria-hidden="true">·</span>

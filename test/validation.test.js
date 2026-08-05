@@ -35,6 +35,7 @@ test('requires and bounds a selected article passage', () => {
   assert.deepEqual(validateAnnotation(article).errors, []);
   assert.equal(validateAnnotation(article).normalized.sourceExcerpt, 'A selected passage.');
   assert.ok(validateAnnotation({ ...article, sourceExcerpt: '' }).errors.includes('An article passage is required.'));
+  assert.deepEqual(validateAnnotation({ ...article, sourceExcerpt: '', screenshotAssetId: 'asset-1' }).errors, [], 'a screenshot satisfies the article selection requirement');
   assert.ok(validateAnnotation({ ...article, sourceExcerpt: 'x'.repeat(2001) }).errors.includes('sourceExcerpt must be text of 2,000 characters or fewer.'));
 });
 

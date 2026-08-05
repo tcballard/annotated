@@ -9,6 +9,19 @@ import { assertAudioDurationPolicy } from './media-probe.js';
 const mediaDirectory = path.join(dataDirectory, 'media');
 const mediaWorkDirectory = path.join(dataDirectory, 'media-work');
 const maxMediaBytes = 25 * 1024 * 1024;
+const maxImageBytes = 8 * 1024 * 1024;
+
+const imageMimeExtensions = new Map([
+  ['image/jpeg', 'jpg'],
+  ['image/png', 'png'],
+  ['image/webp', 'webp'],
+]);
+
+export const normalizeImageMimeType = (mimeType) => {
+  const normalized = String(mimeType || '').split(';', 1)[0].trim().toLowerCase();
+  if (!imageMimeExtensions.has(normalized)) throw new Error('Unsupported screenshot content type.');
+  return normalized;
+};
 
 const audioMimeExtensions = new Map([
   ['audio/aac', 'aac'],
@@ -80,6 +93,25 @@ export async function writeIncomingMedia(request, mimeType) {
     const store = getObjectStore();
     const result = await store.putFile(workPath, { id, key, mimeType: normalizedMimeType });
     return { id, key, fileName: result.fileName || key, mimeType: normalizedMimeType, bytes, durationSeconds, createdAt: new Date().toISOString() };
+  } finally {
+    await unlink(workPath).catch(() => {});
+  }
+}
+
+// Screenshots are plain images: bounded and typed, no duration policy.
+export async function writeIncomingImage(request, mimeType) {
+  const normalizedMimeType = normalizeImageMimeType(mimeType);
+  const contentLength = Number(request.headers['content-length'] || 0);
+  if (contentLength > maxImageBytes) throw new Error('Media payload is too large.');
+  const id = randomUUID();
+  const key = `shots/${id}.${imageMimeExtensions.get(normalizedMimeType)}`;
+  const workPath = path.join(mediaWorkDirectory, `incoming-${id}.${imageMimeExtensions.get(normalizedMimeType)}`);
+  await mkdir(mediaWorkDirectory, { recursive: true });
+  try {
+    const bytes = await bufferRequestToFile(request, workPath, maxImageBytes);
+    const store = getObjectStore();
+    const result = await store.putFile(workPath, { id, key, mimeType: normalizedMimeType });
+    return { id, key, fileName: result.fileName || key, mimeType: normalizedMimeType, bytes, createdAt: new Date().toISOString() };
   } finally {
     await unlink(workPath).catch(() => {});
   }

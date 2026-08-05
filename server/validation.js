@@ -1,6 +1,7 @@
 const allowedTypes = new Set(['video', 'article', 'podcast']);
 const allowedModes = new Set(['text', 'audio']);
 import { parseSourceUrl } from './source-resolver.js';
+import { VISIBILITIES } from './visibility.js';
 
 export function validateAnnotation(input) {
   const errors = [];
@@ -21,10 +22,11 @@ export function validateAnnotation(input) {
   if (!allowedModes.has(input.commentaryMode)) errors.push('commentaryMode must be text or audio.');
   if (input.commentaryMode === 'text' && (!input.commentary || !String(input.commentary).trim())) errors.push('Text commentary is required.');
   if (input.commentaryMode === 'audio' && (!input.audioAssetId || typeof input.audioAssetId !== 'string')) errors.push('An uploaded audio asset is required.');
+  if (input.screenshotAssetId !== undefined && (typeof input.screenshotAssetId !== 'string' || input.screenshotAssetId.length > 80)) errors.push('screenshotAssetId must be a bounded asset ID.');
   if (String(input.commentary || '').length > 280) errors.push('Text commentary must be 280 characters or fewer.');
   if (input.sourceExcerpt !== undefined && (typeof input.sourceExcerpt !== 'string' || input.sourceExcerpt.length > 2000)) errors.push('sourceExcerpt must be text of 2,000 characters or fewer.');
   const sourceExcerpt = typeof input.sourceExcerpt === 'string' ? input.sourceExcerpt.trim().slice(0, 2000) : '';
-  if (input.sourceType === 'article' && !sourceExcerpt) errors.push('An article passage is required.');
+  if (input.sourceType === 'article' && !sourceExcerpt && !input.screenshotAssetId) errors.push('An article passage is required.');
   const start = Number(input.clipStart || 0);
   const end = Number(input.clipEnd || 0);
   if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < 0 || end < start) errors.push('Clip range is invalid.');
@@ -35,6 +37,7 @@ export function validateAnnotation(input) {
   // into #:~:text= deep links, plus the paragraph number shown on the ¶ chip.
   const anchorParagraph = Number(input.anchorParagraph || 0);
   if (!Number.isInteger(anchorParagraph) || anchorParagraph < 0 || anchorParagraph > 9999) errors.push('anchorParagraph must be a small positive integer.');
+  if (input.visibility !== undefined && !VISIBILITIES.includes(input.visibility)) errors.push('visibility must be public, unlisted, or private.');
   for (const field of ['anchorPrefix', 'anchorSuffix']) {
     if (input[field] !== undefined && (typeof input[field] !== 'string' || input[field].length > 300)) errors.push(`${field} must be text of 300 characters or fewer.`);
   }
@@ -49,6 +52,7 @@ export function validateAnnotation(input) {
       clipEnd: end,
       commentary: String(input.commentary || '').trim().slice(0, 280),
       audioDuration,
+      visibility: VISIBILITIES.includes(input.visibility) ? input.visibility : 'public',
       anchorParagraph: anchorParagraph || null,
       anchorPrefix: typeof input.anchorPrefix === 'string' ? input.anchorPrefix.slice(0, 300) : '',
       anchorSuffix: typeof input.anchorSuffix === 'string' ? input.anchorSuffix.slice(0, 300) : '',

@@ -49,6 +49,11 @@ const queueStatusDetail = $('#queueStatusDetail');
 const queueRetry = $('#queueRetry');
 const timeline = $('#timeline');
 const captureSection = $('#captureSection');
+const visibilitySelect = $('#visibilitySelect');
+const shotButton = $('#shotButton');
+const shotCard = $('#shotCard');
+const shotPreview = $('#shotPreview');
+const shotClear = $('#shotClear');
 const toast = $('#toast');
 const toastText = $('#toastText');
 const toastLink = $('#toastLink');
@@ -62,6 +67,10 @@ let resolvedSource = null;
 let selection = { text: '', paragraph: 0, prefix: '', suffix: '' };
 let marks = { start: 0, end: 0, inSet: false, outSet: false };
 let commentaryMode = 'text';
+let visibility = 'public';
+let screenshotAssetId = '';
+let screenshotPreviewUrl = '';
+let apiOriginCache = '';
 let audioAssetId = '';
 let audioDurationSeconds = 0;
 let audioDraftId = '';
@@ -305,9 +314,10 @@ const publishBlocker = () => {
   let protocol = '';
   try { protocol = new URL(currentTab.url).protocol; } catch { /* invalid source */ }
   if (!['http:', 'https:'].includes(protocol)) return 'This tab has no publishable http(s) source.';
-  if (currentTab.sourceType === 'article' && !selection.text.trim()) return 'Highlight a passage on the page, then capture it.';
-  if (isMediaType() && (!marks.inSet || !marks.outSet)) return 'Mark an in and an out point.';
-  if (isMediaType() && marks.end - marks.start < 1) return 'The out mark must come after the in mark.';
+  // The selection can be a passage, a marked range, or a screenshot.
+  if (currentTab.sourceType === 'article' && !selection.text.trim() && !screenshotAssetId) return 'Highlight a passage or screenshot the page.';
+  if (isMediaType() && !screenshotAssetId && (!marks.inSet || !marks.outSet)) return 'Mark an in and an out point, or screenshot the page.';
+  if (isMediaType() && marks.inSet && marks.outSet && marks.end - marks.start < 1) return 'The out mark must come after the in mark.';
   if (isMediaType() && marks.end - marks.start > MAX_CLIP_SECONDS) return `Clips are capped at ${format(MAX_CLIP_SECONDS)}. Shorten the selection.`;
   if (commentaryMode === 'text' && !note.value.trim()) return 'Add a note before publishing.';
   if (commentaryMode === 'audio' && mediaRecorder?.state === 'recording') return 'Stop the recording before publishing.';
@@ -349,6 +359,53 @@ const syncSelectionCard = () => {
   syncPublishGate();
 };
 
+const syncScreenshot = () => {
+  const has = Boolean(screenshotAssetId);
+  shotCard.hidden = !has;
+  shotButton.hidden = has;
+  const src = screenshotPreviewUrl || (has && apiOriginCache ? `${apiOriginCache}/media/${screenshotAssetId}` : '');
+  shotPreview.hidden = !src;
+  if (src) shotPreview.src = src;
+  syncPublishGate();
+};
+
+const captureScreenshot = async () => {
+  if (!chrome.tabs?.captureVisibleTab) { showError('Screenshot capture is unavailable in this browser.'); return; }
+  if (!backendOnline) { showError('Screenshots upload immediately — reconnect the backend first.'); return; }
+  shotButton.disabled = true;
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' });
+    const blob = await (await fetch(dataUrl)).blob();
+    const response = await fetch(`${await apiOrigin()}/api/media/screenshot`, { method: 'POST', credentials: 'omit', headers: { 'content-type': 'image/png', ...(await authHeaders()) }, body: blob });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || `Screenshot upload failed (${response.status}).`);
+    screenshotAssetId = body.media.id;
+    screenshotPreviewUrl = dataUrl;
+    clearError();
+    syncScreenshot();
+    saveDraft();
+  } catch (shotError) {
+    showError(shotError.message || 'Screenshot capture failed.');
+  } finally {
+    shotButton.disabled = false;
+  }
+};
+
+shotButton.addEventListener('click', () => { void captureScreenshot(); });
+
+shotClear.addEventListener('click', () => {
+  screenshotAssetId = '';
+  screenshotPreviewUrl = '';
+  syncScreenshot();
+  saveDraft();
+  shotButton.focus();
+});
+
+visibilitySelect.addEventListener('change', () => {
+  visibility = ['public', 'unlisted', 'private'].includes(visibilitySelect.value) ? visibilitySelect.value : 'public';
+  saveDraft();
+});
+
 const syncSource = () => {
   sourceTitle.textContent = currentTab.title || 'Reading this tab…';
   typeSelect.value = currentTab.sourceType;
@@ -356,8 +413,10 @@ const syncSource = () => {
   capUnsupported.hidden = supported;
   mediaSelection.hidden = !supported || !isMediaType();
   textSelection.hidden = !supported || isMediaType();
+  document.querySelector('#shotRow').hidden = !supported;
   syncMarks();
   syncSelectionCard();
+  syncScreenshot();
 };
 
 const syncNote = () => {
@@ -409,6 +468,8 @@ const draftPayload = () => ({
   audioDuration: audioDurationSeconds,
   audioDraftId,
   clientRequestId,
+  visibility,
+  screenshotAssetId,
   anchorParagraph: selection.paragraph || 0,
   anchorPrefix: selection.prefix || '',
   anchorSuffix: selection.suffix || '',
@@ -429,6 +490,10 @@ const restoreDraft = (draft) => {
   audioDurationSeconds = Number(draft.audioDuration) > 0 ? clampAudioDuration(draft.audioDuration) : 0;
   audioDraftId = draft.audioDraftId || '';
   clientRequestId = draft.clientRequestId || clientRequestId;
+  visibility = draft.visibility || 'public';
+  visibilitySelect.value = visibility;
+  screenshotAssetId = draft.screenshotAssetId || '';
+  screenshotPreviewUrl = '';
   if (draft.sourceType) currentTab.sourceType = draft.sourceType;
 };
 
@@ -442,6 +507,10 @@ const resetCaptureState = () => {
   selection = { text: '', paragraph: 0, prefix: '', suffix: '' };
   marks = { start: 0, end: 0, inSet: false, outSet: false };
   commentaryMode = 'text';
+  visibility = 'public';
+  visibilitySelect.value = 'public';
+  screenshotAssetId = '';
+  screenshotPreviewUrl = '';
   audioAssetId = '';
   audioDurationSeconds = 0;
   audioDraftId = '';
@@ -756,6 +825,8 @@ publishButton.addEventListener('click', async () => {
     clipEnd: isMediaType() ? marks.end : 0,
     commentary: commentaryMode === 'text' ? note.value.trim().slice(0, 280) : '',
     commentaryMode,
+    visibility,
+    screenshotAssetId: screenshotAssetId || undefined,
     audioAssetId: commentaryMode === 'audio' ? audioAssetId : undefined,
     audioDuration: commentaryMode === 'audio' ? audioDurationSeconds : undefined,
     clientRequestId,
@@ -775,13 +846,16 @@ publishButton.addEventListener('click', async () => {
     syncSource();
     syncNote();
     syncComposer();
-    // optimistic insert, then land on This page so the note is seen in place
-    const item = annotationToItem(annotation);
-    for (const key of ['recent', 'page']) {
-      if (feedCache[key]?.items) feedCache[key].items.unshift(item);
+    // Public notes land on This page so they are seen in place; unlisted and
+    // private stay put — they will never appear in a public timeline.
+    if ((payload.visibility || 'public') === 'public') {
+      const item = annotationToItem(annotation);
+      for (const key of ['recent', 'page']) {
+        if (feedCache[key]?.items) feedCache[key].items.unshift(item);
+      }
+      if (!feedCache.page) feedCache.page = { items: [item] };
+      setPanelMode('page');
     }
-    if (!feedCache.page) feedCache.page = { items: [item] };
-    setPanelMode('page');
     showToast('Published', { href: annotation.url, label: 'View page' });
   } catch (publishError) {
     if (publishError.authRequired) {
@@ -1015,6 +1089,7 @@ signOutButton.addEventListener('click', async () => {
 
 const checkBackend = async () => {
   const origin = await apiOrigin();
+  apiOriginCache = origin;
   try {
     await apiRequest('/api/health');
     backendOnline = true;

@@ -519,6 +519,23 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .player .badge { position: absolute; bottom: 10px; right: 10px; z-index: 2; }
 
+/* screenshot capture: the page image, still carrying its source strip */
+.clip .shot { display: block; background: #141518; }
+.clip .shot img { display: block; width: 100%; height: auto; max-height: 480px; object-fit: contain; }
+
+.vis-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--meta);
+  background: var(--soft);
+  border-radius: 3px;
+  padding: 1px 6px;
+  vertical-align: 1px;
+}
+
 /* keep the badge clear of native video controls */
 .player.is-live .badge { bottom: auto; top: 10px; }
 

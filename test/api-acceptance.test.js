@@ -392,4 +392,55 @@ test('local API serves the acceptance-critical health, identity, publish, social
     assert.ok(filteredItem);
     assert.equal(filteredItem.canonicalUrl, fixture.sourceUrl);
   }
+
+  // ── visibility: public is listed; unlisted unfurls but never lists;
+  //    private behaves like a missing slug for everyone but the author ──
+  const unlisted = await request(baseUrl, '/api/annotations', {
+    method: 'POST',
+    body: { sourceUrl: 'https://example.com/unlisted-source', sourceType: 'article', sourceTitle: 'Unlisted source', sourceExcerpt: 'A quietly shared passage.', commentaryMode: 'text', commentary: 'Shared by link only.', visibility: 'unlisted', clientRequestId: 'acceptance-unlisted' },
+  });
+  assert.equal(unlisted.response.status, 201);
+  assert.equal(unlisted.payload.annotation.visibility, 'unlisted');
+  const priv = await request(baseUrl, '/api/annotations', {
+    method: 'POST',
+    body: { sourceUrl: 'https://example.com/private-source', sourceType: 'article', sourceTitle: 'Private source', sourceExcerpt: 'For my eyes.', commentaryMode: 'text', commentary: 'Just a note to self.', visibility: 'private', clientRequestId: 'acceptance-private' },
+  });
+  assert.equal(priv.response.status, 201);
+  const openFeed = await request(baseUrl, '/api/feed?limit=50');
+  assert.equal(openFeed.payload.annotations.some((item) => item.slug === unlisted.payload.annotation.slug), false);
+  assert.equal(openFeed.payload.annotations.some((item) => item.slug === priv.payload.annotation.slug), false);
+  // the development identity is the author, so both stay fetchable here;
+  // the private-vs-other-viewer matrix is covered by visibility unit tests
+  assert.equal((await request(baseUrl, `/api/annotations/${unlisted.payload.annotation.slug}`)).response.status, 200);
+  assert.equal((await request(baseUrl, `/api/annotations/${priv.payload.annotation.slug}`)).response.status, 200);
+  const distReady = await readFile(path.join(repoRoot, 'dist/index.html'), 'utf8').then(() => true).catch(() => false);
+  if (distReady) {
+    const unlistedHtml = await (await fetch(`${baseUrl}/a/${unlisted.payload.annotation.slug}`)).text();
+    assert.match(unlistedHtml, /<meta name="robots" content="noindex" \/>/);
+    assert.match(unlistedHtml, /og:image/);
+    const privateHtml = await (await fetch(`${baseUrl}/a/${priv.payload.annotation.slug}`)).text();
+    assert.doesNotMatch(privateHtml, /og:image/);
+    const privateCard = await fetch(`${baseUrl}/og/${priv.payload.annotation.slug}.png`);
+    assert.equal(privateCard.status, 404);
+  }
+
+  // ── screenshot capture: typed, bounded, owned, and rendered on the page ──
+  const badShot = await fetch(`${baseUrl}/api/media/screenshot`, { method: 'POST', headers: { 'content-type': 'text/html' }, body: 'nope' });
+  assert.equal(badShot.status, 415);
+  const pngBytes = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+  const shotResponse = await fetch(`${baseUrl}/api/media/screenshot`, { method: 'POST', headers: { 'content-type': 'image/png' }, body: pngBytes });
+  assert.equal(shotResponse.status, 201);
+  const shot = await shotResponse.json();
+  assert.ok(shot.media.id);
+  const shotAnnotation = await request(baseUrl, '/api/annotations', {
+    method: 'POST',
+    body: { sourceUrl: 'https://example.com/chart-page', sourceType: 'article', sourceTitle: 'Chart page', commentaryMode: 'text', commentary: 'The chart says it all.', screenshotAssetId: shot.media.id, clientRequestId: 'acceptance-screenshot' },
+  });
+  assert.equal(shotAnnotation.response.status, 201);
+  assert.match(shotAnnotation.payload.annotation.screenshotUrl, new RegExp(`/media/${shot.media.id}$`));
+  const stolenShot = await request(baseUrl, '/api/annotations', {
+    method: 'POST',
+    body: { sourceUrl: 'https://example.com/chart-page-2', sourceType: 'article', sourceTitle: 'Chart page 2', sourceExcerpt: 'p', commentaryMode: 'text', commentary: 'x', screenshotAssetId: 'not-a-real-asset', clientRequestId: 'acceptance-screenshot-2' },
+  });
+  assert.equal(stolenShot.response.status, 422);
 });

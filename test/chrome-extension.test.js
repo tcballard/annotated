@@ -79,6 +79,12 @@ test('side panel implements the v5 surface: live source strip, marks, note, time
   assert.match(html, /id="passageChip"/);
   assert.match(runtime, /anchorParagraph/);
   assert.match(runtime, /anchorPrefix/);
+  // visibility control and screenshot capture with provenance
+  assert.match(html, /id="visibilitySelect"/);
+  assert.match(html, /id="shotButton"/);
+  assert.match(runtime, /captureVisibleTab/);
+  assert.match(runtime, /screenshotAssetId/);
+  assert.match(runtime, /\/api\/media\/screenshot/);
   // note + audio recorder with 90-second cap
   assert.match(html, /maxlength="280"/);
   assert.match(html, /class="record-icon"/);
@@ -94,7 +100,7 @@ test('side panel implements the v5 surface: live source strip, marks, note, time
   // publish is disabled-with-reason, and the 90s block is inline
   assert.match(runtime, /publishBlocker/);
   assert.match(runtime, /Clips are capped at/);
-  assert.match(runtime, /Mark an in and an out point\./);
+  assert.match(runtime, /Mark an in and an out point, or screenshot the page\./);
   // four full-height modes: Capture · Recent · Following · This page.
   // Capture is the default so the sidebar stays the primary capture surface.
   assert.match(html, /data-feed-tab="capture"/);

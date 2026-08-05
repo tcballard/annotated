@@ -6,18 +6,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { checkStore, closeStore, readStore, storageDescription, updateStore } from './store.js';
-import { normalizeAudioMimeType, serveStoredMedia, writeIncomingMedia } from './media-store.js';
+import { normalizeAudioMimeType, normalizeImageMimeType, serveStoredMedia, writeIncomingImage, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
 import { followingFeedRequiresAuth, matchesFeedQuery, matchesFeedUrl, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey } from './feed.js';
 import { ogCardData, renderOgCardCached } from './og-card.js';
 import { injectAnnotationMeta } from './permalink-meta.js';
+import { allowsIndexing, canViewAnnotation, isPubliclyListed } from './visibility.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, parseCookies, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, requestId, securityHeaders } from './hardening.js';
 import { closeRateLimitStore, rateLimitAsync } from './rate-limit.js';
-import { canUseAudioAsset } from './media-access.js';
+import { canUseAudioAsset, canUseImageAsset } from './media-access.js';
 import { metricsSnapshot, recordRequest } from './observability.js';
 import { findIdempotentAnnotation } from './idempotency.js';
 import { findActiveClaim, validateClaimTransition } from './moderation.js';
@@ -82,11 +83,20 @@ const publicUser = (user) => user ? {
   bio: user.bio || '',
 } : null;
 
+// Interactions require the actor to be able to see the annotation at all —
+// a private slug behaves exactly like a nonexistent one for everyone else.
+const viewableAnnotation = async (slugOrId, viewerId = '') => {
+  const store = await readStore();
+  const annotation = store.annotations.find((item) => item.slug === slugOrId || item.id === slugOrId);
+  return annotation && canViewAnnotation(annotation, viewerId) ? annotation : null;
+};
+
 const withComments = (annotation, store, viewerId = '') => ({
   ...annotation,
   url: `${publicOrigin}/a/${annotation.slug}`,
   audioUrl: annotation.audioAssetId ? `${publicOrigin}/media/${annotation.audioAssetId}` : null,
   clipUrl: annotation.mediaAssetId ? `${publicOrigin}/media/${annotation.mediaAssetId}` : null,
+  screenshotUrl: annotation.screenshotAssetId ? `${publicOrigin}/media/${annotation.screenshotAssetId}` : null,
   author: publicUser((store.users || []).find((user) => user.id === annotation.authorId)) || { id: annotation.authorId, handle: annotation.authorId, displayName: annotation.authorId },
   likes: (store.likes || []).filter((like) => like.annotationId === annotation.id).length,
   likedByMe: Boolean(viewerId && (store.likes || []).some((like) => like.annotationId === annotation.id && like.userId === viewerId)),
@@ -166,6 +176,19 @@ const handleApi = async (request, response, pathname) => {
     return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, url: `${publicOrigin}/media/${media.id}` } });
   }
 
+  // Screenshot capture: a bounded page image that publishes WITH its source
+  // link — provenance-first, unlike a bare screenshot.
+  if (request.method === 'POST' && pathname === '/api/media/screenshot') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
+    let mimeType;
+    try { mimeType = normalizeImageMimeType(request.headers['content-type']); } catch (error) { return send(response, 415, { error: error.message }); }
+    if (!(await mutationAllowed(request, actor, 'screenshot-upload', 20))) return send(response, 429, { error: 'Too many screenshot uploads. Try again later.' }, { 'retry-after': '60' });
+    const media = await writeIncomingImage(request, mimeType);
+    await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, kind: 'screenshot', ownerId: actor?.id || 'local-tom', createdAt: media.createdAt }] }));
+    return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, url: `${publicOrigin}/media/${media.id}` } });
+  }
+
   if (request.method === 'GET' && pathname === '/api/feed') {
     const store = await readStore();
     const viewer = await currentUser(request);
@@ -179,7 +202,7 @@ const handleApi = async (request, response, pathname) => {
     if (followingFeedRequiresAuth({ requested: followingRequested, required: authIsRequired(), viewer })) return unauthorized(response);
     const followingOnly = followingRequested && Boolean(viewer);
     const followedIds = new Set((store.follows || []).filter((follow) => follow.followerId === viewer?.id).map((follow) => follow.followingId));
-    const candidates = store.annotations.filter((item) => item.status === 'published' && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id) && matchesFeedQuery(item, store.users || [], search) && matchesFeedUrl(item, urlKey)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const candidates = store.annotations.filter((item) => item.status === 'published' && isPubliclyListed(item) && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id) && matchesFeedQuery(item, store.users || [], search) && matchesFeedUrl(item, urlKey)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const page = candidates.slice(offset, offset + limit);
     return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null, query: search || null });
   }
@@ -190,9 +213,12 @@ const handleApi = async (request, response, pathname) => {
     const profile = (store.users || []).find((user) => user.handle === decodeURIComponent(profileMatch[1]) || user.id === decodeURIComponent(profileMatch[1]));
     if (!profile) return notFound(response);
     const viewer = await currentUser(request);
-    const annotationCount = store.annotations.filter((annotation) => annotation.authorId === profile.id && annotation.status === 'published').length;
+    // The owner sees their whole library, badges and all; everyone else sees
+    // only what is publicly listed.
+    const visibleToViewer = (annotation) => annotation.authorId === profile.id && annotation.status === 'published' && (viewer?.id === profile.id || isPubliclyListed(annotation));
+    const annotationCount = store.annotations.filter(visibleToViewer).length;
     const annotations = store.annotations
-      .filter((annotation) => annotation.authorId === profile.id && annotation.status === 'published')
+      .filter(visibleToViewer)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, 20)
       .map((annotation) => withComments(annotation, store, viewer?.id));
@@ -264,10 +290,17 @@ const handleApi = async (request, response, pathname) => {
       const media = (store.media || []).find((item) => item.id === normalized.audioAssetId);
       if (!canUseAudioAsset(media, actor)) return send(response, 422, { errors: ['The uploaded audio asset could not be found or is not owned by this account.'] });
     }
+    if (normalized.screenshotAssetId) {
+      const store = await readStore();
+      const media = (store.media || []).find((item) => item.id === normalized.screenshotAssetId);
+      if (!canUseImageAsset(media, actor)) return send(response, 422, { errors: ['The uploaded screenshot could not be found or is not owned by this account.'] });
+    }
     const now = new Date().toISOString();
     const id = randomUUID();
     const baseSlug = slugify(normalized.sourceTitle);
-    const isMedia = normalized.sourceType !== 'article';
+    // A media clip job needs a real range; a screenshot-only capture of a
+    // media page publishes without one instead of queueing a doomed job.
+    const isMedia = normalized.sourceType !== 'article' && normalized.clipEnd - normalized.clipStart >= 1;
     const ownerId = actor?.id || 'local-tom';
     const candidate = { id, slug: `${baseSlug}-${id.slice(0, 6)}`, status: 'published', createdAt: now, authorId: ownerId, mediaStatus: isMedia ? 'queued' : 'not-applicable', ...normalized };
     let created = false;
@@ -290,14 +323,17 @@ const handleApi = async (request, response, pathname) => {
   const annotationMatch = pathname.match(/^\/api\/annotations\/([^/]+)$/);
   if (annotationMatch && request.method === 'GET') {
     const store = await readStore();
+    const viewer = await currentUser(request);
     const annotation = store.annotations.find((item) => item.slug === annotationMatch[1] || item.id === annotationMatch[1]);
-    return annotation ? send(response, 200, { annotation: withComments(annotation, store) }) : notFound(response);
+    if (!annotation || !canViewAnnotation(annotation, viewer?.id)) return notFound(response);
+    return send(response, 200, { annotation: withComments(annotation, store, viewer?.id) });
   }
 
   const commentsMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/comments$/);
   if (commentsMatch && request.method === 'POST') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
+    if (!(await viewableAnnotation(commentsMatch[1], actor?.id))) return notFound(response);
     if (!(await mutationAllowed(request, actor, 'comment', 30))) return send(response, 429, { error: 'Too many comments. Try again later.' }, { 'retry-after': '60' });
     const payload = await readJson(request);
     const validation = validateComment(payload);
@@ -317,6 +353,7 @@ const handleApi = async (request, response, pathname) => {
   if (likeMatch && request.method === 'POST') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
+    if (!(await viewableAnnotation(likeMatch[1], actor?.id))) return notFound(response);
     if (!(await mutationAllowed(request, actor, 'like', 120))) return send(response, 429, { error: 'Too many like changes. Try again later.' }, { 'retry-after': '60' });
     const result = await updateStore((store) => {
       const annotation = store.annotations.find((item) => item.slug === likeMatch[1] || item.id === likeMatch[1]);
@@ -334,6 +371,8 @@ const handleApi = async (request, response, pathname) => {
   // on every annotation. Public by design: signed-out readers open sources too.
   const openMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/open$/);
   if (openMatch && request.method === 'POST') {
+    const opener = await currentUser(request);
+    if (!(await viewableAnnotation(openMatch[1], opener?.id))) return notFound(response);
     if (!(await mutationAllowed(request, null, 'open-original', 120))) return send(response, 429, { error: 'Too many open events. Try again later.' }, { 'retry-after': '60' });
     let found = false;
     const result = await updateStore((store) => {
@@ -351,6 +390,7 @@ const handleApi = async (request, response, pathname) => {
   if (claimsMatch && request.method === 'POST') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
+    if (!(await viewableAnnotation(claimsMatch[1], actor?.id))) return notFound(response);
     if (!(await mutationAllowed(request, actor, 'claim', 10))) return send(response, 429, { error: 'Too many claims. Try again later.' }, { 'retry-after': '60' });
     const payload = await readJson(request);
     const validation = validateClaim(payload);
@@ -428,10 +468,13 @@ const serveMedia = async (response, id) => {
   return serveStoredMedia(response, media);
 };
 
+// Meta injection and OG cards serve link-holders: public and unlisted only.
+// A private annotation's permalink stays a plain SPA shell (the API decides
+// what the signed-in author may fetch) and its card does not exist.
 const publishedAnnotationBySlug = async (slug) => {
   const store = await readStore();
   const annotation = store.annotations.find((item) => (item.slug === slug || item.id === slug) && item.status === 'published');
-  if (!annotation) return null;
+  if (!annotation || !canViewAnnotation(annotation, '')) return null;
   return { annotation, author: (store.users || []).find((user) => user.id === annotation.authorId) || null };
 };
 
@@ -441,7 +484,7 @@ const servePermalink = async (response, slug) => {
   let html;
   try { html = await readFile(path.join(projectRoot, 'dist/index.html'), 'utf8'); } catch { return notFound(response); }
   const found = await publishedAnnotationBySlug(decodeURIComponent(slug)).catch(() => null);
-  const payload = found ? injectAnnotationMeta(html, found.annotation, found.author, publicOrigin) : html;
+  const payload = found ? injectAnnotationMeta(html, found.annotation, found.author, publicOrigin, { index: allowsIndexing(found.annotation) }) : html;
   response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...securityHeaders() });
   return response.end(payload);
 };
