@@ -72,18 +72,13 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .phead {
   background: var(--chrome);
-  min-height: 44px;
+  min-height: 40px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 12px;
+  padding: 4px 12px;
   flex: none;
 }
-
-.phead .mark { width: 18px; height: 18px; border-radius: 4px; }
-
-.phead .logo { color: #fff; font-weight: 700; font-size: 15px; letter-spacing: -.02em; }
-.phead .logo .dot { color: #E0A48E; }
 
 .backend { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #8B919A; }
 .backend i { width: 6px; height: 6px; border-radius: 50%; background: #8B919A; }
@@ -504,6 +499,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .act .n { font-variant-numeric: tabular-nums; }
 
 .timeline .empty { padding: 26px 16px; text-align: center; background: var(--card); }
+.timeline .empty .mark { width: 36px; height: 36px; border-radius: 8px; margin-bottom: 10px; opacity: .9; }
 .timeline .empty h2 { font-size: 13px; margin-bottom: 4px; }
 .timeline .empty p { font-size: 12px; color: var(--meta); margin-bottom: 10px; }
 .timeline .empty button { font-size: 12px; color: var(--meta); border: 1px solid var(--border); border-radius: 99px; padding: 7px 14px; min-height: 36px; }

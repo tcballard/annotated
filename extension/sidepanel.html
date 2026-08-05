@@ -7,9 +7,10 @@
     <link rel="stylesheet" href="sidepanel.css" />
   </head>
   <body>
+    <!-- Chrome's own side-panel bar already carries the icon and product name
+         directly above; this strip holds only what that bar cannot — backend
+         state and identity. -->
     <header class="phead">
-      <img class="mark" src="icons/icon-128.png" alt="" aria-hidden="true" />
-      <strong class="logo">annotated<span class="dot">.</span></strong>
       <span class="backend" id="backendStatus" aria-live="polite" title="Backend connection"><i aria-hidden="true"></i><span class="backend-label">connecting</span></span>
       <div class="auth" id="authActions">
         <button type="button" class="auth-btn" data-auth="x" hidden>Sign in with X</button>

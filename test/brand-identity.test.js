@@ -5,16 +5,20 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('the supplied mark is wired into the web and extension entry points', async () => {
-  const [index, main, panel] = await Promise.all([
+  const [index, main, panelHtml, panelRuntime] = await Promise.all([
     read('index.html'),
     read('src/main.js'),
     read('extension/sidepanel.html'),
+    read('extension/sidepanel.js'),
   ]);
   assert.match(index, /\/brand\/favicon\.svg/);
   assert.match(index, /\/brand\/favicon-16\.png/);
   assert.match(main, /src="\/brand\/app-icon-light-128\.png"/);
   assert.match(main, /class="empty-symbol" src="\/brand\/app-icon-light-128\.png"/);
-  assert.match(panel, /src="icons\/icon-128\.png"/);
+  // Chrome's side-panel bar shows the icon and product name above the panel,
+  // so the panel itself carries the mark only in its timeline empty states.
+  assert.match(panelRuntime, /src="icons\/icon-128\.png"/);
+  assert.doesNotMatch(panelHtml, /class="logo"/);
 });
 
 test('repository entry-point assets are byte-identical to the approved kit', async () => {

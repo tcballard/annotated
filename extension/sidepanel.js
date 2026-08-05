@@ -861,9 +861,10 @@ const renderTimeline = () => {
     return;
   }
   if (!cache.items.length) {
+    const mark = '<img class="mark" src="icons/icon-128.png" alt="" aria-hidden="true" />';
     timeline.innerHTML = feedTab === 'page'
-      ? `<div class="empty"><h2>No annotations on this page yet.</h2><p>Yours would be the first.</p><button type="button" data-focus-note>Write the first note</button></div>`
-      : `<div class="empty"><h2>${feedTab === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${feedTab === 'following' ? 'Follow someone from their page.' : 'Capture the first source-backed moment above.'}</p></div>`;
+      ? `<div class="empty">${mark}<h2>No annotations on this page yet.</h2><p>Yours would be the first.</p><button type="button" data-focus-note>Write the first note</button></div>`
+      : `<div class="empty">${mark}<h2>${feedTab === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${feedTab === 'following' ? 'Follow someone from their page.' : 'Capture the first source-backed moment above.'}</p></div>`;
     return;
   }
   timeline.innerHTML = cache.items.map(timelinePost).join('');
