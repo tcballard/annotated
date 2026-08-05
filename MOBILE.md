@@ -26,9 +26,15 @@ test suite fails if either goes stale.
 
 ## Layout
 
-- `app/_layout.tsx` — root stack: the tab bar plus pushed web surfaces;
-  share-intent routing and the session epoch that keeps sign-in consistent
-  across surfaces.
+- `app/_layout.tsx` — root stack: the drawer-wrapped tabs plus pushed
+  screens; share-intent routing, the session epoch, and the signed-in
+  account (with the notifications badge) live here.
+- `app/(drawer)/_layout.tsx` + `components/DrawerPanel.tsx` — the slide-out
+  panel: account card, Library, Moderation (moderators), the public pages,
+  sign out.
+- `app/(drawer)/(tabs)/_layout.tsx` — the header (avatar → drawer,
+  wordmark), the four tabs, and the capture FAB, painted with the web's
+  tokens.
 - `app/(drawer)/(tabs)/index.tsx` → `components/Timeline.tsx` — the native
   feed; `search.tsx` → `components/SearchScreen.tsx`; `notifications.tsx` →
   `components/NotificationsScreen.tsx`; `profile.tsx` — your public page in
@@ -46,17 +52,18 @@ test suite fails if either goes stale.
 
 ## How it works
 
-- **Native timeline.** Recent · Trending · Following as native panes with
-  haptic switches, topic chips on Trending (live counts from the same feed
-  API), pull-to-refresh, infinite scroll on the feed cursor. Cards carry
-  the byline verb, note, serif source card, posters/screenshots, and peak
-  waveforms. Tapping a card pushes the annotation's web page; media plays
-  there. Native fetches share the system cookie jar with the WebViews, so
-  the timeline is signed in the moment any surface is.
-- **Share → Capture tab.** Sharing a page/video into annotated routes to
-  the Capture tab and loads `/capture?text=<shared payload>` — the same
-  contract the PWA share target uses. Cold start and warm share both work;
-  sharing the same link twice still reloads the desk.
+- **Native timeline.** The scrollable menu is the feed switcher: Recent ·
+  Trending · Following, then a feed per topic (trending scoped to the
+  topic), with haptic switches, pull-to-refresh, and infinite scroll on
+  the feed cursor. Cards carry the name/handle byline, note, serif source
+  card, posters/screenshots, and peak waveforms. Tapping a card pushes the
+  annotation's web page; media plays there. Native fetches share the
+  system cookie jar with the WebViews, so the timeline is signed in the
+  moment any surface is.
+- **Share → capture desk.** Sharing a page/video into annotated pushes the
+  capture screen with `/capture?text=<shared payload>` — the same contract
+  the PWA share target uses. Cold start and warm share both work; sharing
+  the same link twice still reloads the desk.
 - **Sign in.** From a WebView, tapped sign-in links are intercepted; from
   the native timeline (e.g. a follow while signed out), the same flow is
   driven directly: system browser → `annotated://auth` with a one-time
@@ -117,18 +124,20 @@ EXPO_PUBLIC_ORIGIN=http://localhost:8787 npx expo start --web
 
 ## What to test on the device
 
-1. Install, open — a native timeline with the pill pane switcher, native
-   scroll feel, pull-to-refresh; tabs along the bottom tick on switch.
-2. Trending pane — topic chips filter with live counts.
-3. Tap a card — its page pushes under a native header; media plays there;
+1. Install, open — avatar top-left, wordmark center, four tabs below, the
+   ink FAB floating; the feed menu scrolls sideways and switches tick.
+2. Swipe right from the left edge (or tap your avatar) — the drawer slides
+   out with your account card and the public pages.
+3. Notifications — the bell badge counts unseen; opening the tab clears it.
+4. Tap a card — its page pushes under a native header; media plays there;
    swipe back returns to your scroll position.
-4. In YouTube/Safari/Substack: Share → **annotated** (behind "More" the
+5. In YouTube/Safari/Substack: Share → **annotated** (behind "More" the
    first time; pin it) → the Capture tab opens with the source resolved.
-5. Follow someone signed out — the sign-in sheet appears, the system
+6. Follow someone signed out — the sign-in sheet appears, the system
    browser round-trips, and you land back followed; every tab is now
    signed in.
-6. Publish; tap Open original — it opens in the real browser.
-7. Android hardware back walks the current surface's history first.
+7. Publish; tap Open original — it opens in the real browser.
+8. Android hardware back walks the current surface's history first.
 
 ## Boundaries
 
