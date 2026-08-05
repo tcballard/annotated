@@ -59,6 +59,8 @@ export const createApiClient = ({ origin = '', fetchFn }: ApiClientOptions = {})
     follow: (userId: string) => apiRequest(`/api/users/${encodeURIComponent(userId)}/follow`, { method: 'POST' }),
     unfollow: (userId: string) => apiRequest(`/api/users/${encodeURIComponent(userId)}/unfollow`, { method: 'POST' }),
     recordOpen: (slug: string) => apiRequest(`/api/annotations/${encodeURIComponent(slug)}/open`, { method: 'POST' }),
+    notifications: () => apiRequest('/api/notifications'),
+    notificationsSeen: () => apiRequest('/api/notifications/seen', { method: 'POST' }),
     profile: (handle: string) => apiRequest(`/api/profiles/${encodeURIComponent(handle)}`),
     sourceHub: (host: string, cursor?: string) => apiRequest(`/api/sources/${encodeURIComponent(host)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
     people: (q = '') => apiRequest(`/api/people${q ? `?q=${encodeURIComponent(q)}` : ''}`),

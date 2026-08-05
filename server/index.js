@@ -171,6 +171,37 @@ const handleApi = async (request, response, pathname) => {
     return send(response, 200, { user: user || null, authenticated: Boolean(user) });
   }
 
+  // Notifications, derived on read — responses, likes, and follows aimed at
+  // the signed-in user, newest first. Nothing is stored per event, so there
+  // are no counters to drift; the last-seen watermark on the user record
+  // powers the unseen badge.
+  if (request.method === 'GET' && pathname === '/api/notifications') {
+    const viewer = await currentUser(request);
+    if (!viewer) return send(response, 401, { error: 'Sign in to see notifications.' });
+    const store = await readStore();
+    const mine = new Map((store.annotations || []).filter((item) => item.authorId === viewer.id).map((item) => [item.id, item]));
+    const actorOf = (id) => publicUser((store.users || []).find((user) => user.id === id)) || { id, handle: id, displayName: '' };
+    const annotationRef = (annotation) => ({ slug: annotation.slug, sourceTitle: annotation.sourceTitle || annotation.sourceHost || 'your annotation' });
+    const items = [
+      ...(store.comments || []).filter((comment) => mine.has(comment.annotationId) && comment.authorId !== viewer.id)
+        .map((comment) => ({ type: 'response', actor: actorOf(comment.authorId), body: String(comment.body || '').slice(0, 140), annotation: annotationRef(mine.get(comment.annotationId)), createdAt: comment.createdAt })),
+      ...(store.likes || []).filter((like) => mine.has(like.annotationId) && like.userId !== viewer.id)
+        .map((like) => ({ type: 'like', actor: actorOf(like.userId), annotation: annotationRef(mine.get(like.annotationId)), createdAt: like.createdAt })),
+      ...(store.follows || []).filter((follow) => follow.followingId === viewer.id)
+        .map((follow) => ({ type: 'follow', actor: actorOf(follow.followerId), createdAt: follow.createdAt })),
+    ].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 50);
+    const seenAt = String(viewer.lastNotificationsSeenAt || '');
+    return send(response, 200, { notifications: items, unseenCount: items.filter((item) => String(item.createdAt) > seenAt).length });
+  }
+
+  if (request.method === 'POST' && pathname === '/api/notifications/seen') {
+    const viewer = await currentUser(request);
+    if (!viewer) return send(response, 401, { error: 'Sign in first.' });
+    const seenAt = new Date().toISOString();
+    await updateStore((store) => ({ ...store, users: (store.users || []).map((user) => user.id === viewer.id ? { ...user, lastNotificationsSeenAt: seenAt } : user) }));
+    return send(response, 200, { seenAt });
+  }
+
   if (request.method === 'POST' && pathname === '/api/sources/resolve') {
     const payload = await readJson(request);
     return send(response, 200, { source: await resolveSource(payload.url) });
