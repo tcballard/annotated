@@ -13,7 +13,7 @@ import { resolveSource } from './source-resolver.js';
 import { followingFeedRequiresAuth, matchesFeedQuery, matchesFeedUrl, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey } from './feed.js';
 import { ogCardData, renderOgCardCached } from './og-card.js';
 import { injectAnnotationMeta } from './permalink-meta.js';
-import { allowsIndexing, canViewAnnotation, isPubliclyListed } from './visibility.js';
+import { allowsIndexing, canViewAnnotation, isPubliclyListed, VISIBILITIES } from './visibility.js';
 import { matchesPersonQuery, normalizeHost, publicAnnotationsForHost, rankAnnotators } from './discovery.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, parseCookies, providerStatus, startOAuth } from './auth.js';
@@ -38,7 +38,7 @@ const defaultCorsOrigin = resolveCorsOrigin('');
 const send = (response, status, body, headers = {}) => {
   const payload = typeof body === 'string' ? body : JSON.stringify(body);
   const corsOrigin = response.annotatedCorsOrigin || defaultCorsOrigin;
-  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...securityHeaders({ api: true }), 'access-control-allow-origin': corsOrigin, 'access-control-allow-methods': 'GET,POST,OPTIONS', 'access-control-allow-headers': 'content-type, authorization, x-request-id', ...(corsOrigin === '*' || corsOrigin === 'null' ? {} : { 'access-control-allow-credentials': 'true', vary: 'Origin' }), ...headers });
+  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...securityHeaders({ api: true }), 'access-control-allow-origin': corsOrigin, 'access-control-allow-methods': 'GET,POST,PATCH,DELETE,OPTIONS', 'access-control-allow-headers': 'content-type, authorization, x-request-id', ...(corsOrigin === '*' || corsOrigin === 'null' ? {} : { 'access-control-allow-credentials': 'true', vary: 'Origin' }), ...headers });
   response.end(payload);
 };
 
@@ -367,6 +367,66 @@ const handleApi = async (request, response, pathname) => {
     if (!created) return send(response, 200, { annotation: withComments(annotation, next, actor?.id) });
     if (isMedia) void enqueueMediaJob({ annotationId: id, sourceUrl: normalized.sourceUrl, sourceType: normalized.sourceType, sourceMediaUrl: normalized.mediaUrl, mediaUrl: normalized.mediaUrl, provider: normalized.provider, clipStart: normalized.clipStart, clipEnd: normalized.clipEnd }).catch((error) => console.error(error));
     return send(response, 201, { annotation: withComments(annotation, next) });
+  }
+
+  // Author delete: the record, its media, and its interactions are gone
+  // outright — a 404, not a tombstone. Claims and audit entries survive.
+  const annotationDeleteMatch = pathname.match(/^\/api\/annotations\/([^/]+)$/);
+  if (annotationDeleteMatch && request.method === 'DELETE') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
+    if (!(await mutationAllowed(request, actor, 'annotation-delete', 30))) return send(response, 429, { error: 'Too many deletions. Try again later.' }, { 'retry-after': '60' });
+    const store = await readStore();
+    const annotation = store.annotations.find((item) => item.slug === annotationDeleteMatch[1] || item.id === annotationDeleteMatch[1]);
+    if (!annotation || !canViewAnnotation(annotation, actor?.id)) return notFound(response);
+    if (annotation.authorId !== (actor?.id || 'local-tom') && !isModerator(actor)) return forbidden(response);
+    const assetIds = annotationAssetIds(annotation);
+    let removedAssets = [];
+    await updateStore((current) => {
+      removedAssets = (current.media || []).filter((media) => assetIds.includes(media.id));
+      return {
+        ...current,
+        annotations: current.annotations.filter((item) => item.id !== annotation.id),
+        comments: (current.comments || []).filter((comment) => comment.annotationId !== annotation.id),
+        likes: (current.likes || []).filter((like) => like.annotationId !== annotation.id),
+        media: (current.media || []).filter((media) => !assetIds.includes(media.id)),
+      };
+    });
+    for (const media of removedAssets) await removeStoredMedia(media).catch((error) => console.error('delete media removal failed', error.message));
+    return send(response, 200, { deleted: true, slug: annotation.slug });
+  }
+
+  // Bounded edits: the note can change for thirty minutes after publish, so
+  // replies never sit under a note that changed meaning later; visibility is
+  // owner privacy control and may change at any time.
+  if (annotationDeleteMatch && request.method === 'PATCH') {
+    const actor = await currentUser(request);
+    if (!actor && authIsRequired()) return unauthorized(response);
+    if (!(await mutationAllowed(request, actor, 'annotation-edit', 30))) return send(response, 429, { error: 'Too many edits. Try again later.' }, { 'retry-after': '60' });
+    const payload = await readJson(request);
+    const store = await readStore();
+    const annotation = store.annotations.find((item) => item.slug === annotationDeleteMatch[1] || item.id === annotationDeleteMatch[1]);
+    if (!annotation || annotation.status !== 'published' || !canViewAnnotation(annotation, actor?.id)) return notFound(response);
+    if (annotation.authorId !== (actor?.id || 'local-tom')) return forbidden(response);
+    const changes = {};
+    if (payload.visibility !== undefined) {
+      if (!VISIBILITIES.includes(payload.visibility)) return send(response, 422, { error: 'visibility must be public, unlisted, or private.' });
+      changes.visibility = payload.visibility;
+    }
+    if (payload.commentary !== undefined) {
+      if (annotation.commentaryMode !== 'text') return send(response, 422, { error: 'Only text notes can be edited.' });
+      if (!canEditCommentary(annotation)) return send(response, 422, { error: 'Notes can be edited for 30 minutes after publishing.' });
+      const commentary = String(payload.commentary).trim().slice(0, 280);
+      if (!commentary) return send(response, 422, { error: 'The note cannot be empty.' });
+      changes.commentary = commentary;
+      changes.editedAt = new Date().toISOString();
+    }
+    if (!Object.keys(changes).length) return send(response, 422, { error: 'Nothing to update. Send commentary and/or visibility.' });
+    const result = await updateStore((current) => ({
+      ...current,
+      annotations: current.annotations.map((item) => item.id === annotation.id ? { ...item, ...changes } : item),
+    }));
+    return send(response, 200, { annotation: withComments(result.annotations.find((item) => item.id === annotation.id), result, actor?.id) });
   }
 
   const annotationMatch = pathname.match(/^\/api\/annotations\/([^/]+)$/);

@@ -494,6 +494,36 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.equal(emptyHub.response.status, 200);
   assert.equal(emptyHub.payload.annotations.length, 0);
 
+  // ── author controls: bounded note edits, visibility changes, delete ──
+  const editable = await request(baseUrl, '/api/annotations', {
+    method: 'POST',
+    body: { sourceUrl: 'https://example.com/editable', sourceType: 'article', sourceTitle: 'Editable source', sourceExcerpt: 'A passage.', commentaryMode: 'text', commentary: 'First draft of the thought.', clientRequestId: 'acceptance-edit' },
+  });
+  assert.equal(editable.response.status, 201);
+  const edited = await request(baseUrl, `/api/annotations/${editable.payload.annotation.slug}`, { method: 'PATCH', body: { commentary: 'Second draft, sharpened.' } });
+  assert.equal(edited.response.status, 200);
+  assert.equal(edited.payload.annotation.commentary, 'Second draft, sharpened.');
+  assert.ok(edited.payload.annotation.editedAt, 'edits are marked');
+  const emptyEdit = await request(baseUrl, `/api/annotations/${editable.payload.annotation.slug}`, { method: 'PATCH', body: { commentary: '   ' } });
+  assert.equal(emptyEdit.response.status, 422);
+  const badVisibilityEdit = await request(baseUrl, `/api/annotations/${editable.payload.annotation.slug}`, { method: 'PATCH', body: { visibility: 'secret' } });
+  assert.equal(badVisibilityEdit.response.status, 422);
+  const nothingEdit = await request(baseUrl, `/api/annotations/${editable.payload.annotation.slug}`, { method: 'PATCH', body: {} });
+  assert.equal(nothingEdit.response.status, 422);
+  const nowPrivate = await request(baseUrl, `/api/annotations/${editable.payload.annotation.slug}`, { method: 'PATCH', body: { visibility: 'private' } });
+  assert.equal(nowPrivate.response.status, 200);
+  assert.equal(nowPrivate.payload.annotation.visibility, 'private');
+  const privateEditFeed = await request(baseUrl, '/api/feed?limit=50');
+  assert.equal(privateEditFeed.payload.annotations.some((item) => item.slug === editable.payload.annotation.slug), false);
+
+  const deleted = await request(baseUrl, `/api/annotations/${editable.payload.annotation.slug}`, { method: 'DELETE' });
+  assert.equal(deleted.response.status, 200);
+  assert.equal(deleted.payload.deleted, true);
+  const goneDetail = await request(baseUrl, `/api/annotations/${editable.payload.annotation.slug}`);
+  assert.equal(goneDetail.response.status, 404, 'author deletion is outright, not a tombstone');
+  const goneFromFeed = await request(baseUrl, '/api/feed?limit=50');
+  assert.equal(goneFromFeed.payload.annotations.some((item) => item.slug === editable.payload.annotation.slug), false);
+
   const people = await request(baseUrl, '/api/people');
   assert.equal(people.response.status, 200);
   assert.ok(people.payload.people.length >= 1);

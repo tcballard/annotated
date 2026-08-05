@@ -130,6 +130,8 @@ const initialState = {
   publishedAnnotation: null,
   publishedLoading: false,
   publishedRemoved: '',
+  editingNote: false,
+  editNoteDraft: '',
   feedAnnotations: [],
   feedLoading: false,
   feedError: '',
@@ -361,7 +363,15 @@ const annotationToFeedItem = (annotation) => ({
   authorId: annotation.author?.id || annotation.authorId || '',
   visibility: VISIBILITIES.includes(annotation.visibility) ? annotation.visibility : 'public',
   screenshotUrl: annotation.screenshotUrl || '',
+  editedAt: annotation.editedAt || '',
+  createdAt: annotation.createdAt || '',
 });
+
+const EDIT_WINDOW_MS = 30 * 60 * 1000;
+const withinEditWindow = (annotation) => {
+  const created = Date.parse(annotation?.createdAt || '');
+  return Number.isFinite(created) && Date.now() - created <= EDIT_WINDOW_MS;
+};
 
 const chipFor = (item) => item.type === 'article'
   ? (item.anchorParagraph ? `¶ ${item.anchorParagraph}` : '¶')
@@ -371,6 +381,7 @@ const hydrateAnnotation = (annotation) => {
   state.publishedAnnotation = annotation;
   state.published = true;
   state.publishedSlug = annotation.slug;
+  state.editingNote = false;
   state.clipUrl = annotation.clipUrl || '';
   state.mediaStatus = annotation.mediaStatus || 'not-applicable';
   state.mediaError = String(annotation.mediaError || '').slice(0, 280);
@@ -517,7 +528,7 @@ const feedPost = (item) => {
   <article class="post" data-action="open-annotation" data-slug="${escapeHTML(item.slug || '')}">
     <div class="avatar" aria-hidden="true">${escapeHTML(item.initials)}</div>
     <div class="content">
-      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a><span class="meta">· ${escapeHTML(item.time)} · ${escapeHTML(annotationVerb(item.type))}</span></div>
+      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a><span class="meta">· ${escapeHTML(item.time)} · ${escapeHTML(annotationVerb(item.type))}${item.editedAt ? ' · edited' : ''}</span></div>
       ${note}
       ${srcCard(item)}
       <div class="actions">
@@ -632,9 +643,11 @@ const permalinkView = () => {
   const commentaryAudio = annotation.commentaryMode === 'audio' && annotation.audioUrl
     ? `<div class="commentary-audio"><span>${icon('mic')} Their take</span><audio controls preload="metadata" src="${escapeHTML(annotation.audioUrl)}"></audio></div>`
     : '';
-  const note = annotation.commentary
-    ? `<p class="note">${escapeHTML(annotation.commentary)}</p>`
-    : commentaryAudio ? '' : '<p class="note empty-note">An audio annotation of this moment.</p>';
+  const note = state.editingNote && isMine
+    ? `<div class="note-edit"><textarea class="cap-note" data-action="edit-note-draft" maxlength="280" aria-label="Edit your note">${escapeHTML(state.editNoteDraft)}</textarea><div class="note-edit-foot"><button class="btn" data-action="save-note">Save</button><button class="ghost" data-action="cancel-note">Cancel</button><span class="count">${state.editNoteDraft.length}/280</span></div></div>`
+    : annotation.commentary
+      ? `<p class="note">${escapeHTML(annotation.commentary)}</p>`
+      : commentaryAudio ? '' : '<p class="note empty-note">An audio annotation of this moment.</p>';
   const srcstrip = `<div class="srcstrip"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ' · ' : ''}</span>${hubLink(item.host)}<a class="open" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}">${escapeHTML(openOriginalLabel(item))} ↗</a></div>`;
   const screenshot = item.screenshotUrl && !isMedia
     ? `<a class="shot" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}"><img src="${escapeHTML(item.screenshotUrl)}" alt="Screenshot of ${escapeHTML(item.sourceTitle)}" loading="lazy" /></a>`
@@ -651,7 +664,9 @@ const permalinkView = () => {
         <div class="avatar" aria-hidden="true">${escapeHTML(item.initials)}</div>
         <div class="who">
           <a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a>
-          <span class="meta">${escapeHTML(item.time)} · ${escapeHTML(item.visibility)}${item.visibility === 'private' ? ' · only you can see this' : ''}</span>
+          <span class="meta">${escapeHTML(item.time)}${item.editedAt ? ' · edited' : ''} · ${isMine
+            ? `<span class="type-select"><select data-action="permalink-visibility" aria-label="Who can see this annotation">${VISIBILITIES.map((option) => `<option value="${option}" ${item.visibility === option ? 'selected' : ''}>${option}</option>`).join('')}</select></span>`
+            : `${escapeHTML(item.visibility)}`}${item.visibility === 'private' ? ' · only you can see this' : ''}</span>
         </div>
         ${!isMine && item.authorId ? `<button class="follow" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>` : ''}
       </div>
@@ -663,6 +678,8 @@ const permalinkView = () => {
         ${openOriginalAction(item)}
         <button class="act" data-action="focus-comment">${icon('respond')}Respond${comments.length ? ` <span class="n">· ${comments.length}</span>` : ''}</button>
         <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(annotation, window.location.origin))}">${icon('share')}Share</button>
+        ${isMine && annotation.commentaryMode === 'text' && withinEditWindow(annotation) && !state.editingNote ? `<button class="act" data-action="edit-note">Edit note</button>` : ''}
+        ${isMine ? `<button class="act" data-action="delete-annotation" data-slug="${escapeHTML(item.slug)}">Delete</button>` : ''}
         <button class="act claim" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug)}" data-claim-title="${escapeHTML(item.sourceTitle)}">${icon('claim')}File a claim</button>
       </div>
     </article>
@@ -793,6 +810,7 @@ const libraryView = () => {
           <div class="librow-note">${escapeHTML(item.commentary || 'Audio note')}</div>
         </div>
         <div class="libstats"><span><strong>${item.opens}</strong> opens</span><span><strong>${item.comments}</strong> responses</span></div>
+        <button class="ghost" data-action="delete-annotation" data-slug="${escapeHTML(item.slug)}">Delete</button>
       </div>`).join('')
     : `<div class="librow"><div class="librow-main"><div class="librow-title">Nothing published yet.</div><div class="librow-note">Your source-backed moments will live here.</div></div><button class="ghost" data-action="set-view" data-view="capture">Capture</button></div>`;
   const shareUrl = `${window.location.origin}/u/${encodeURIComponent(state.user.handle || '')}`;
@@ -1503,6 +1521,54 @@ app.addEventListener('click', (event) => {
     })();
     return;
   }
+  if (action === 'edit-note') {
+    state.editingNote = true;
+    state.editNoteDraft = state.publishedAnnotation?.commentary || '';
+    render();
+    app.querySelector('[data-action="edit-note-draft"]')?.focus();
+    return;
+  }
+  if (action === 'cancel-note') { state.editingNote = false; render(); return; }
+  if (action === 'save-note') {
+    const commentary = state.editNoteDraft.trim();
+    if (!commentary) { notify('The note cannot be empty.'); return; }
+    (async () => {
+      try {
+        const { annotation } = await api.updateAnnotation(state.publishedSlug, { commentary });
+        hydrateAnnotation(annotation);
+        render();
+        notify('Note updated.');
+      } catch (error) {
+        if (!recoverAuthError(error, 'Sign in to edit this note.')) notify(error.message || 'The note could not be updated.');
+      }
+    })();
+    return;
+  }
+  if (action === 'delete-annotation') {
+    const slug = target.dataset.slug;
+    if (!slug || state.serverStatus !== 'online') return;
+    if (requestSignIn('delete this annotation')) return;
+    if (!window.confirm('Delete this annotation? The page and any hosted media are removed permanently.')) return;
+    (async () => {
+      try {
+        await api.deleteAnnotation(slug);
+        state.feedAnnotations = state.feedAnnotations.filter((item) => item.slug !== slug);
+        if (state.libraryData?.annotations) state.libraryData.annotations = state.libraryData.annotations.filter((item) => item.slug !== slug);
+        if (state.publishedSlug === slug) {
+          state.publishedAnnotation = null;
+          state.publishedSlug = '';
+          navigate('library');
+        } else {
+          render();
+        }
+        notify('Annotation deleted.');
+        loadLibrary().then(render);
+      } catch (error) {
+        if (!recoverAuthError(error, 'Sign in to delete this annotation.')) notify(error.message || 'The annotation could not be deleted.');
+      }
+    })();
+    return;
+  }
   if (action === 'focus-comment') { document.querySelector('[data-action="comment-draft"]')?.focus(); return; }
   if (action === 'share') { copyPublicLink(target.dataset.shareUrl || ''); return; }
   if (action === 'toggle-claim') {
@@ -1577,6 +1643,11 @@ app.addEventListener('input', (event) => {
     refreshCaptureBits();
   }
   if (action === 'comment-draft') state.commentDraft = event.target.value;
+  if (action === 'edit-note-draft') {
+    state.editNoteDraft = event.target.value.slice(0, 280);
+    const count = event.target.closest('.note-edit')?.querySelector('.count');
+    if (count) count.textContent = `${state.editNoteDraft.length}/280`;
+  }
   if (action === 'claim-text') {
     state.claimReason = event.target.value;
     state.claimError = '';
@@ -1610,6 +1681,21 @@ app.addEventListener('change', (event) => {
   if (action === 'visibility') {
     state.visibility = VISIBILITIES.includes(event.target.value) ? event.target.value : 'public';
     persist();
+    return;
+  }
+  if (action === 'permalink-visibility') {
+    const visibility = event.target.value;
+    (async () => {
+      try {
+        const { annotation } = await api.updateAnnotation(state.publishedSlug, { visibility });
+        hydrateAnnotation(annotation);
+        render();
+        notify(`Now ${visibility}.`);
+      } catch (error) {
+        render();
+        if (!recoverAuthError(error, 'Sign in to change visibility.')) notify(error.message || 'Visibility could not be changed.');
+      }
+    })();
     return;
   }
   if (action === 'source-type') {

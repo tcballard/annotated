@@ -803,6 +803,7 @@ const annotationToItem = (annotation) => ({
   anchorSuffix: annotation.anchorSuffix || '',
   opens: Number(annotation.opens) || 0,
   comments: Array.isArray(annotation.comments) ? annotation.comments.length : 0,
+  editedAt: annotation.editedAt || '',
 });
 
 publishButton.addEventListener('click', async () => {
@@ -906,7 +907,7 @@ const timelinePost = (item) => {
   <article class="post">
     <div class="avatar" aria-hidden="true">${escapeHTML(item.initials)}</div>
     <div class="content">
-      <div class="byline"><span class="name">@${escapeHTML(item.handle)}</span><span class="meta">· ${escapeHTML(item.time)}</span></div>
+      <div class="byline"><span class="name">@${escapeHTML(item.handle)}</span><span class="meta">· ${escapeHTML(item.time)}${item.editedAt ? ' · edited' : ''}</span></div>
       ${noteLine}
       <div class="srccard">
         <div class="srchead"><span class="chip">${escapeHTML(chip)}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(item.type)}</span></div>
