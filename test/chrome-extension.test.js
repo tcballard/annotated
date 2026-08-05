@@ -189,3 +189,15 @@ test('extension icon derivatives preserve the approved brand kit exports', async
   assert.doesNotMatch(generator, /supersample/);
   assert.match(generator, /icon-\$\{size\}\.png/);
 });
+
+test('the panel can put an annotation back on the page it came from', async () => {
+  const panel = await readFile(new URL('../extension/sidepanel.js', import.meta.url), 'utf8');
+  assert.match(panel, /function highlightPassageInPage/);
+  assert.match(panel, /CSS\.highlights\.set\('annotated-passage', new Highlight\(range\)\)/, 'CSS Custom Highlight API — the page DOM is never touched');
+  assert.match(panel, /rgba\(176, 103, 77, 0\.28\)/, 'the wash is the accent: this IS the moment');
+  assert.match(panel, /\[normalize\(anchor\.prefix\), wanted, normalize\(anchor\.suffix\)\]\.join/, 'the toggle keys on the full anchor identity');
+  assert.match(panel, /data-highlight-slug/);
+  assert.match(panel, /panelMode === 'page' \|\| matchesCurrentTab\(item\)/, 'only rows about the current page offer it');
+  assert.match(panel, /That passage is not on this page right now\./);
+  assert.match(panel, /scrollIntoView\(\{ behavior: 'smooth', block: 'center' \}\)/);
+});

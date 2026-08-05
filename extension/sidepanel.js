@@ -918,6 +918,128 @@ const timelineMedia = (item) => {
   return '';
 };
 
+/* ── highlight on page ─────────────────────────────────────────────── */
+
+// Someone's annotation, physically on the page you're reading: the panel
+// finds the quoted passage in the live page and washes it terracotta —
+// this IS the moment, so the accent is the law-correct color. Uses the
+// CSS Custom Highlight API, so the page's DOM is never touched.
+// Injected into the page; must stay self-contained (no closures).
+function highlightPassageInPage(anchor) {
+  const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+  const wanted = normalize(anchor.text);
+  if (!wanted) return { found: false };
+  // The toggle key is the full anchor identity: the same annotation
+  // toggles off; a different annotation quoting the same words moves the
+  // highlight instead of clearing it.
+  const key = [normalize(anchor.prefix), wanted, normalize(anchor.suffix)].join('|').slice(0, 200);
+  const state = window.__annotatedHighlight || (window.__annotatedHighlight = {});
+  const supported = typeof Highlight === 'function' && typeof CSS !== 'undefined' && CSS.highlights;
+  if (supported && state.key === key && CSS.highlights.has('annotated-passage')) {
+    CSS.highlights.delete('annotated-passage');
+    state.key = '';
+    return { found: true, cleared: true };
+  }
+
+  // Walk visible text nodes, building a whitespace-normalized string with
+  // a map back to (node, offset) so a match becomes a precise Range.
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      const tag = parent.tagName;
+      if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT' || tag === 'TEXTAREA' || tag === 'SVG') return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  let normalized = '';
+  let pendingSpace = false;
+  const map = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent || '';
+    for (let index = 0; index < text.length; index += 1) {
+      if (/\s/.test(text[index])) { pendingSpace = normalized.length > 0; continue; }
+      if (pendingSpace) { normalized += ' '; map.push(null); pendingSpace = false; }
+      normalized += text[index];
+      map.push({ node, offset: index });
+    }
+  }
+
+  // Prefix/suffix disambiguate when the quote appears more than once —
+  // the same anchors the #:~:text= deep link carries.
+  const prefix = normalize(anchor.prefix).slice(-24);
+  const suffix = normalize(anchor.suffix).slice(0, 24);
+  let start = -1;
+  if (prefix || suffix) {
+    let from = 0;
+    while (from <= normalized.length - wanted.length) {
+      const at = normalized.indexOf(wanted, from);
+      if (at === -1) break;
+      const beforeOk = !prefix || normalized.slice(Math.max(0, at - prefix.length - 4), at).includes(prefix);
+      const afterOk = !suffix || normalized.slice(at + wanted.length, at + wanted.length + suffix.length + 4).includes(suffix);
+      if (beforeOk && afterOk) { start = at; break; }
+      from = at + 1;
+    }
+  }
+  if (start === -1) start = normalized.indexOf(wanted);
+  if (start === -1) return { found: false };
+
+  let first = start;
+  while (first < start + wanted.length && !map[first]) first += 1;
+  let last = start + wanted.length - 1;
+  while (last > first && !map[last]) last -= 1;
+  if (!map[first] || !map[last]) return { found: false };
+  const range = document.createRange();
+  range.setStart(map[first].node, map[first].offset);
+  range.setEnd(map[last].node, map[last].offset + 1);
+
+  if (supported) {
+    if (!document.getElementById('annotated-highlight-style')) {
+      const style = document.createElement('style');
+      style.id = 'annotated-highlight-style';
+      style.textContent = '::highlight(annotated-passage) { background-color: rgba(176, 103, 77, 0.28); }';
+      document.head.appendChild(style);
+    }
+    CSS.highlights.set('annotated-passage', new Highlight(range));
+    state.key = key;
+  } else {
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+  const target = map[first].node.parentElement;
+  if (target && target.scrollIntoView) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  return { found: true };
+}
+
+// Only rows about the page you are on can highlight it: everything on the
+// This page tab, and any row whose source resolves to the current tab.
+const matchesCurrentTab = (item) => {
+  try {
+    const source = new URL(item.canonicalUrl || item.sourceUrl);
+    const tab = new URL(currentTab.url);
+    return source.origin === tab.origin && source.pathname === tab.pathname;
+  } catch {
+    return false;
+  }
+};
+
+const showOnPage = async (item) => {
+  if (!Number.isInteger(currentTabId)) return;
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: currentTabId },
+      func: highlightPassageInPage,
+      args: [{ text: item.quote, prefix: item.anchorPrefix || '', suffix: item.anchorSuffix || '' }],
+    });
+    const outcome = results?.[0]?.result;
+    if (outcome?.cleared) return;
+    if (!outcome?.found) showToast('That passage is not on this page right now.');
+  } catch {
+    showToast('This page cannot be highlighted.');
+  }
+};
+
 const timelinePost = (item) => {
   const noteLine = item.commentary
     ? `<p class="note">${escapeHTML(item.commentary)}</p>`
@@ -947,6 +1069,10 @@ const timelinePost = (item) => {
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 12a8 8 0 0 1-8 8H4l3-3a8 8 0 1 1 14-5z"/></svg>
           ${item.comments ? `<span class="n">${item.comments}</span>` : 'Respond'}
         </a>
+        ${item.type === 'article' && item.quote && (panelMode === 'page' || matchesCurrentTab(item)) ? `<button class="act" type="button" data-highlight-slug="${escapeHTML(item.slug)}" title="Highlight this passage on the page">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+          On page
+        </button>` : ''}
         <button class="act" type="button" data-share-url="${escapeHTML(item.url)}" title="Copy the page link">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12M8 7l4-4 4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg>
         </button>
@@ -1054,6 +1180,12 @@ timeline.addEventListener('click', async (event) => {
   }
   const open = event.target.closest('[data-open-slug]');
   if (open) { void recordOpen(open.dataset.openSlug); return; }
+  const highlight = event.target.closest('[data-highlight-slug]');
+  if (highlight) {
+    const item = (feedCache[panelMode]?.items || []).find((entry) => entry.slug === highlight.dataset.highlightSlug);
+    if (item) void showOnPage(item);
+    return;
+  }
   if (event.target.closest('[data-feed-retry]')) { feedCache[panelMode] = null; renderTimeline(); await loadTimeline(panelMode); return; }
   if (event.target.closest('[data-focus-note]')) { setPanelMode('capture'); note.focus(); }
 });
