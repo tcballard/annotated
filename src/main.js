@@ -628,7 +628,7 @@ const feedView = () => {
   <div class="page">
     <main class="feed">
       <div class="feedhead">
-        <h1>Timeline</h1>
+        <h1 class="sr-only">Timeline</h1>
         <div class="tabs" role="tablist" aria-label="Timeline filter">
           <button class="tab ${!state.feedFollowing && state.feedSort !== 'trending' ? 'is-active' : ''}" data-action="feed-filter" data-following="false" data-sort="recent" role="tab" aria-selected="${!state.feedFollowing && state.feedSort !== 'trending'}">Recent</button>
           <button class="tab ${!state.feedFollowing && state.feedSort === 'trending' ? 'is-active' : ''}" data-action="feed-filter" data-following="false" data-sort="trending" role="tab" aria-selected="${!state.feedFollowing && state.feedSort === 'trending'}">Trending</button>
