@@ -873,6 +873,13 @@ publishButton.addEventListener('click', async () => {
     syncSource();
     syncNote();
     syncComposer();
+    // The post-tweet beat, panel-sized: the button itself confirms.
+    publishButton.classList.add('is-published');
+    publishButton.innerHTML = '<svg class="pub-check-mini" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4.5 4.5L19 7"/></svg>Published';
+    setTimeout(() => {
+      publishButton.classList.remove('is-published');
+      publishButton.textContent = 'Publish';
+    }, 1600);
     // Public notes land on This page so they are seen in place; unlisted and
     // private stay put — they will never appear in a public timeline.
     if ((payload.visibility || 'public') === 'public') {

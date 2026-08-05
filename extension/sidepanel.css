@@ -592,3 +592,22 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* The publish beat: the button confirms with the accent's check —
+   publishing IS the moment. */
+#publish.is-published { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+
+.pub-check-mini {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: pub-draw-mini .3s ease forwards;
+}
+
+@keyframes pub-draw-mini { to { stroke-dashoffset: 0; } }

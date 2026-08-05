@@ -1135,6 +1135,69 @@ footer .footer-note { margin-left: auto; }
   .feed:has(.feedhead) { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
 }
 
+/* ── the publish moment ─────────────────────────────────────────────── */
+
+/* Publishing IS the moment — the one celebration the accent exists for.
+   The permalink is already underneath; this draws, breathes, and gets out
+   of the way (or a tap dismisses it early). */
+.pub-moment {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  background: rgba(245, 244, 240, .96);
+  cursor: pointer;
+  animation: pub-fade .18s ease;
+}
+
+.pub-check { width: 78px; height: 78px; margin-bottom: 4px; }
+
+.pub-check .ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 233;
+  stroke-dashoffset: 233;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  animation: pub-draw .52s ease forwards;
+}
+
+.pub-check .tick {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 44;
+  stroke-dashoffset: 44;
+  animation: pub-draw .3s ease .38s forwards;
+}
+
+@keyframes pub-draw { to { stroke-dashoffset: 0; } }
+@keyframes pub-fade { from { opacity: 0; } }
+
+.pub-moment h2 { font-size: 23px; color: var(--ink); }
+
+.pub-moment .dot { color: var(--accent); }
+
+.pub-moment .pub-title {
+  font-family: var(--serif);
+  color: var(--ink-soft);
+  font-size: 15.5px;
+  max-width: 340px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.pub-moment .pub-hint { color: var(--meta); font-size: 12.5px; }
+
 /* ── shell mode (native app) ────────────────────────────────────────── */
 
 /* Inside the native app the page is content only: no chrome bar above, no

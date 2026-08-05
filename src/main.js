@@ -136,6 +136,7 @@ const initialState = {
   notifications: [],
   notificationsLoading: false,
   unseenNotifications: 0,
+  publishMoment: null,
   trendingSources: [],
   topic: '',
   feedCursor: null,
@@ -1161,6 +1162,22 @@ const notificationsView = () => {
   </div>`;
 };
 
+let publishMomentTimer;
+const dismissPublishMoment = () => {
+  if (!state.publishMoment) return;
+  clearTimeout(publishMomentTimer);
+  state.publishMoment = null;
+  render();
+};
+
+const publishMomentView = () => `
+  <div class="pub-moment" role="status" data-action="dismiss-publish-moment" title="Continue">
+    <svg class="pub-check" viewBox="0 0 80 80" aria-hidden="true"><circle class="ring" cx="40" cy="40" r="37"/><path class="tick" d="m25 42 10 11 21-25"/></svg>
+    <h2>Published<span class="dot">.</span></h2>
+    <div class="pub-title">${escapeHTML(state.publishMoment?.title || '')}</div>
+    <div class="pub-hint">This moment now has a page — with the source attached.</div>
+  </div>`;
+
 const footerView = () => `
   <footer>
     <a href="/about" data-action="set-view" data-view="about">About</a>
@@ -1189,7 +1206,7 @@ const render = () => {
     : state.activeView === 'notifications' ? notificationsView()
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
-  app.innerHTML = `${SHELL_MODE ? '' : chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${state.claimOpen ? claimModal() : ''}${lightboxView()}${toast()}`;
+  app.innerHTML = `${SHELL_MODE ? '' : chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${state.claimOpen ? claimModal() : ''}${lightboxView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
   const overlayOpen = state.claimOpen || Boolean(state.lightbox);
   for (const element of app.querySelectorAll('.chrome, .auth-notice, .auth-prompt, .page, footer, .offline-note')) {
     element.inert = overlayOpen;
@@ -1544,9 +1561,23 @@ const publishAnnotation = async () => {
     state.activeView = 'published';
     window.history.pushState({}, '', `/a/${encodeURIComponent(annotation.slug)}`);
     watchMediaProcessing();
-    render();
+    // The post-tweet beat: the permalink is already underneath; a terracotta
+    // check draws over it — publishing IS the moment — then gets out of the
+    // way. Reduced motion keeps the quiet toast instead.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      render();
+      notify('Published', { href: annotation.url, label: 'View page' });
+    } else {
+      // Nothing shares the stage: any lingering toast clears first.
+      clearTimeout(toastTimer);
+      state.toast = '';
+      state.toastLink = null;
+      state.publishMoment = { title: annotation.sourceTitle || currentSource.title || 'This moment' };
+      render();
+      clearTimeout(publishMomentTimer);
+      publishMomentTimer = setTimeout(dismissPublishMoment, 1600);
+    }
     window.scrollTo(0, 0);
-    notify('Published', { href: annotation.url, label: 'View page' });
     loadFeed().then(render);
   } catch (error) {
     if (recoverAuthError(error, 'Sign in to publish this annotation.')) return;
@@ -1701,6 +1732,10 @@ app.addEventListener('click', (event) => {
   if (target.dataset.stopClick === 'true') return;
   if (action === 'open-notifications') {
     navigate('notifications');
+    return;
+  }
+  if (action === 'dismiss-publish-moment') {
+    dismissPublishMoment();
     return;
   }
   if (action === 'dismiss-auth') {
