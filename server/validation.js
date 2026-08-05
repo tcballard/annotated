@@ -1,6 +1,7 @@
 const allowedTypes = new Set(['video', 'article', 'podcast']);
 const allowedModes = new Set(['text', 'audio']);
 import { parseSourceUrl } from './source-resolver.js';
+import { isTopic } from './topics.js';
 import { VISIBILITIES } from './visibility.js';
 
 export function validateAnnotation(input) {
@@ -38,6 +39,7 @@ export function validateAnnotation(input) {
   const anchorParagraph = Number(input.anchorParagraph || 0);
   if (!Number.isInteger(anchorParagraph) || anchorParagraph < 0 || anchorParagraph > 9999) errors.push('anchorParagraph must be a small positive integer.');
   if (input.visibility !== undefined && !VISIBILITIES.includes(input.visibility)) errors.push('visibility must be public, unlisted, or private.');
+  if (input.topic !== undefined && input.topic !== null && input.topic !== '' && !isTopic(input.topic)) errors.push('topic must be one of the published topics.');
   for (const field of ['anchorPrefix', 'anchorSuffix']) {
     if (input[field] !== undefined && (typeof input[field] !== 'string' || input[field].length > 300)) errors.push(`${field} must be text of 300 characters or fewer.`);
   }
@@ -53,6 +55,7 @@ export function validateAnnotation(input) {
       commentary: String(input.commentary || '').trim().slice(0, 280),
       audioDuration,
       visibility: VISIBILITIES.includes(input.visibility) ? input.visibility : 'public',
+      topic: isTopic(input.topic) ? input.topic : null,
       anchorParagraph: anchorParagraph || null,
       anchorPrefix: typeof input.anchorPrefix === 'string' ? input.anchorPrefix.slice(0, 300) : '',
       anchorSuffix: typeof input.anchorSuffix === 'string' ? input.anchorSuffix.slice(0, 300) : '',

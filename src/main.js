@@ -6,6 +6,7 @@ import { publicAnnotationUrl } from './share-links.js';
 import { authNoticeFromSearch, enabledProviders, oauthStartUrl, providerLabel } from './auth-ui.js';
 import { MAX_CLIP_SECONDS } from './clip-range.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
+import { isTopic, TOPICS, topicLabel } from './topics.js';
 
 const app = document.querySelector('#app');
 
@@ -139,7 +140,10 @@ const initialState = {
   feedLoaded: false,
   feedFollowing: false,
   feedSort: 'recent',
+  feedTopic: null,
+  feedTopics: [],
   trendingSources: [],
+  topic: '',
   feedCursor: null,
   feedQuery: '',
   moderationClaims: [],
@@ -159,7 +163,7 @@ const initialState = {
 };
 
 const draftStorageKey = 'annotated-draft-v1';
-const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'articleExcerpt', 'commentary', 'commentaryMode', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId', 'clientRequestId', 'visibility'];
+const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'articleExcerpt', 'commentary', 'commentaryMode', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId', 'clientRequestId', 'visibility', 'topic'];
 const VISIBILITIES = ['public', 'unlisted', 'private'];
 
 const saved = (() => {
@@ -198,6 +202,7 @@ const persist = () => {
       commentary: state.commentary,
       commentaryMode: state.commentaryMode,
       visibility: state.visibility,
+      topic: state.topic,
       audioAssetId: state.audioAssetId,
       audioUrl: state.audioUrl,
       audioDuration: state.audioDuration,
@@ -216,6 +221,7 @@ const clearDraft = () => {
   state.commentary = '';
   state.commentaryMode = 'text';
   state.visibility = 'public';
+  state.topic = '';
   state.clipStart = 0;
   state.clipEnd = 0;
   state.audioAssetId = '';
@@ -378,6 +384,7 @@ const annotationToFeedItem = (annotation) => ({
   comments: Array.isArray(annotation.comments) ? annotation.comments.length : 0,
   authorId: annotation.author?.id || annotation.authorId || '',
   visibility: VISIBILITIES.includes(annotation.visibility) ? annotation.visibility : 'public',
+  topic: isTopic(annotation.topic) ? annotation.topic : null,
   screenshotUrl: annotation.screenshotUrl || '',
   editedAt: annotation.editedAt || '',
   createdAt: annotation.createdAt || '',
@@ -557,7 +564,7 @@ const feedPost = (item) => {
   <article class="post" data-action="open-annotation" data-slug="${escapeHTML(item.slug || '')}">
     <div class="avatar" aria-hidden="true">${escapeHTML(item.initials)}</div>
     <div class="content">
-      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a><span class="meta">· ${escapeHTML(item.time)} · ${escapeHTML(annotationVerb(item.type))}${item.editedAt ? ' · edited' : ''}</span></div>
+      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a><span class="meta">· ${escapeHTML(item.time)} · ${escapeHTML(annotationVerb(item.type))}${item.editedAt ? ' · edited' : ''}</span>${item.topic ? `<button class="topic-tag" data-action="feed-topic" data-topic="${escapeHTML(item.topic)}" title="See what's trending in ${escapeHTML(topicLabel(item.topic))}">${escapeHTML(topicLabel(item.topic))}</button>` : ''}</div>
       ${note}
       ${srcCard(item)}
       <div class="actions">
@@ -627,6 +634,11 @@ const feedView = () => {
           <button class="tab ${!state.feedFollowing && state.feedSort === 'trending' ? 'is-active' : ''}" data-action="feed-filter" data-following="false" data-sort="trending" role="tab" aria-selected="${!state.feedFollowing && state.feedSort === 'trending'}">Trending</button>
           <button class="tab ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true" data-sort="recent" role="tab" aria-selected="${state.feedFollowing}">Following</button>
         </div>
+        ${!state.feedFollowing && state.feedSort === 'trending' && state.feedTopics.length ? `
+        <div class="topic-chips" role="group" aria-label="Filter trending by topic">
+          <button class="topic-chip ${!state.feedTopic ? 'is-active' : ''}" data-action="feed-topic" data-topic="">All</button>
+          ${state.feedTopics.map((entry) => `<button class="topic-chip ${state.feedTopic === entry.slug ? 'is-active' : ''}" data-action="feed-topic" data-topic="${escapeHTML(entry.slug)}">${escapeHTML(entry.label)} <span class="n">${entry.count}</span></button>`).join('')}
+        </div>` : ''}
       </div>
       ${state.feedError ? `<div class="feed-error" role="alert">${escapeHTML(state.feedError)} <button class="ghost" data-action="feed-retry">Try again</button></div>` : ''}
       ${state.feedQuery && !state.feedLoading ? `<div class="feed-error" role="status">Results for “${escapeHTML(state.feedQuery)}” <button class="ghost" data-action="clear-feed-search">Clear</button></div>` : ''}
@@ -701,7 +713,9 @@ const permalinkView = () => {
           <a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a>
           <span class="meta">${escapeHTML(item.time)}${item.editedAt ? ' · edited' : ''} · ${isMine
             ? `<span class="type-select"><select data-action="permalink-visibility" aria-label="Who can see this annotation">${VISIBILITIES.map((option) => `<option value="${option}" ${item.visibility === option ? 'selected' : ''}>${option}</option>`).join('')}</select></span>`
-            : `${escapeHTML(item.visibility)}`}${item.visibility === 'private' ? ' · only you can see this' : ''}</span>
+            : `${escapeHTML(item.visibility)}`}${item.visibility === 'private' ? ' · only you can see this' : ''}${isMine && withinEditWindow(annotation)
+            ? ` · <span class="type-select"><select data-action="permalink-topic" aria-label="Topic">${`<option value="">no topic</option>${TOPICS.map((option) => `<option value="${option.slug}" ${item.topic === option.slug ? 'selected' : ''}>${option.label}</option>`).join('')}`}</select></span>`
+            : item.topic ? ` <button class="topic-tag" data-action="feed-topic" data-topic="${escapeHTML(item.topic)}" title="See what's trending in ${escapeHTML(topicLabel(item.topic))}">${escapeHTML(topicLabel(item.topic))}</button>` : ''}</span>
         </div>
         ${!isMine && item.authorId ? `<button class="follow" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>` : ''}
       </div>
@@ -814,6 +828,7 @@ const captureView = () => {
         <button class="btn" data-action="publish" ${blocker || state.isPublishing ? 'disabled' : ''}>${state.isPublishing ? 'Publishing…' : 'Publish'}</button>
         ${state.commentaryMode === 'text' ? `<span class="count" data-note-count>${state.commentary.length}/280</span>` : ''}
         <span class="type-select"><select data-action="visibility" aria-label="Who can see this annotation">${VISIBILITIES.map((option) => `<option value="${option}" ${state.visibility === option ? 'selected' : ''}>${option}</option>`).join('')}</select></span>
+        <span class="type-select"><select data-action="capture-topic" aria-label="Topic (optional)"><option value="">no topic</option>${TOPICS.map((option) => `<option value="${option.slug}" ${state.topic === option.slug ? 'selected' : ''}>${option.label}</option>`).join('')}</select></span>
         <span class="mode" role="group" aria-label="Note type">
           <button class="${state.commentaryMode === 'text' ? 'is-on' : ''}" data-action="commentary-mode" data-mode="text" aria-pressed="${state.commentaryMode === 'text'}">Text</button>
           <span aria-hidden="true">·</span>
@@ -1369,13 +1384,17 @@ const loadFeed = async ({ append = false } = {}) => {
   if (!append) render();
   try {
     const params = new URLSearchParams({ limit: '20' });
-    if (state.feedSort === 'trending' && !state.feedFollowing) params.set('sort', 'trending');
+    if (state.feedSort === 'trending' && !state.feedFollowing) {
+      params.set('sort', 'trending');
+      if (state.feedTopic) params.set('topic', state.feedTopic);
+    }
     if (state.feedFollowing) params.set('following', 'true');
     if (state.feedQuery.trim()) params.set('q', state.feedQuery.trim());
     if (append && state.feedCursor) params.set('cursor', state.feedCursor);
     const result = await api.feed(params.toString());
     state.feedAnnotations = append ? [...state.feedAnnotations, ...(result.annotations || [])] : (result.annotations || []);
     state.feedCursor = result.nextCursor || null;
+    if (Array.isArray(result.topics)) state.feedTopics = result.topics;
     state.feedLoaded = true;
     if (!append && state.feedQuery.trim()) {
       const people = await api.people(state.feedQuery.trim()).catch(() => ({ people: [] }));
@@ -1466,6 +1485,7 @@ const publishAnnotation = async () => {
       commentary: state.commentaryMode === 'text' ? state.commentary : '',
       commentaryMode: state.commentaryMode,
       visibility: state.visibility,
+      topic: isTopic(state.topic) ? state.topic : undefined,
       audioAssetId: state.commentaryMode === 'audio' ? state.audioAssetId : undefined,
       audioDuration: state.commentaryMode === 'audio' ? state.audioDuration : undefined,
       mediaUrl: currentSource.mediaUrl || undefined,
@@ -1687,7 +1707,17 @@ app.addEventListener('click', (event) => {
     if (following && requestSignIn('see the people you follow')) return;
     state.feedFollowing = following;
     state.feedSort = target.dataset.sort === 'trending' ? 'trending' : 'recent';
+    if (state.feedSort !== 'trending' || state.feedFollowing) state.feedTopic = null;
     state.feedCursor = null;
+    loadFeed().then(render);
+    return;
+  }
+  if (action === 'feed-topic') {
+    state.feedTopic = isTopic(target.dataset.topic) ? target.dataset.topic : null;
+    state.feedSort = 'trending';
+    state.feedFollowing = false;
+    state.feedCursor = null;
+    if (state.activeView !== 'feed') navigate('feed');
     loadFeed().then(render);
     return;
   }
@@ -1945,6 +1975,26 @@ app.addEventListener('change', (event) => {
   if (action === 'visibility') {
     state.visibility = VISIBILITIES.includes(event.target.value) ? event.target.value : 'public';
     persist();
+    return;
+  }
+  if (action === 'capture-topic') {
+    state.topic = isTopic(event.target.value) ? event.target.value : '';
+    persist();
+    return;
+  }
+  if (action === 'permalink-topic') {
+    const topic = isTopic(event.target.value) ? event.target.value : null;
+    (async () => {
+      try {
+        const { annotation } = await api.updateAnnotation(state.publishedSlug, { topic });
+        hydrateAnnotation(annotation);
+        render();
+        notify(topic ? `Filed under ${topicLabel(topic)}.` : 'Topic removed.');
+      } catch (error) {
+        render();
+        if (!recoverAuthError(error, 'Sign in to change the topic.')) notify(error.message || 'The topic could not be changed.');
+      }
+    })();
     return;
   }
   if (action === 'permalink-visibility') {

@@ -387,6 +387,29 @@ test('local API serves the acceptance-critical health, identity, publish, social
     [...trendingFeed.payload.annotations.map((item) => item.slug)].sort(),
     [...recentFeed.payload.annotations.map((item) => item.slug)].sort(),
   );
+  // topics: tagged at publish, filterable on trending, editable in-window
+  const taggedAnnotation = await request(baseUrl, '/api/annotations', {
+    method: 'POST',
+    body: { sourceUrl: 'https://example.com/legal-brief', sourceType: 'article', sourceTitle: 'A legal brief', sourceExcerpt: 'The clause in question.', commentaryMode: 'text', commentary: 'The clause everyone skips.', topic: 'legal', clientRequestId: 'acceptance-topic-1' },
+  });
+  assert.equal(taggedAnnotation.response.status, 201);
+  assert.equal(taggedAnnotation.payload.annotation.topic, 'legal');
+  const badTopic = await request(baseUrl, '/api/annotations', {
+    method: 'POST',
+    body: { sourceUrl: 'https://example.com/legal-brief-2', sourceType: 'article', sourceTitle: 'Brief 2', sourceExcerpt: 'p', commentaryMode: 'text', commentary: 'x', topic: 'astrology', clientRequestId: 'acceptance-topic-2' },
+  });
+  assert.equal(badTopic.response.status, 422);
+  const topicFeed = await request(baseUrl, '/api/feed?limit=50&sort=trending&topic=legal');
+  assert.equal(topicFeed.response.status, 200);
+  assert.ok(topicFeed.payload.annotations.length >= 1);
+  assert.equal(topicFeed.payload.annotations.every((item) => item.topic === 'legal'), true);
+  assert.ok(topicFeed.payload.topics.some((entry) => entry.slug === 'legal' && entry.count >= 1), 'trending responses carry live topic counts');
+  const retagged = await request(baseUrl, `/api/annotations/${taggedAnnotation.payload.annotation.slug}`, { method: 'PATCH', body: { topic: 'business' } });
+  assert.equal(retagged.response.status, 200);
+  assert.equal(retagged.payload.annotation.topic, 'business');
+  const badRetag = await request(baseUrl, `/api/annotations/${taggedAnnotation.payload.annotation.slug}`, { method: 'PATCH', body: { topic: 'astrology' } });
+  assert.equal(badRetag.response.status, 422);
+
   const trendingSources = await request(baseUrl, '/api/trending/sources');
   assert.equal(trendingSources.response.status, 200);
   assert.ok(trendingSources.payload.sources.length >= 1);

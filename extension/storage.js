@@ -1,3 +1,5 @@
+import { isTopic } from './topics.js';
+
 const DRAFT_KEY = 'annotatedDraft';
 const TAB_DRAFT_PREFIX = 'annotatedTabDraft:';
 const LAST_PUBLISHED_KEY = 'annotatedLastPublished';
@@ -31,6 +33,7 @@ export const compactDraft = (draft = {}) => ({
   audioDraftId: boundedString(draft.audioDraftId, 80),
   clientRequestId: boundedString(draft.clientRequestId, 80),
   visibility: ['public', 'unlisted', 'private'].includes(draft.visibility) ? draft.visibility : 'public',
+  topic: isTopic(draft.topic) ? draft.topic : '',
   screenshotAssetId: boundedString(draft.screenshotAssetId, 80),
   anchorParagraph: Math.max(0, Math.min(9999, Number(draft.anchorParagraph) || 0)),
   anchorPrefix: boundedString(draft.anchorPrefix, 300),

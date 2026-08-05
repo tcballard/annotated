@@ -879,6 +879,15 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .trend-row a { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trend-row .trend-stat { margin-left: auto; font-size: 12px; color: var(--meta); font-variant-numeric: tabular-nums; flex: none; }
 .trend-row .trend-stat strong { color: var(--ink); }
+
+/* topic taxonomy: chips filter trending; tags on cards jump to it */
+.topic-chips { display: flex; gap: 6px; padding: 8px 16px 10px; flex-wrap: wrap; }
+.topic-chip { font-size: 12px; font-weight: 600; color: var(--meta); border: 1px solid var(--border); border-radius: 99px; padding: 4px 11px; min-height: 28px; background: var(--card); transition: color .12s ease, border-color .12s ease; }
+.topic-chip:hover { color: var(--ink); border-color: var(--ink-soft); }
+.topic-chip.is-active { color: #fff; background: var(--chrome); border-color: var(--chrome); }
+.topic-chip .n { font-weight: 400; opacity: .75; }
+.topic-tag { font-size: 11px; font-weight: 600; color: var(--ink-soft); background: var(--soft); border-radius: 4px; padding: 2px 7px; margin-left: 6px; }
+.topic-tag:hover { background: var(--border); }
 .curator-row a { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .curator-row .curator-stat { margin-left: auto; font-size: 12px; color: var(--meta); font-variant-numeric: tabular-nums; flex: none; }
 .curator-row .curator-stat strong { color: var(--ink); }

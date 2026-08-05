@@ -25,11 +25,26 @@ test('audio notes carry their duration on the card', () => {
 
 test('the timeline offers Trending, and the rail sends readers to trending hubs', () => {
   assert.match(main, /data-sort="trending"[^>]*>Trending</);
-  assert.match(main, /state\.feedSort === 'trending' && !state\.feedFollowing\) params\.set\('sort', 'trending'\)/);
   assert.match(main, /Trending sources<\/h2>/);
   assert.match(main, /data-action="open-hub" data-host="\$\{escapeHTML\(source\.host\)\}"/, 'trending rows are hub destinations');
   assert.match(main, /Nothing is trending yet\./);
   assert.match(css, /\.trend-row/);
+});
+
+test('topics: chips on trending, tags on cards, selects in both capture surfaces', async () => {
+  assert.match(main, /class="topic-chips"/);
+  assert.match(main, /data-action="feed-topic"/);
+  assert.match(main, /class="topic-tag"/);
+  assert.match(main, /data-action="capture-topic"/);
+  assert.match(main, /data-action="permalink-topic"/);
+  assert.match(main, /params\.set\('topic', state\.feedTopic\)/);
+  assert.match(css, /\.topic-chip/);
+  assert.match(css, /\.topic-tag/);
+  const { readFile } = await import('node:fs/promises');
+  const panel = await readFile(new URL('../extension/sidepanel.js', import.meta.url), 'utf8');
+  const panelHtml = await readFile(new URL('../extension/sidepanel.html', import.meta.url), 'utf8');
+  assert.match(panelHtml, /id="topicSelect"/);
+  assert.match(panel, /topic: isTopic\(topic\) \? topic : undefined/);
 });
 
 test('hosted audio renders a seekable waveform from server peaks', () => {

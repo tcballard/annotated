@@ -50,6 +50,7 @@ for (const seed of seeds) {
     commentary: seed.note,
     commentaryMode: 'text',
     visibility: 'public',
+    topic: seed.topic || undefined,
     clientRequestId: seed.clientRequestId,
   });
   if (response.status === 201) console.log(`- published: ${payload.annotation.url}`);

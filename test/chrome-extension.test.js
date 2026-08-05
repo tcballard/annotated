@@ -46,7 +46,7 @@ test('Manifest V3 extension has a reachable side-panel trigger and local files',
 });
 
 test('extension runtime source avoids remote-code and service-worker timer patterns', async () => {
-  const files = ['background.js', 'config.js', 'options.js', 'sidepanel.js', 'storage.js', 'audio.js', 'media-draft-store.js'];
+  const files = ['background.js', 'config.js', 'options.js', 'sidepanel.js', 'storage.js', 'audio.js', 'media-draft-store.js', 'topics.js'];
   const source = await Promise.all(files.map(read));
   const combined = source.join('\n');
   assert.doesNotMatch(combined, /\beval\s*\(/);

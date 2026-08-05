@@ -16,6 +16,7 @@ import { escapeHtml, injectAnnotationMeta } from './permalink-meta.js';
 import { allowsIndexing, canViewAnnotation, isPubliclyListed, VISIBILITIES } from './visibility.js';
 import { matchesPersonQuery, normalizeHost, publicAnnotationsForHost, rankAnnotators } from './discovery.js';
 import { rankTrendingSources, sortByTrending } from './trending.js';
+import { isTopic, TOPICS } from './topics.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, parseCookies, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, requestId, securityHeaders } from './hardening.js';
@@ -218,12 +219,20 @@ const handleApi = async (request, response, pathname) => {
     if (followingFeedRequiresAuth({ requested: followingRequested, required: authIsRequired(), viewer })) return unauthorized(response);
     const followingOnly = followingRequested && Boolean(viewer);
     const followedIds = new Set((store.follows || []).filter((follow) => follow.followerId === viewer?.id).map((follow) => follow.followingId));
+    const topic = isTopic(query.get('topic')) ? query.get('topic') : null;
     const filtered = store.annotations.filter((item) => item.status === 'published' && isPubliclyListed(item) && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id) && matchesFeedQuery(item, store.users || [], search) && matchesFeedUrl(item, urlKey));
-    const candidates = query.get('sort') === 'trending'
-      ? sortByTrending(filtered, store)
-      : filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const trending = query.get('sort') === 'trending';
+    // Trending answers with the live topic counts of the unfiltered-by-topic
+    // set, so the chip row only ever shows topics that actually exist.
+    const topicCounts = trending
+      ? TOPICS.map(({ slug, label }) => ({ slug, label, count: filtered.filter((item) => item.topic === slug).length })).filter((entry) => entry.count > 0)
+      : undefined;
+    const scoped = topic ? filtered.filter((item) => item.topic === topic) : filtered;
+    const candidates = trending
+      ? sortByTrending(scoped, store)
+      : scoped.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const page = candidates.slice(offset, offset + limit);
-    return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null, query: search || null });
+    return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null, query: search || null, ...(topicCounts ? { topics: topicCounts, topic } : {}) });
   }
 
   // Source hub: a host's public annotations and its annotators, discovery by
@@ -445,6 +454,13 @@ const handleApi = async (request, response, pathname) => {
       if (!commentary) return send(response, 422, { error: 'The note cannot be empty.' });
       changes.commentary = commentary;
       changes.editedAt = new Date().toISOString();
+    }
+    // The topic rides the same 30-minute window as the note — a wrong tag is
+    // fixable, but categorisation is not a lever to rewrite history with.
+    if (payload.topic !== undefined) {
+      if (payload.topic !== null && payload.topic !== '' && !isTopic(payload.topic)) return send(response, 422, { error: 'topic must be one of the published topics.' });
+      if (!canEditCommentary(annotation)) return send(response, 422, { error: 'The topic can be changed for 30 minutes after publishing.' });
+      changes.topic = isTopic(payload.topic) ? payload.topic : null;
     }
     if (!Object.keys(changes).length) return send(response, 422, { error: 'Nothing to update. Send commentary and/or visibility.' });
     const result = await updateStore((current) => ({

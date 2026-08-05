@@ -34,63 +34,63 @@ const PERSONAS = [
 
 const ANNOTATIONS = [
   {
-    key: 'mara-marginalia', author: 'mara', hours: 130, opens: 34, paragraph: 1,
+    key: 'mara-marginalia', topic: 'culture', author: 'mara', hours: 130, opens: 34, paragraph: 1,
     sourceUrl: 'https://en.wikipedia.org/wiki/Marginalia',
     sourceTitle: 'Marginalia - Wikipedia',
     excerpt: 'Marginalia (or apostils) are marks made in the margins of a book or other document.',
     note: 'We have been doing this for a thousand years — the margin is the oldest social network. The web just forgot to ship one.',
   },
   {
-    key: 'mara-commonplace', author: 'mara', hours: 55, opens: 18, paragraph: 1,
+    key: 'mara-commonplace', topic: 'culture', author: 'mara', hours: 55, opens: 18, paragraph: 1,
     sourceUrl: 'https://en.wikipedia.org/wiki/Commonplace_book',
     sourceTitle: 'Commonplace book - Wikipedia',
     excerpt: 'Commonplace books (or commonplaces) are personal notebooks used to compile any information the owner finds interesting or useful.',
     note: 'A commonplace book with permalinks is roughly what I always wanted the internet to be.',
   },
   {
-    key: 'priya-textfragments', author: 'priya', hours: 78, opens: 27, paragraph: 1,
+    key: 'priya-textfragments', topic: 'tech', author: 'priya', hours: 78, opens: 27, paragraph: 1,
     sourceUrl: 'https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Fragment/Text_fragments',
     sourceTitle: 'Text fragments - URIs | MDN',
     excerpt: 'Text fragments link directly to specific text in a web page, without requiring the page author to add an ID.',
     note: 'The quiet superpower behind every “open original at the passage” link on this site — no cooperation needed from the source page. Click through and watch the browser highlight it.',
   },
   {
-    key: 'sam-drolleries', author: 'sam', hours: 100, opens: 12, paragraph: 2,
+    key: 'sam-drolleries', topic: 'culture', author: 'sam', hours: 100, opens: 12, paragraph: 2,
     sourceUrl: 'https://en.wikipedia.org/wiki/Marginalia',
     sourceTitle: 'Marginalia - Wikipedia',
     excerpt: 'They may be scribbles, comments, glosses (annotations), critiques, doodles, drolleries, or illuminations.',
     note: 'Drolleries! Medieval readers doodled monsters in the margins of psalters. Annotation has never been a solemn practice.',
   },
   {
-    key: 'jonas-unscalable', author: 'jonas', hours: 46, opens: 41, paragraph: 3,
+    key: 'jonas-unscalable', topic: 'startups', author: 'jonas', hours: 46, opens: 41, paragraph: 3,
     sourceUrl: 'https://paulgraham.com/ds.html',
     sourceTitle: 'Do Things that Don’t Scale',
     excerpt: 'The most common unscalable thing founders have to do at the start is to recruit users manually.',
     note: 'Every founder rereads this yearly and still under-does it. The manual era is the product era — you learn what to build by doing the job by hand.',
   },
   {
-    key: 'jonas-makers', author: 'jonas', hours: 20, opens: 22, paragraph: 2,
+    key: 'jonas-makers', topic: 'startups', author: 'jonas', hours: 20, opens: 22, paragraph: 2,
     sourceUrl: 'https://paulgraham.com/makersschedule.html',
     sourceTitle: 'Maker’s Schedule, Manager’s Schedule',
     excerpt: 'There are two types of schedule, which I’ll call the manager’s schedule and the maker’s schedule.',
     note: 'Still the most cited essay in every engineering-planning argument I have ever been in, and still mostly unheeded.',
   },
   {
-    key: 'priya-webannotation', author: 'priya', hours: 8, opens: 15, paragraph: 3,
+    key: 'priya-webannotation', topic: 'tech', author: 'priya', hours: 8, opens: 15, paragraph: 3,
     sourceUrl: 'https://en.wikipedia.org/wiki/Web_annotation',
     sourceTitle: 'Web annotation - Wikipedia',
     excerpt: 'With a web annotation system, a user can add, modify or remove information from a Web resource without modifying the resource itself.',
     note: 'The W3C wrote the spec years ago; the products kept dying anyway. The missing piece was never the standard — it was the feed.',
   },
   {
-    key: 'sam-hypertext', author: 'sam', hours: 12, opens: 9, paragraph: 1,
+    key: 'sam-hypertext', topic: 'tech', author: 'sam', hours: 12, opens: 9, paragraph: 1,
     sourceUrl: 'https://en.wikipedia.org/wiki/Hypertext',
     sourceTitle: 'Hypertext - Wikipedia',
     excerpt: 'Hypertext is text displayed on a computer display or other electronic devices with references (hyperlinks) to other text that the reader can immediately access.',
     note: 'Bush sketched the Memex in 1945 with trails of association between documents. Links shipped; the trails — the annotations — mostly did not.',
   },
   {
-    key: 'jonas-greatwork', author: 'jonas', hours: 30, opens: 33, paragraph: 4,
+    key: 'jonas-greatwork', topic: 'startups', author: 'jonas', hours: 30, opens: 33, paragraph: 4,
     sourceUrl: 'https://paulgraham.com/greatwork.html',
     sourceTitle: 'How to Do Great Work',
     excerpt: 'The work you choose needs to have three qualities: it has to be something you have a natural aptitude for, that you have a deep interest in, and that offers scope to do great work.',
@@ -154,7 +154,7 @@ await updateStore((store) => {
       sourceType: 'article', sourceUrl: seed.sourceUrl, canonicalUrl: seed.sourceUrl,
       sourceTitle: seed.sourceTitle, sourceHost: new URL(seed.sourceUrl).hostname.replace(/^www\./, ''),
       sourceExcerpt: seed.excerpt, anchorParagraph: seed.paragraph,
-      commentary: seed.note, commentaryMode: 'text', visibility: 'public', clientRequestId,
+      commentary: seed.note, commentaryMode: 'text', visibility: 'public', topic: seed.topic || undefined, clientRequestId,
     });
     if (errors.length) throw new Error(`Persona seed ${seed.key} failed validation: ${errors.join('; ')}`);
     const id = randomUUID();

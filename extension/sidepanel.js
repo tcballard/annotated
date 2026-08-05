@@ -3,6 +3,7 @@ import { apiOrigin, authHeaders, signIn, signOut } from './config.js';
 import { clampAudioDuration, MAX_AUDIO_SECONDS, preferredAudioMimeType } from './audio.js';
 import { deleteAudioDraft, readAudioDraft, stageAudioDraft } from './media-draft-store.js';
 import { MAX_CLIP_SECONDS } from './clip-range.js';
+import { isTopic, TOPICS } from './topics.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
 
 const $ = (selector) => document.querySelector(selector);
@@ -50,6 +51,7 @@ const queueRetry = $('#queueRetry');
 const timeline = $('#timeline');
 const captureSection = $('#captureSection');
 const visibilitySelect = $('#visibilitySelect');
+const topicSelect = $('#topicSelect');
 const shotButton = $('#shotButton');
 const shotCard = $('#shotCard');
 const shotPreview = $('#shotPreview');
@@ -68,6 +70,7 @@ let selection = { text: '', paragraph: 0, prefix: '', suffix: '' };
 let marks = { start: 0, end: 0, inSet: false, outSet: false };
 let commentaryMode = 'text';
 let visibility = 'public';
+let topic = '';
 let screenshotAssetId = '';
 let screenshotPreviewUrl = '';
 let apiOriginCache = '';
@@ -406,6 +409,17 @@ visibilitySelect.addEventListener('change', () => {
   saveDraft();
 });
 
+for (const option of TOPICS) {
+  const element = document.createElement('option');
+  element.value = option.slug;
+  element.textContent = option.label;
+  topicSelect.append(element);
+}
+topicSelect.addEventListener('change', () => {
+  topic = isTopic(topicSelect.value) ? topicSelect.value : '';
+  saveDraft();
+});
+
 const syncSource = () => {
   sourceTitle.textContent = currentTab.title || 'Reading this tab…';
   typeSelect.value = currentTab.sourceType;
@@ -469,6 +483,7 @@ const draftPayload = () => ({
   audioDraftId,
   clientRequestId,
   visibility,
+  topic,
   screenshotAssetId,
   anchorParagraph: selection.paragraph || 0,
   anchorPrefix: selection.prefix || '',
@@ -492,6 +507,8 @@ const restoreDraft = (draft) => {
   clientRequestId = draft.clientRequestId || clientRequestId;
   visibility = draft.visibility || 'public';
   visibilitySelect.value = visibility;
+  topic = isTopic(draft.topic) ? draft.topic : '';
+  topicSelect.value = topic;
   screenshotAssetId = draft.screenshotAssetId || '';
   screenshotPreviewUrl = '';
   if (draft.sourceType) currentTab.sourceType = draft.sourceType;
@@ -509,6 +526,8 @@ const resetCaptureState = () => {
   commentaryMode = 'text';
   visibility = 'public';
   visibilitySelect.value = 'public';
+  topic = '';
+  topicSelect.value = '';
   screenshotAssetId = '';
   screenshotPreviewUrl = '';
   audioAssetId = '';
@@ -830,6 +849,7 @@ publishButton.addEventListener('click', async () => {
     commentary: commentaryMode === 'text' ? note.value.trim().slice(0, 280) : '',
     commentaryMode,
     visibility,
+    topic: isTopic(topic) ? topic : undefined,
     screenshotAssetId: screenshotAssetId || undefined,
     audioAssetId: commentaryMode === 'audio' ? audioAssetId : undefined,
     audioDuration: commentaryMode === 'audio' ? audioDurationSeconds : undefined,
