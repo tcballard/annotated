@@ -14,24 +14,29 @@ laws, not suggestions; `test/terracotta-audit.test.js` enforces the first one.
 ## Laws
 
 1. **Terracotta means THE MOMENT.** The accent appears only on: moment chips,
-   the live source dot, mark-selection state, the CLIP tag, active-tab
-   underlines, the primary "Open original" action, the pull-quote rule,
-   section-header full stops, focus rings, the claim hover, and the logo dot.
-   Never on generic buttons, links, alerts, or decoration. This single rule is
-   the brand.
+   the live source dot, mark-selection state, the CLIP tag, the primary
+   "Open original" action, the pull-quote rule, section-header full stops,
+   focus rings, the claim hover, and the logo dot. Never on generic buttons,
+   links, alerts, tabs, or decoration. This single rule is the brand.
 2. **Two voices.** The SOURCE speaks in Georgia italic (every quoted passage,
    the rule quote). The ANNOTATOR and the interface speak in system-ui. The
    only third face is `ui-monospace` for chips and timestamps, always with
    `font-variant-numeric: tabular-nums`.
 3. **The full stop.** Section headers take a terracotta trailing period via
-   `::after` ("Timeline**.**"). h1/h2-level headers only.
+   `::after` ("Responses**.**"). h1/h2-level headers only — and only headers
+   that carry information the chrome does not already state (the feed's
+   heading is screen-reader-only for exactly this reason).
 4. **The chip** is the atomic identity unit: mono, tabular, accent-tinted
    pill, formats `0:14–1:02` (temporal) / `¶ 6` (text). It is the identical
    component in the panel, the feed, the permalink, and the OG card.
-5. **Radii** 3px chips · 6px inputs/source cards · 8–10px cards · 99px
-   buttons/pills. Borders 1px `--border`, separators `--hair`. **No shadows** —
-   elevation is border + background shift. Muted warm palette only; no pure
-   blues, no greens, no gradients.
+5. **Cards on paper.** Kept moments float as white cards on the paper ground
+   — index cards on a desk, not rows in a ledger. Radii: 3px chips ·
+   10px inputs · 14px source cards (`--radius-inner`) · 18px cards
+   (`--radius-card`) · 99px buttons, pills, and tab rails. Elevation is a
+   soft ink shadow (`--shadow`, `--shadow-lift` on hover) reserved for
+   cards; inner structure still separates with 1px `--hair`/`--border`.
+   Active tabs fill with ink, never with the accent. Muted warm palette
+   only; no pure blues, no greens, no gradients.
 6. **OG cards** are miniature permalinks: ink chrome bar, white module, the
    chip, the serif quote over the terracotta rule, and the 240p CLIP framing
    as visible spec compliance. Rendered server-side by the satori pipeline in

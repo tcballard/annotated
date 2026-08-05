@@ -135,13 +135,13 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--meta);
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 4px 6px;
   min-height: 30px;
   cursor: pointer;
 }
 
-.cap-unsupported { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
+.cap-unsupported { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-radius: 10px; padding: 8px 10px; margin-bottom: 10px; }
 
 .marks { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 
@@ -153,7 +153,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--ink);
   background: var(--soft);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 0 8px;
   min-height: 40px;
   display: inline-flex;
@@ -210,7 +210,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--ink);
   background: var(--soft);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 3px 4px 3px 10px;
   min-height: 36px;
 }
@@ -236,7 +236,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--ink-soft);
   background: var(--soft);
   border-left: 3px solid var(--ink-soft);
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 10px 10px 0;
   padding: 7px 10px;
   margin-bottom: 10px;
 }
@@ -252,7 +252,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--meta);
   background: var(--soft);
   border: 1px dashed var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   padding: 10px;
   min-height: 40px;
   margin-bottom: 10px;
@@ -263,7 +263,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .grabber:hover { background: var(--hair); color: var(--ink); }
 .grabber svg { width: 14px; height: 14px; flex: none; }
 
-.passage { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 10px; }
+.passage { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 10px; }
 
 .passage-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 11.5px; color: var(--meta); background: var(--strip); border-bottom: 1px solid var(--hair); }
 
@@ -291,7 +291,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   font-size: 13.5px;
   color: var(--ink);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--card);
   padding: 9px 10px;
   height: 64px;
@@ -301,7 +301,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .cap-note::placeholder { color: #9AA0A8; }
 
-.recorder { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.recorder { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
 
 .rec-button {
   width: 44px;
@@ -369,9 +369,9 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .cap-hint { font-size: 11px; color: var(--meta); margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.panel-error { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-left: 3px solid var(--ink-soft); border-radius: 0 6px 6px 0; padding: 7px 10px; margin-top: 8px; }
+.panel-error { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-left: 3px solid var(--ink-soft); border-radius: 0 10px 10px 0; padding: 7px 10px; margin-top: 8px; }
 
-.queue-status { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-top: 8px; font-size: 11.5px; }
+.queue-status { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-top: 8px; font-size: 11.5px; }
 .queue-status strong { display: block; font-size: 12px; }
 .queue-status small { color: var(--meta); }
 .queue-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--meta); flex: none; }
@@ -454,7 +454,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .post .note { font-size: 13px; line-height: 1.45; margin: 2px 0 8px; overflow-wrap: anywhere; }
 
-.srccard { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.srccard { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 
 .srchead {
   display: flex;
@@ -534,7 +534,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .skeleton .sk { background: var(--soft); border-radius: 4px; animation: sk-pulse 1.2s ease-in-out infinite; }
 .skeleton .sk-avatar { width: 30px; height: 30px; border-radius: 50%; flex: none; }
 .skeleton .sk-line { height: 10px; margin-bottom: 7px; }
-.skeleton .sk-card { height: 64px; border-radius: 6px; }
+.skeleton .sk-card { height: 64px; border-radius: 10px; }
 
 @keyframes sk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 

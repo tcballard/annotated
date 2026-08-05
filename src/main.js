@@ -916,7 +916,7 @@ const profileView = () => {
       <div class="lib-counts"><span><strong>${Number(profile.annotationCount) || items.length}</strong> annotations</span><span><strong>${Number(profile.followers) || 0}</strong> followers</span></div>
       ${!isCurrentUser ? `<button class="ghost ${following ? 'is-on' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(profile.id)}">${following ? 'Following' : 'Follow'}</button>` : ''}
     </div>
-    <main class="feed" style="border:1px solid var(--border);border-radius:10px;min-height:0;overflow:hidden">
+    <main class="feed">
       ${items.length ? items.map(feedPost).join('') : `<div class="feed-empty"><h3>No annotations yet.</h3><p>Published moments appear here with their sources attached.</p></div>`}
     </main>
   </div>`;
