@@ -649,12 +649,12 @@ const feedView = () => {
           <button class="tab ${!state.feedFollowing && state.feedSort === 'trending' ? 'is-active' : ''}" data-action="feed-filter" data-following="false" data-sort="trending" role="tab" aria-selected="${!state.feedFollowing && state.feedSort === 'trending'}">Trending</button>
           <button class="tab ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true" data-sort="recent" role="tab" aria-selected="${state.feedFollowing}">Following</button>
         </div>
-        ${!state.feedFollowing && state.feedSort === 'trending' && state.feedTopics.length ? `
-        <div class="topic-chips" role="group" aria-label="Filter trending by topic">
-          <button class="topic-chip ${!state.feedTopic ? 'is-active' : ''}" data-action="feed-topic" data-topic="">All</button>
-          ${state.feedTopics.map((entry) => `<button class="topic-chip ${state.feedTopic === entry.slug ? 'is-active' : ''}" data-action="feed-topic" data-topic="${escapeHTML(entry.slug)}">${escapeHTML(entry.label)} <span class="n">${entry.count}</span></button>`).join('')}
-        </div>` : ''}
       </div>
+      ${!state.feedFollowing && state.feedSort === 'trending' && state.feedTopics.length ? `
+      <div class="topic-chips" role="group" aria-label="Filter trending by topic">
+        <button class="topic-chip ${!state.feedTopic ? 'is-active' : ''}" data-action="feed-topic" data-topic="">All</button>
+        ${state.feedTopics.map((entry) => `<button class="topic-chip ${state.feedTopic === entry.slug ? 'is-active' : ''}" data-action="feed-topic" data-topic="${escapeHTML(entry.slug)}">${escapeHTML(entry.label)} <span class="n">${entry.count}</span></button>`).join('')}
+      </div>` : ''}
       ${state.feedError ? `<div class="feed-error" role="alert">${escapeHTML(state.feedError)} <button class="ghost" data-action="feed-retry">Try again</button></div>` : ''}
       ${state.feedQuery && !state.feedLoading ? `<div class="feed-error" role="status">Results for “${escapeHTML(state.feedQuery)}” <button class="ghost" data-action="clear-feed-search">Clear</button></div>` : ''}
       ${state.feedQuery && state.peopleResults.length && !state.feedLoading ? `<div class="people-strip"><div class="lib-section">People</div>${state.peopleResults.map((person) => personRow(person, { stat: 'followers' })).join('')}</div>` : ''}
@@ -1653,6 +1653,20 @@ const openProfile = (handle) => {
   loadProfile().then(render);
 };
 
+// One switch used by the tab rail and the mobile swipe gesture alike.
+const FEED_PANES = [{ sort: 'recent', following: false }, { sort: 'trending', following: false }, { sort: 'recent', following: true }];
+
+const applyFeedFilter = (sort, following) => {
+  if (following && requestSignIn('see the people you follow')) return;
+  state.feedFollowing = following;
+  state.feedSort = sort === 'trending' ? 'trending' : 'recent';
+  if (state.feedSort !== 'trending' || state.feedFollowing) state.feedTopic = null;
+  state.feedCursor = null;
+  loadFeed().then(render);
+};
+
+const currentFeedPane = () => state.feedFollowing ? 2 : state.feedSort === 'trending' ? 1 : 0;
+
 /* ── events ────────────────────────────────────────────────────────── */
 
 app.addEventListener('click', (event) => {
@@ -1722,13 +1736,7 @@ app.addEventListener('click', (event) => {
   if (action === 'retry-audio') { retryStagedAudio(); return; }
   if (action === 'publish') { publishAnnotation(); return; }
   if (action === 'feed-filter') {
-    const following = target.dataset.following === 'true';
-    if (following && requestSignIn('see the people you follow')) return;
-    state.feedFollowing = following;
-    state.feedSort = target.dataset.sort === 'trending' ? 'trending' : 'recent';
-    if (state.feedSort !== 'trending' || state.feedFollowing) state.feedTopic = null;
-    state.feedCursor = null;
-    loadFeed().then(render);
+    applyFeedFilter(target.dataset.sort === 'trending' ? 'trending' : 'recent', target.dataset.following === 'true');
     return;
   }
   if (action === 'feed-topic') {
@@ -1898,6 +1906,26 @@ app.addEventListener('click', (event) => {
   if (action === 'submit-claim') { submitClaim(); return; }
   if (action === 'logout') { api.logout().then(() => { state.user = null; render(); notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
 });
+
+// The mobile flick: a horizontal swipe on the feed moves between Recent,
+// Trending, and Following. Deliberately conservative — mostly-horizontal
+// movement only, so vertical scrolling and taps never misfire.
+let touchOrigin = null;
+app.addEventListener('touchstart', (event) => {
+  touchOrigin = state.activeView === 'feed' && event.touches.length === 1
+    ? { x: event.touches[0].clientX, y: event.touches[0].clientY }
+    : null;
+}, { passive: true });
+app.addEventListener('touchend', (event) => {
+  if (!touchOrigin || state.activeView !== 'feed') return;
+  const touch = event.changedTouches[0];
+  const deltaX = touch.clientX - touchOrigin.x;
+  const deltaY = touch.clientY - touchOrigin.y;
+  touchOrigin = null;
+  if (Math.abs(deltaX) < 64 || Math.abs(deltaY) > 48) return;
+  const next = FEED_PANES[currentFeedPane() + (deltaX < 0 ? 1 : -1)];
+  if (next) applyFeedFilter(next.sort, next.following);
+}, { passive: true });
 
 // timeupdate does not bubble, so the waveform progress listens in the
 // capture phase and paints the played portion in place — no re-render.

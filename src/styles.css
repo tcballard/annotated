@@ -1056,6 +1056,13 @@ footer .footer-note { margin-left: auto; }
   .chip.duration { align-self: flex-start; }
   .libhead .lib-counts { margin-left: 0; width: 100%; }
   .srcstrip { flex-wrap: wrap; }
+  /* The feed switcher docks into the thumb zone: fixed pill rail at the
+     bottom, floated above the home-indicator safe area. Chips stay with
+     the content up top; the feed pads so the last card clears the rail. */
+  .feedhead { position: fixed; top: auto; bottom: 0; left: 0; right: 0; background: transparent; padding: 0 14px calc(12px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
+  .feedhead .tabs { pointer-events: auto; box-shadow: 0 6px 24px rgba(38, 41, 47, .18); }
+  .topic-chips { padding-top: 2px; }
+  .feed:has(.feedhead) { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

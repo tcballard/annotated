@@ -47,6 +47,15 @@ test('topics: chips on trending, tags on cards, selects in both capture surfaces
   assert.match(panel, /topic: isTopic\(topic\) \? topic : undefined/);
 });
 
+test('on phones the feed switcher docks into the thumb zone and swipes flick panes', () => {
+  assert.match(css, /\.feedhead \{ position: fixed; top: auto; bottom: 0;/, 'the rail docks to the bottom at phone widths');
+  assert.match(css, /env\(safe-area-inset-bottom/, 'the dock respects the home-indicator safe area');
+  assert.match(css, /\.feed:has\(\.feedhead\) \{ padding-bottom/, 'the last card clears the docked rail');
+  assert.match(main, /addEventListener\('touchend'/);
+  assert.match(main, /FEED_PANES\[currentFeedPane\(\) \+ \(deltaX < 0 \? 1 : -1\)\]/, 'swipes move between adjacent panes');
+  assert.match(main, /Math\.abs\(deltaX\) < 64 \|\| Math\.abs\(deltaY\) > 48/, 'vertical scrolling never misfires a flick');
+});
+
 test('hosted audio renders a seekable waveform from server peaks', () => {
   assert.match(main, /const waveform = \(peaks\)/);
   assert.match(main, /audioPeaks: Array\.isArray\(annotation\.audioPeaks\)/);
