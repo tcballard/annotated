@@ -18,7 +18,7 @@ import { matchesPersonQuery, normalizeHost, publicAnnotationsForHost, rankAnnota
 import { rankTrendingSources, sortByTrending } from './trending.js';
 import { isTopic, TOPICS } from './topics.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
-import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, parseCookies, providerStatus, startOAuth } from './auth.js';
+import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, mobileTicketSession, parseCookies, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, requestId, securityHeaders } from './hardening.js';
 import { closeRateLimitStore, rateLimitAsync } from './rate-limit.js';
 import { canUseAudioAsset, canUseImageAsset } from './media-access.js';
@@ -892,6 +892,17 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'GET' && url.pathname.startsWith('/media/')) return serveMedia(response, url.pathname.slice('/media/'.length));
     const ogMatch = request.method === 'GET' ? url.pathname.match(/^\/og\/([^/]+)\.png$/) : null;
     if (ogMatch) return serveOgCard(response, ogMatch[1], { download: url.searchParams.has('download') });
+    // The mobile shell finishes sign-in here: its one-time ticket becomes the
+    // same cookie session the web app uses, then the WebView reloads home.
+    if (request.method === 'GET' && url.pathname === '/auth/mobile/session') {
+      try {
+        const { sessionCookie } = await mobileTicketSession(url.searchParams.get('ticket') || '');
+        response.writeHead(302, { location: '/?auth=success', 'set-cookie': sessionCookie, ...securityHeaders() });
+      } catch {
+        response.writeHead(302, { location: '/?auth=error', ...securityHeaders() });
+      }
+      return response.end();
+    }
     const claimFormMatch = ['GET', 'POST'].includes(request.method || '') ? url.pathname.match(/^\/a\/([^/]+)\/claim$/) : null;
     if (claimFormMatch) return serveClaimForm(request, response, decodeURIComponent(claimFormMatch[1]));
     const permalinkMatch = request.method === 'GET' ? url.pathname.match(/^\/a\/([^/]+)$/) : null;

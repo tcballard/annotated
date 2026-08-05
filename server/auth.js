@@ -91,6 +91,9 @@ const providerFor = (name) => {
 };
 
 const chromiumReturnUrl = (url) => url.protocol === 'https:' && url.hostname.endsWith('.chromiumapp.org');
+// The mobile shell returns through its custom scheme; the callback carries a
+// one-time ticket exactly like the extension flow.
+const mobileReturnUrl = (url) => url.protocol === 'annotated:' && url.hostname === 'auth';
 const configuredAppOrigin = () => {
   try { return new URL(process.env.APP_ORIGIN || publicOrigin).origin; } catch { throw new Error('OAuth app origin is invalid.'); }
 };
@@ -102,7 +105,8 @@ const validateReturnTo = (value) => {
   try { url = new URL(value); } catch { throw new Error('OAuth return URL is invalid.'); }
   const allowedExtension = chromiumReturnUrl(url);
   const allowedApp = appReturnUrl(url);
-  if (!allowedExtension && !allowedApp) throw new Error('OAuth return URL is not allowed.');
+  const allowedMobile = mobileReturnUrl(url);
+  if (!allowedExtension && !allowedApp && !allowedMobile) throw new Error('OAuth return URL is not allowed.');
   return url.toString();
 };
 
@@ -214,7 +218,7 @@ export const finishOAuth = async (request, providerName, url) => {
   const session = await createSession(user);
   const returnTo = cookies[returnCookieName] || null;
   const returnUrl = returnTo ? new URL(returnTo) : null;
-  const extension = returnUrl && chromiumReturnUrl(returnUrl) ? await createExtensionTicket(user, returnTo) : null;
+  const extension = returnUrl && (chromiumReturnUrl(returnUrl) || mobileReturnUrl(returnUrl)) ? await createExtensionTicket(user, returnTo) : null;
   const browserRedirect = returnUrl && appReturnUrl(returnUrl) ? (() => {
     returnUrl.searchParams.set('auth', 'success');
     return returnUrl.toString();
@@ -251,6 +255,13 @@ export const exchangeExtensionTicket = async (ticket) => {
   if (!user) throw new Error('The extension account no longer exists.');
   const session = await createSession(user);
   return { token: session.token, expiresAt: session.expiresAt, user };
+};
+
+// The mobile shell exchanges its one-time ticket for a browser-style cookie
+// session — the WebView then behaves exactly like the signed-in web app.
+export const mobileTicketSession = async (ticket) => {
+  const session = await exchangeExtensionTicket(ticket);
+  return { sessionCookie: cookie(cookieName, session.token, { maxAge: sessionTtlSeconds }), user: session.user };
 };
 
 export const currentUser = async (request) => {

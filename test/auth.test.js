@@ -181,6 +181,72 @@ test('OAuth callback exchanges provider identity and consumes an extension ticke
   }
 });
 
+test('mobile OAuth returns through the app scheme and the ticket becomes a cookie session', async () => {
+  const dataDirectory = await mkdtemp(path.join(tmpdir(), 'annotated-mobile-auth-'));
+  const script = `
+    const { finishOAuth, mobileTicketSession, parseCookies, startOAuth } = await import('./server/auth.js');
+    const request = { headers: {}, socket: { remoteAddress: 'mobile-oauth-test' } };
+    const started = await startOAuth(request, 'google', 'annotated://auth');
+    const cookieHeader = started.cookies.join('; ');
+    const cookies = parseCookies(cookieHeader);
+    globalThis.fetch = async (url) => {
+      if (url.startsWith('https://oauth2.googleapis.com/token')) return { ok: true, json: async () => ({ access_token: 'provider-access-token' }) };
+      return { ok: true, json: async () => ({ sub: 'google-user-9', email: 'phone@example.com', name: 'Phone Reader' }) };
+    };
+    const callback = new URL('http://localhost:8787/api/auth/google/callback');
+    callback.searchParams.set('code', 'oauth-code');
+    callback.searchParams.set('state', cookies.annotated_oauth_state);
+    const finished = await finishOAuth({ headers: { cookie: cookieHeader } }, 'google', callback);
+    const redirect = new URL(finished.redirectTo);
+    const ticket = redirect.searchParams.get('ticket');
+    const session = await mobileTicketSession(ticket);
+    let replayError = '';
+    try { await mobileTicketSession(ticket); } catch (error) { replayError = error.message; }
+    let badScheme = '';
+    try { await startOAuth(request, 'google', 'evil://auth'); } catch (error) { badScheme = error.message; }
+    console.log(JSON.stringify({
+      scheme: redirect.protocol,
+      host: redirect.hostname,
+      hasTicket: Boolean(ticket),
+      cookieSession: session.sessionCookie.includes('annotated_session='),
+      user: session.user.handle,
+      replayError,
+      badScheme,
+    }));
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NODE_ENV: 'development',
+      ANNOTATED_STORAGE: 'file',
+      ANNOTATED_DATA_DIR: dataDirectory,
+      PUBLIC_ORIGIN: 'http://localhost:8787',
+      APP_ORIGIN: 'https://annotated.example.com',
+      GOOGLE_CLIENT_ID: 'google-client',
+      GOOGLE_CLIENT_SECRET: 'google-secret',
+      OAUTH_PROVIDERS: 'google',
+    },
+    encoding: 'utf8',
+    maxBuffer: 1_000_000,
+  });
+  try {
+    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+    const output = JSON.parse(result.stdout.trim());
+    assert.deepEqual(output, {
+      scheme: 'annotated:',
+      host: 'auth',
+      hasTicket: true,
+      cookieSession: true,
+      user: 'phone',
+      replayError: 'Extension auth ticket is invalid or expired.',
+      badScheme: 'OAuth return URL is not allowed.',
+    });
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test('web OAuth returns to the requesting app page without issuing an extension ticket', async () => {
   const dataDirectory = await mkdtemp(path.join(tmpdir(), 'annotated-web-auth-'));
   const script = `

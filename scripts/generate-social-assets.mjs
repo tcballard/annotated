@@ -6,7 +6,7 @@
 // Run: node scripts/generate-social-assets.mjs   (requires the DejaVu fonts
 // used by the OG pipeline; override the directory with OG_FONT_DIR)
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { access, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -84,4 +84,21 @@ for (const [file, svgSource, size] of [
   const png = new Resvg(svgSource, { fitTo: { mode: 'width', value: size } }).render().asPng();
   await writeFile(path.join(brandDir, file), png);
   console.log(`${file}: ${png.length} bytes`);
+}
+
+// Mobile shell icons (only when the Expo project is present): the app icon
+// full-bleed at 1024, and the Android adaptive foreground with the mark held
+// inside the safe zone.
+const mobileAssets = path.join(repoRoot, 'mobile/assets');
+if (await access(mobileAssets).then(() => true).catch(() => false)) {
+  for (const [file, svgSource, size] of [
+    ['icon.png', fullBleed, 1024],
+    ['adaptive-icon.png', maskable, 1024],
+    ['splash-icon.png', maskable, 512],
+    ['favicon.png', fullBleed, 48],
+  ]) {
+    const png = new Resvg(svgSource, { fitTo: { mode: 'width', value: size } }).render().asPng();
+    await writeFile(path.join(mobileAssets, file), png);
+    console.log(`mobile/${file}: ${png.length} bytes`);
+  }
 }
