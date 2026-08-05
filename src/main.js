@@ -248,7 +248,7 @@ const chromeAuth = () => {
   const providers = enabledProviders(state.authProviders);
   if (!providers.length) return `<span class="auth"><span class="connection-note">${state.serverStatus === 'offline' ? 'offline' : 'local'}</span></span>`;
   const [first, ...rest] = providers;
-  return `<span class="auth"><a class="auth-link" href="${escapeHTML(oauthStartUrl(first))}">Sign in with ${providerLabel(first)}</a>${rest.map((provider) => `<a class="auth-link" href="${escapeHTML(oauthStartUrl(provider))}">${providerLabel(provider)}</a>`).join('')}</span>`;
+  return `<span class="auth"><a class="auth-link" href="${escapeHTML(oauthStartUrl(first))}"><span class="auth-long">Sign in with </span>${providerLabel(first)}</a>${rest.map((provider) => `<a class="auth-link" href="${escapeHTML(oauthStartUrl(provider))}">${providerLabel(provider)}</a>`).join('')}</span>`;
 };
 
 const authStateView = () => {

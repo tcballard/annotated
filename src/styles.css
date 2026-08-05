@@ -974,7 +974,7 @@ footer .footer-note { margin-left: auto; }
 /* ── responsive ─────────────────────────────────────────────────────── */
 
 @media (max-width: 900px) {
-  .page { grid-template-columns: 1fr; }
+  .page { grid-template-columns: minmax(0, 1fr); }
   .rail { display: none; }
   .chrome .search { display: none; }
   .chrome .auth:last-child { margin-left: auto; }
@@ -982,12 +982,16 @@ footer .footer-note { margin-left: auto; }
 
 @media (max-width: 560px) {
   .chrome { gap: 8px; padding: 0 12px; }
-  .chrome nav .nav-link { padding: 0 8px; }
+  .chrome nav { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .chrome nav .nav-link { padding: 0 8px; flex: 0 0 auto; }
+  .chrome .auth { flex-shrink: 0; }
+  .chrome .auth .auth-long { display: none; }
   .permacard .actions { padding: 6px 8px 12px; }
   .act.claim { margin-left: 0; }
   .marks { flex-direction: column; align-items: stretch; }
   .chip.duration { align-self: flex-start; }
   .libhead .lib-counts { margin-left: 0; width: 100%; }
+  .srcstrip { flex-wrap: wrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {
