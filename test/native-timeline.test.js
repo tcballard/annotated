@@ -33,11 +33,36 @@ test('the pane and topic contract matches the web feed exactly', () => {
 });
 
 test('the top menu scrolls, X-style: panes then a feed per topic', () => {
-  assert.match(timeline, /ScrollView horizontal/);
+  assert.match(timeline, /<ScrollView[^>]*horizontal/);
   assert.match(timeline, /\.\.\.TOPICS\.map\(\(topic\) => \(\{ key: `topic:\$\{topic\.slug\}`/, 'every topic is a feed in the menu');
   assert.match(timeline, /pane: 'trending' as const, topic: topic\.slug/, 'a topic feed is trending scoped to the topic');
   assert.match(timeline, /export const FeedCard/, 'the card is shared with search');
   assert.match(timeline, /export const useFeedActions/, 'card actions are shared with search');
+});
+
+test('the feeds swipe under the menu, and the two stay in sync', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const pager = await readFile(new URL('../mobile/components/FeedPager.tsx', import.meta.url), 'utf8');
+  const pagerWeb = await readFile(new URL('../mobile/components/FeedPager.web.tsx', import.meta.url), 'utf8');
+  assert.match(pager, /react-native-pager-view/);
+  assert.match(pager, /onPageSelected/);
+  assert.match(pager, /setPage\(index\)/, 'menu taps drive the pager');
+  assert.match(pagerWeb, /pages\[index\]/, 'the DOM preview falls back to the active pane');
+  assert.match(timeline, /<FeedPager index=\{index\} onSelect=\{select\}>/);
+  assert.match(timeline, /menuRef\.current\?\.scrollTo/, 'the active pill scrolls into view');
+  assert.match(timeline, /active=\{Math\.abs\(position - index\) <= 1\}/, 'panes load lazily around the active page');
+});
+
+test('clips and audio play inline, with players mounted on demand', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const inline = await readFile(new URL('../mobile/components/InlineMedia.tsx', import.meta.url), 'utf8');
+  assert.match(inline, /useVideoPlayer/);
+  assert.match(inline, /useAudioPlayer/);
+  assert.match(inline, /const \[playing, setPlaying\] = useState\(false\)/, 'video mounts a player only when tapped');
+  assert.match(inline, /const \[started, setStarted\] = useState\(false\)/, 'audio mounts a player only when tapped');
+  assert.match(inline, /progress \* width/, 'the played portion paints across the peaks');
+  assert.match(timeline, /<InlineClip uri=\{absolute\(item\.clipUrl\)\}/);
+  assert.match(timeline, /<InlineAudio uri=\{absolute\(item\.audioUrl\)\}/, 'audio notes play inline too');
 });
 
 test('originals open OUT and opens are counted, same as every other surface', () => {

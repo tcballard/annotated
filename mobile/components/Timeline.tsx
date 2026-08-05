@@ -1,11 +1,12 @@
 // The native timeline: the app's reading surface, built with the shared
 // core (domain model, API client, deep links) and the web's own design
-// tokens — FlatList physics, pull-to-refresh, cursor paging, haptic pane
-// switches. The top menu scrolls, X-style: Recent · Trending · Following,
-// then every topic as its own feed. Annotation pages, profiles, and hubs
-// push as web surfaces; originals open OUT in the real browser. Media
-// plays on the permalink — the list shows posters, screenshots,
-// waveforms, and quotes.
+// tokens. The top menu scrolls, X-style — Recent · Trending · Following,
+// then every topic as its own feed — and the feeds themselves swipe
+// left/right underneath it (react-native-pager-view; taps work too, and
+// are all the web preview gets). Each pane is its own lazy FlatList with
+// pull-to-refresh and cursor paging. Clips and audio play inline via
+// players mounted on demand; annotation pages, profiles, and hubs push
+// as web surfaces; originals open OUT in the real browser.
 
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
@@ -36,6 +37,8 @@ import { ORIGIN } from '../lib/origin';
 import { signInNatively } from '../lib/native-auth';
 import { AccountContext } from './AccountContext';
 import { SessionEpochContext } from './WebScreen';
+import FeedPager from './FeedPager';
+import { InlineAudio, InlineClip } from './InlineMedia';
 import { card, ink, meta, paper, tokens } from '../lib/tokens';
 
 const serif = Platform.select({ ios: 'Georgia', default: 'serif' });
@@ -65,19 +68,6 @@ const feedQuery = (selection: Selection, cursor: string | null): string => {
   return params.toString();
 };
 
-// Bars from the server-extracted peaks (0..100) — the same visual the web
-// draws, sized for the card. Playback lives on the permalink.
-const Waveform = ({ peaks }: { peaks: number[] | null }) => {
-  if (!Array.isArray(peaks) || !peaks.length) return null;
-  return (
-    <View style={styles.wave} accessibilityElementsHidden>
-      {peaks.map((peak, index) => (
-        <View key={index} style={[styles.waveBar, { height: `${Math.max(8, Math.min(100, Number(peak) || 0))}%` }]} />
-      ))}
-    </View>
-  );
-};
-
 const SourceCard = ({ item }: { item: FeedItem }) => {
   const clipSeconds = Math.max(0, item.clipEnd - item.clipStart);
   return (
@@ -86,18 +76,11 @@ const SourceCard = ({ item }: { item: FeedItem }) => {
         <Text style={styles.chip}>{chipFor(item)}</Text>
         <Text style={styles.srcname} numberOfLines={1}>{item.sourceTitle}</Text>
       </View>
-      {item.posterUrl && item.mediaStatus === 'ready' && item.type === 'video' ? (
-        <View style={styles.media}>
-          <Image source={{ uri: absolute(item.posterUrl) }} style={styles.mediaImage} resizeMode="cover" />
-          <Text style={styles.cliptag}>CLIP</Text>
-          <Text style={styles.badge}>{formatTime(clipSeconds)} · 240p</Text>
-        </View>
+      {item.clipUrl && item.mediaStatus === 'ready' && item.type === 'video' ? (
+        <InlineClip uri={absolute(item.clipUrl)} posterUri={item.posterUrl ? absolute(item.posterUrl) : ''} seconds={clipSeconds} />
       ) : null}
       {item.clipUrl && item.mediaStatus === 'ready' && item.type === 'podcast' ? (
-        <View style={styles.audioRow}>
-          <Waveform peaks={item.clipPeaks} />
-          <Text style={styles.audioTime}>{formatTime(clipSeconds)}</Text>
-        </View>
+        <InlineAudio uri={absolute(item.clipUrl)} peaks={item.clipPeaks} seconds={clipSeconds} />
       ) : null}
       {item.screenshotUrl ? (
         <View style={styles.media}>
@@ -106,11 +89,7 @@ const SourceCard = ({ item }: { item: FeedItem }) => {
       ) : null}
       {item.quote ? <Text style={styles.quote}>&ldquo;{item.quote}&rdquo;</Text> : null}
       {item.commentaryMode === 'audio' && item.audioUrl ? (
-        <View style={styles.audioRow}>
-          <Feather name="mic" size={14} color={meta} />
-          <Waveform peaks={item.audioPeaks} />
-          {item.audioDuration ? <Text style={styles.audioTime}>{formatTime(item.audioDuration)}</Text> : null}
-        </View>
+        <InlineAudio uri={absolute(item.audioUrl)} peaks={item.audioPeaks} seconds={item.audioDuration} icon="mic" />
       ) : null}
       <Text style={styles.srchost}>{item.host} · {item.type}</Text>
     </View>
@@ -118,7 +97,7 @@ const SourceCard = ({ item }: { item: FeedItem }) => {
 };
 
 // The card's tap targets, shared by every native list that renders feed
-// items (timeline, search results).
+// items (timeline panes, search results).
 export const useFeedActions = () => {
   const router = useRouter();
   const { bump } = useContext(SessionEpochContext);
@@ -153,6 +132,8 @@ export const useFeedActions = () => {
   return { followingIds, openAnnotation, openProfile, openOriginal, share, toggleFollow };
 };
 
+export type FeedActions = ReturnType<typeof useFeedActions>;
+
 type CardProps = {
   item: FeedItem;
   following: boolean;
@@ -185,7 +166,7 @@ export const FeedCard = ({ item, following, ownId, onOpenAnnotation, onOpenProfi
       </View>
       {item.commentary
         ? <Text style={styles.note}>{item.commentary}</Text>
-        : <Text style={styles.note}>Audio note{item.audioDuration ? ` · ${formatTime(item.audioDuration)}` : ''} — listen on the page.</Text>}
+        : <Text style={styles.note}>Audio note{item.audioDuration ? ` · ${formatTime(item.audioDuration)}` : ''} — listen below.</Text>}
       <SourceCard item={item} />
       <View style={styles.actions}>
         <Pressable style={styles.act} onPress={() => onOpenOriginal(item)} hitSlop={8}>
@@ -209,23 +190,23 @@ export const FeedCard = ({ item, following, ownId, onOpenAnnotation, onOpenProfi
   </Pressable>
 );
 
-export default function Timeline() {
+// One feed. Loads lazily the first time it becomes active, reloads when a
+// sign-in lands anywhere in the app, and owns its own refresh + paging.
+const FeedPane = ({ selection, active, actions, ownId }: { selection: Selection; active: boolean; actions: FeedActions; ownId: string }) => {
   const { epoch } = useContext(SessionEpochContext);
-  const { me } = useContext(AccountContext);
-  const actions = useFeedActions();
-  const [selection, setSelection] = useState<Selection>({ pane: 'recent', topic: null });
   const [items, setItems] = useState<FeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [offline, setOffline] = useState(false);
+  const loadedRef = useRef(false);
   const requestSeq = useRef(0);
 
-  const load = useCallback(async (target: Selection, { append = false, cursorAt = null as string | null } = {}) => {
+  const load = useCallback(async ({ append = false, cursorAt = null as string | null } = {}) => {
     const seq = ++requestSeq.current;
     try {
-      const result = await api.feed(feedQuery(target, append ? cursorAt : null));
+      const result = await api.feed(feedQuery(selection, append ? cursorAt : null));
       if (seq !== requestSeq.current) return;
       const mapped = (result.annotations || []).map(annotationToFeedItem);
       setItems((current) => append ? [...current, ...mapped] : mapped);
@@ -235,41 +216,33 @@ export default function Timeline() {
       if (seq !== requestSeq.current) return;
       setOffline(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // First load, and again whenever a sign-in lands anywhere in the app.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      await load(selection);
-      if (!cancelled) setLoading(false);
-    })();
-    return () => { cancelled = true; };
+    if (!active || loadedRef.current) return;
+    loadedRef.current = true;
+    void load().then(() => setLoading(false));
+  }, [active, load]);
+
+  useEffect(() => {
+    if (!loadedRef.current || epoch === 0) return;
+    void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [epoch]);
 
-  const switchTo = (next: Selection) => {
-    if (next.pane === selection.pane && next.topic === selection.topic) return;
-    void Haptics.selectionAsync();
-    setSelection(next);
-    setLoading(true);
-    void load(next).then(() => setLoading(false));
-  };
-
   const refresh = async () => {
     setRefreshing(true);
-    await load(selection);
+    await load();
     setRefreshing(false);
   };
 
   const loadMore = async () => {
     if (!cursor || loadingMore || loading) return;
     setLoadingMore(true);
-    await load(selection, { append: true, cursorAt: cursor });
+    await load({ append: true, cursorAt: cursor });
     setLoadingMore(false);
   };
-
-  const isActive = (entry: typeof MENU[number]) => entry.selection.pane === selection.pane && entry.selection.topic === selection.topic;
 
   const emptyTitle = selection.topic ? `Nothing in ${topicLabel(selection.topic)} yet.`
     : selection.pane === 'following' ? 'No annotations from people you follow yet.'
@@ -280,55 +253,89 @@ export default function Timeline() {
     : selection.pane === 'trending' ? 'Annotations trend as readers open their originals and respond.'
     : 'Capture the first source-backed moment and it will appear here.';
 
+  if (loading) return <View style={styles.loading}><ActivityIndicator color={ink} /></View>;
+
+  return (
+    <View style={styles.pane}>
+      {offline ? (
+        <View style={styles.offline}><Text style={styles.offlineText}>The annotated backend is unreachable. Pull to retry.</Text></View>
+      ) : null}
+      <FlatList
+        data={items}
+        keyExtractor={(item, index) => item.slug || String(index)}
+        renderItem={({ item }) => (
+          <FeedCard
+            item={item}
+            following={Boolean(actions.followingIds[item.authorId])}
+            ownId={ownId}
+            onOpenAnnotation={actions.openAnnotation}
+            onOpenProfile={actions.openProfile}
+            onOpenOriginal={actions.openOriginal}
+            onToggleFollow={actions.toggleFollow}
+            onShare={actions.share}
+          />
+        )}
+        contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={meta} />}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.4}
+        ListFooterComponent={loadingMore ? <ActivityIndicator color={meta} style={styles.footer} /> : null}
+        ListEmptyComponent={(
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+            <Text style={styles.emptyBody}>{emptyBody}</Text>
+          </View>
+        )}
+      />
+    </View>
+  );
+};
+
+export default function Timeline() {
+  const { me } = useContext(AccountContext);
+  const actions = useFeedActions();
+  const [index, setIndex] = useState(0);
+  const menuRef = useRef<ScrollView>(null);
+  const pillX = useRef<Record<number, number>>({});
+
+  // Swipes and taps land here alike: haptic tick, and the menu keeps the
+  // active pill in view.
+  const select = (next: number) => {
+    if (next === index) return;
+    void Haptics.selectionAsync();
+    setIndex(next);
+    const x = pillX.current[next] ?? 0;
+    menuRef.current?.scrollTo({ x: Math.max(0, x - 110), animated: true });
+  };
+
   return (
     <View style={styles.frame}>
       <View style={styles.switcher}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.menuRow}>
-          {MENU.map((entry) => (
+        <ScrollView ref={menuRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.menuRow}>
+          {MENU.map((entry, position) => (
             <Pressable
               key={entry.key}
-              style={[styles.menuPill, isActive(entry) && styles.menuPillActive]}
-              onPress={() => switchTo(entry.selection)}
+              onLayout={(event) => { pillX.current[position] = event.nativeEvent.layout.x; }}
+              style={[styles.menuPill, index === position && styles.menuPillActive]}
+              onPress={() => select(position)}
             >
-              <Text style={isActive(entry) ? styles.menuPillActiveText : styles.menuPillText}>{entry.label}</Text>
+              <Text style={index === position ? styles.menuPillActiveText : styles.menuPillText}>{entry.label}</Text>
             </Pressable>
           ))}
         </ScrollView>
       </View>
-      {offline ? (
-        <View style={styles.offline}><Text style={styles.offlineText}>The annotated backend is unreachable. Pull to retry.</Text></View>
-      ) : null}
-      {loading ? (
-        <View style={styles.loading}><ActivityIndicator color={ink} /></View>
-      ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(item, index) => item.slug || String(index)}
-          renderItem={({ item }) => (
-            <FeedCard
-              item={item}
-              following={Boolean(actions.followingIds[item.authorId])}
+      <FeedPager index={index} onSelect={select}>
+        {MENU.map((entry, position) => (
+          <View key={entry.key} style={styles.page}>
+            <FeedPane
+              selection={entry.selection}
+              active={Math.abs(position - index) <= 1}
+              actions={actions}
               ownId={me?.id || ''}
-              onOpenAnnotation={actions.openAnnotation}
-              onOpenProfile={actions.openProfile}
-              onOpenOriginal={actions.openOriginal}
-              onToggleFollow={actions.toggleFollow}
-              onShare={actions.share}
             />
-          )}
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={meta} />}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.4}
-          ListFooterComponent={loadingMore ? <ActivityIndicator color={meta} style={styles.footer} /> : null}
-          ListEmptyComponent={(
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>{emptyTitle}</Text>
-              <Text style={styles.emptyBody}>{emptyBody}</Text>
-            </View>
-          )}
-        />
-      )}
+          </View>
+        ))}
+      </FeedPager>
     </View>
   );
 }
@@ -344,7 +351,9 @@ const styles = StyleSheet.create({
   menuPillActive: { backgroundColor: tokens.chrome },
   menuPillText: { fontSize: 13, color: tokens['ink-soft'], fontWeight: '600' },
   menuPillActiveText: { fontSize: 13, color: '#fff', fontWeight: '700' },
-  offline: { margin: 14, padding: 12, backgroundColor: card, borderRadius: radiusInner, borderWidth: 1, borderColor: tokens.border },
+  page: { flex: 1 },
+  pane: { flex: 1 },
+  offline: { margin: 14, marginBottom: 0, padding: 12, backgroundColor: card, borderRadius: radiusInner, borderWidth: 1, borderColor: tokens.border },
   offlineText: { color: tokens['ink-soft'], fontSize: 13 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   list: { padding: 14, paddingTop: 10 },
@@ -380,13 +389,7 @@ const styles = StyleSheet.create({
   srchost: { color: meta, fontSize: 12, marginTop: 6 },
   media: { marginTop: 8, borderRadius: 10, overflow: 'hidden', position: 'relative' },
   mediaImage: { width: '100%', aspectRatio: 16 / 10, backgroundColor: tokens.soft },
-  cliptag: { position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(38,41,47,.82)', color: '#fff', fontSize: 10, fontWeight: '700', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, overflow: 'hidden' },
-  badge: { position: 'absolute', bottom: 8, right: 8, backgroundColor: 'rgba(38,41,47,.82)', color: '#fff', fontSize: 11, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, overflow: 'hidden' },
   quote: { fontFamily: serif, fontSize: 14.5, lineHeight: 21, color: tokens['ink-soft'], marginTop: 8 },
-  audioRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
-  wave: { flex: 1, height: 34, flexDirection: 'row', alignItems: 'flex-end', gap: 1.5, overflow: 'hidden' },
-  waveBar: { flex: 1, minWidth: 1.5, backgroundColor: tokens.border, borderRadius: 1 },
-  audioTime: { fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }), fontSize: 11, color: meta },
   actions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, paddingRight: 4 },
   act: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   actText: { color: ink, fontSize: 12.5, fontWeight: '600' },

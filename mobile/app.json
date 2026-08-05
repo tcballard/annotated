@@ -42,7 +42,9 @@
           ]
         }
       ],
-      "expo-router"
+      "expo-router",
+      "expo-video",
+      "expo-audio"
     ]
   }
 }
