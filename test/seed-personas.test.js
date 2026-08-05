@@ -23,7 +23,7 @@ test('persona seeding is idempotent and production-guarded', async () => {
   try {
     const first = await run({ ANNOTATED_DATA_DIR: dataDirectory });
     assert.equal(first.code, 0, first.stderr);
-    assert.match(first.stdout, /\+4 users, \+6 annotations, \+8 follows, \+3 responses, \+8 likes/);
+    assert.match(first.stdout, /\+4 users, \+9 annotations, \+8 follows, \+7 responses, \+14 likes/);
 
     const second = await run({ ANNOTATED_DATA_DIR: dataDirectory });
     assert.equal(second.code, 0, second.stderr);

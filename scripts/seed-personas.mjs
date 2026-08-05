@@ -75,6 +75,27 @@ const ANNOTATIONS = [
     excerpt: 'There are two types of schedule, which I’ll call the manager’s schedule and the maker’s schedule.',
     note: 'Still the most cited essay in every engineering-planning argument I have ever been in, and still mostly unheeded.',
   },
+  {
+    key: 'priya-webannotation', author: 'priya', hours: 8, opens: 15, paragraph: 3,
+    sourceUrl: 'https://en.wikipedia.org/wiki/Web_annotation',
+    sourceTitle: 'Web annotation - Wikipedia',
+    excerpt: 'With a web annotation system, a user can add, modify or remove information from a Web resource without modifying the resource itself.',
+    note: 'The W3C wrote the spec years ago; the products kept dying anyway. The missing piece was never the standard — it was the feed.',
+  },
+  {
+    key: 'sam-hypertext', author: 'sam', hours: 12, opens: 9, paragraph: 1,
+    sourceUrl: 'https://en.wikipedia.org/wiki/Hypertext',
+    sourceTitle: 'Hypertext - Wikipedia',
+    excerpt: 'Hypertext is text displayed on a computer display or other electronic devices with references (hyperlinks) to other text that the reader can immediately access.',
+    note: 'Bush sketched the Memex in 1945 with trails of association between documents. Links shipped; the trails — the annotations — mostly did not.',
+  },
+  {
+    key: 'jonas-greatwork', author: 'jonas', hours: 30, opens: 33, paragraph: 4,
+    sourceUrl: 'https://paulgraham.com/greatwork.html',
+    sourceTitle: 'How to Do Great Work',
+    excerpt: 'The work you choose needs to have three qualities: it has to be something you have a natural aptitude for, that you have a deep interest in, and that offers scope to do great work.',
+    note: 'Aptitude, interest, scope. Most career agonising is people negotiating with the first two and pretending the third does not exist.',
+  },
 ];
 
 const FOLLOWS = [
@@ -87,12 +108,18 @@ const COMMENTS = [
   { key: 'persona-comment-1', annotation: 'mara-marginalia', author: 'priya', hours: 96, body: 'The margin as protocol, not product — that is the whole pitch.' },
   { key: 'persona-comment-2', annotation: 'jonas-unscalable', author: 'sam', hours: 30, body: 'Historians call this fieldwork. Founders keep rediscovering it under new names.' },
   { key: 'persona-comment-3', annotation: 'priya-textfragments', author: 'mara', hours: 50, body: 'Today I learned my highlights have a W3C spec.' },
+  { key: 'persona-comment-4', annotation: 'priya-webannotation', author: 'jonas', hours: 5, body: 'Standards retain implementers. Feeds retain readers. Only one of those keeps a product alive.' },
+  { key: 'persona-comment-5', annotation: 'sam-hypertext', author: 'mara', hours: 6, body: 'Bush imagined readers leaving trails for each other. We built the links and forgot the readers.' },
+  { key: 'persona-comment-6', annotation: 'jonas-greatwork', author: 'sam', hours: 20, body: 'Aptitude, interest, scope — also a decent test for what deserves an annotation at all.' },
+  { key: 'persona-comment-7', annotation: 'mara-commonplace', author: 'priya', hours: 40, body: 'Mine is a git repo with a NOTES.md that only ever grows.' },
 ];
 
 const LIKES = [
   ['mara-marginalia', 'sam'], ['mara-marginalia', 'jonas'], ['mara-commonplace', 'priya'],
   ['priya-textfragments', 'mara'], ['priya-textfragments', 'jonas'],
   ['jonas-unscalable', 'priya'], ['jonas-unscalable', 'mara'], ['sam-drolleries', 'mara'],
+  ['priya-webannotation', 'jonas'], ['priya-webannotation', 'sam'], ['priya-webannotation', 'mara'],
+  ['sam-hypertext', 'mara'], ['jonas-greatwork', 'priya'], ['jonas-greatwork', 'mara'],
 ];
 
 const summary = { users: 0, annotations: 0, follows: 0, comments: 0, likes: 0 };
