@@ -845,6 +845,7 @@ const hubView = () => {
     <div class="lib-section">Annotations</div>
     <main class="feed hub-feed">
       ${items.length ? items.map(feedPost).join('') : `<div class="feed-empty"><h3>Nothing public from ${escapeHTML(hubSource.host)} yet.</h3><p>Capture the first source-backed moment from this source.</p><button class="btn" data-action="set-view" data-view="capture">Capture a moment</button></div>`}
+      ${state.hubData.nextCursor ? `<button class="feed-more" data-action="hub-more">${state.hubLoading ? 'Loading…' : 'Load more'}</button>` : ''}
     </main>
   </div>`;
 };
@@ -1095,17 +1096,20 @@ const loadProfile = async () => {
   }
 };
 
-const loadHub = async () => {
+const loadHub = async ({ append = false } = {}) => {
   if (!state.hubHost || state.serverStatus !== 'online') return;
+  if (append && !state.hubData?.nextCursor) return;
   state.hubLoading = true;
   try {
-    const result = await api.sourceHub(state.hubHost);
-    state.hubData = result;
+    const result = await api.sourceHub(state.hubHost, append ? state.hubData.nextCursor : undefined);
+    state.hubData = append
+      ? { ...state.hubData, annotations: [...(state.hubData.annotations || []), ...(result.annotations || [])], nextCursor: result.nextCursor || null }
+      : result;
     for (const person of result.annotators || []) {
       if (person.id && !(person.id in state.followingIds)) state.followingIds[person.id] = Boolean(person.isFollowing);
     }
   } catch {
-    state.hubData = null;
+    if (!append) state.hubData = null;
   } finally {
     state.hubLoading = false;
   }
@@ -1463,6 +1467,7 @@ app.addEventListener('click', (event) => {
   }
   if (action === 'clear-feed-search') { state.feedQuery = ''; state.feedCursor = null; loadFeed().then(render); return; }
   if (action === 'feed-more') { loadFeed({ append: true }).then(render); return; }
+  if (action === 'hub-more') { loadHub({ append: true }).then(render); return; }
   if (action === 'feed-retry') { loadFeed().then(render); return; }
   if (action === 'refresh-moderation') { loadModerationClaims().then(render); return; }
   if (action === 'moderate-claim') {
