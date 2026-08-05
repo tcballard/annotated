@@ -10,11 +10,26 @@ const search = await readFile(new URL('../mobile/components/SearchScreen.tsx', i
 const rootLayout = await readFile(new URL('../mobile/app/_layout.tsx', import.meta.url), 'utf8');
 const server = await readFile(new URL('../server/index.js', import.meta.url), 'utf8');
 
-test('the header is X-anatomy in our identity: avatar opens the drawer, the wordmark sits center', () => {
+test('the header is X-anatomy in our identity: avatar opens the drawer, the wordmark sits center', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const headerAvatar = await readFile(new URL('../mobile/components/HeaderAvatar.tsx', import.meta.url), 'utf8');
+  const timeline = await readFile(new URL('../mobile/components/Timeline.tsx', import.meta.url), 'utf8');
   assert.match(tabsLayout, /headerLeft: \(\) => <HeaderAvatar \/>/);
-  assert.match(tabsLayout, /drawer\.openDrawer\(\)/);
-  assert.match(tabsLayout, /headerTitle: \(\) => <BrandMark \/>/, 'Home leads with the wordmark');
+  assert.match(headerAvatar, /drawer\.openDrawer\(\)/);
+  assert.match(timeline, /<HeaderAvatar \/>/, 'the timeline draws its own chrome');
+  assert.match(timeline, /<BrandMark \/>/, 'Home leads with the wordmark');
   assert.match(brandMark, /annotated<Text style=\{\{ color: accent \}\}>\.<\/Text>/, 'the terracotta dot is the one accent in chrome');
+});
+
+test('the home chrome hides on scroll down and returns on scroll up', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const timeline = await readFile(new URL('../mobile/components/Timeline.tsx', import.meta.url), 'utf8');
+  assert.match(tabsLayout, /headerShown: false,\s*\n\s*tabBarIcon: \(\{ color, size \}\) => <Feather name="home"/, 'the navigator header yields to the collapsing chrome');
+  assert.match(timeline, /Animated\.timing\(chromeY, \{ toValue: show \? 0 : -chromeHeightRef\.current/, 'the chrome translates away');
+  assert.match(timeline, /if \(y < 48\) return onChromeIntent\('show'\)/, 'near the top the chrome always shows');
+  assert.match(timeline, /if \(delta > 6\) onChromeIntent\('hide'\)/, 'scrolling down hides');
+  assert.match(timeline, /else if \(delta < -6\) onChromeIntent\('show'\)/, 'scrolling up reveals');
+  assert.match(timeline, /setChrome\('show'\)/, 'switching feeds reveals the chrome');
 });
 
 test('capture is the pen at the center of a floating pill bar', () => {

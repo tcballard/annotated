@@ -6,39 +6,14 @@
 // the web's mobile dock — and the feeds scroll behind it.
 
 import { useContext } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Tabs, useNavigation } from 'expo-router';
+import { StyleSheet } from 'react-native';
+import { Tabs } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Feather from '@expo/vector-icons/Feather';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import BrandMark from '../../../components/BrandMark';
+import HeaderAvatar from '../../../components/HeaderAvatar';
 import { AccountContext } from '../../../components/AccountContext';
-import { avatarColor, avatarInitial } from '../../../lib/core/avatar';
 import { card, ink, meta, paper, tokens } from '../../../lib/tokens';
-
-const HeaderAvatar = () => {
-  // The drawer lives one layout up; expo-router addresses it by route path.
-  const drawer = useNavigation('/(drawer)') as unknown as { openDrawer(): void };
-  const { me } = useContext(AccountContext);
-  return (
-    <Pressable
-      onPress={() => drawer.openDrawer()}
-      hitSlop={10}
-      style={styles.headerAvatarSlot}
-      accessibilityLabel="Open menu"
-    >
-      {me?.avatarUrl
-        ? <Image source={{ uri: me.avatarUrl }} style={styles.headerAvatarImage} />
-        : (
-          <View style={[styles.headerAvatar, { backgroundColor: me ? avatarColor(me.handle || me.displayName) : tokens.soft }]}>
-            {me
-              ? <Text style={styles.headerAvatarText}>{avatarInitial(me)}</Text>
-              : <Feather name="menu" size={16} color={meta} />}
-          </View>
-        )}
-    </Pressable>
-  );
-};
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
@@ -88,7 +63,8 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: 'Home',
-          headerTitle: () => <BrandMark />,
+          // The timeline draws its own chrome so it can hide on scroll.
+          headerShown: false,
           tabBarIcon: ({ color, size }) => <Feather name="home" color={color} size={size} />,
         }}
       />
@@ -137,9 +113,5 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   headerTitle: { color: ink, fontWeight: '700', fontSize: 17 },
-  headerAvatarSlot: { marginLeft: 14 },
-  headerAvatar: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  headerAvatarImage: { width: 30, height: 30, borderRadius: 15, backgroundColor: tokens.soft },
-  headerAvatarText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   badge: { backgroundColor: tokens.accent, color: '#fff', fontSize: 11, fontWeight: '700' },
 });

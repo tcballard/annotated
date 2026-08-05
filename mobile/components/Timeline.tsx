@@ -11,6 +11,7 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Image,
   Platform,
@@ -39,6 +40,8 @@ import { signInNatively } from '../lib/native-auth';
 import { AccountContext } from './AccountContext';
 import { SessionEpochContext } from './WebScreen';
 import FeedPager from './FeedPager';
+import HeaderAvatar from './HeaderAvatar';
+import BrandMark from './BrandMark';
 import { InlineAudio, InlineClip } from './InlineMedia';
 import { card, ink, meta, paper, tokens } from '../lib/tokens';
 
@@ -193,9 +196,30 @@ export const FeedCard = ({ item, following, ownId, onOpenAnnotation, onOpenProfi
 
 // One feed. Loads lazily the first time it becomes active, reloads when a
 // sign-in lands anywhere in the app, and owns its own refresh + paging.
-const FeedPane = ({ selection, active, actions, ownId }: { selection: Selection; active: boolean; actions: FeedActions; ownId: string }) => {
+// Scroll direction feeds the collapsing chrome: down hides it, up — or
+// being near the top — brings it back.
+type FeedPaneProps = {
+  selection: Selection;
+  active: boolean;
+  actions: FeedActions;
+  ownId: string;
+  chromePad: number;
+  onChromeIntent: (intent: 'show' | 'hide') => void;
+};
+
+const FeedPane = ({ selection, active, actions, ownId, chromePad, onChromeIntent }: FeedPaneProps) => {
   const { epoch } = useContext(SessionEpochContext);
   const insets = useSafeAreaInsets();
+  const lastY = useRef(0);
+
+  const onScroll = (event: { nativeEvent: { contentOffset: { y: number } } }) => {
+    const y = event.nativeEvent.contentOffset.y;
+    const delta = y - lastY.current;
+    lastY.current = y;
+    if (y < 48) return onChromeIntent('show');
+    if (delta > 6) onChromeIntent('hide');
+    else if (delta < -6) onChromeIntent('show');
+  };
   const [items, setItems] = useState<FeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -260,7 +284,7 @@ const FeedPane = ({ selection, active, actions, ownId }: { selection: Selection;
   return (
     <View style={styles.pane}>
       {offline ? (
-        <View style={styles.offline}><Text style={styles.offlineText}>The annotated backend is unreachable. Pull to retry.</Text></View>
+        <View style={[styles.offline, { marginTop: chromePad }]}><Text style={styles.offlineText}>The annotated backend is unreachable. Pull to retry.</Text></View>
       ) : null}
       <FlatList
         data={items}
@@ -277,8 +301,10 @@ const FeedPane = ({ selection, active, actions, ownId }: { selection: Selection;
             onShare={actions.share}
           />
         )}
-        contentContainerStyle={[styles.list, { paddingBottom: 84 + Math.max(insets.bottom, 12) }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={meta} />}
+        contentContainerStyle={[styles.list, { paddingTop: offline ? 10 : chromePad + 10, paddingBottom: 84 + Math.max(insets.bottom, 12) }]}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={meta} progressViewOffset={chromePad} />}
         onEndReached={loadMore}
         onEndReachedThreshold={0.4}
         ListFooterComponent={loadingMore ? <ActivityIndicator color={meta} style={styles.footer} /> : null}
@@ -296,36 +322,37 @@ const FeedPane = ({ selection, active, actions, ownId }: { selection: Selection;
 export default function Timeline() {
   const { me } = useContext(AccountContext);
   const actions = useFeedActions();
+  const insets = useSafeAreaInsets();
   const [index, setIndex] = useState(0);
   const menuRef = useRef<ScrollView>(null);
   const pillX = useRef<Record<number, number>>({});
 
-  // Swipes and taps land here alike: haptic tick, and the menu keeps the
-  // active pill in view.
+  // The chrome (avatar + wordmark + feed menu) hides when the feed scrolls
+  // down and returns on any scroll up — it should never cost reading room.
+  const chromeShown = useRef(true);
+  const chromeHeightRef = useRef(140);
+  const [chromeHeight, setChromeHeight] = useState(140);
+  const chromeY = useRef(new Animated.Value(0)).current;
+  const setChrome = useCallback((intent: 'show' | 'hide') => {
+    const show = intent === 'show';
+    if (chromeShown.current === show) return;
+    chromeShown.current = show;
+    Animated.timing(chromeY, { toValue: show ? 0 : -chromeHeightRef.current, duration: 190, useNativeDriver: true }).start();
+  }, [chromeY]);
+
+  // Swipes and taps land here alike: haptic tick, the menu keeps the
+  // active pill in view, and switching feeds always reveals the chrome.
   const select = (next: number) => {
     if (next === index) return;
     void Haptics.selectionAsync();
     setIndex(next);
+    setChrome('show');
     const x = pillX.current[next] ?? 0;
     menuRef.current?.scrollTo({ x: Math.max(0, x - 110), animated: true });
   };
 
   return (
     <View style={styles.frame}>
-      <View style={styles.switcher}>
-        <ScrollView ref={menuRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.menuRow}>
-          {MENU.map((entry, position) => (
-            <Pressable
-              key={entry.key}
-              onLayout={(event) => { pillX.current[position] = event.nativeEvent.layout.x; }}
-              style={[styles.menuPill, index === position && styles.menuPillActive]}
-              onPress={() => select(position)}
-            >
-              <Text style={index === position ? styles.menuPillActiveText : styles.menuPillText}>{entry.label}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
       <FeedPager index={index} onSelect={select}>
         {MENU.map((entry, position) => (
           <View key={entry.key} style={styles.page}>
@@ -334,10 +361,41 @@ export default function Timeline() {
               active={Math.abs(position - index) <= 1}
               actions={actions}
               ownId={me?.id || ''}
+              chromePad={chromeHeight}
+              onChromeIntent={setChrome}
             />
           </View>
         ))}
       </FeedPager>
+      <Animated.View
+        style={[styles.chrome, { paddingTop: insets.top, transform: [{ translateY: chromeY }] }]}
+        onLayout={(event) => {
+          const height = Math.round(event.nativeEvent.layout.height);
+          if (height > 0 && height !== chromeHeightRef.current) {
+            chromeHeightRef.current = height;
+            setChromeHeight(height);
+          }
+        }}
+      >
+        <View style={styles.chromeHeader}>
+          <HeaderAvatar />
+          <View style={styles.chromeTitle} pointerEvents="none"><BrandMark /></View>
+        </View>
+        <View style={styles.switcher}>
+          <ScrollView ref={menuRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.menuRow}>
+            {MENU.map((entry, position) => (
+              <Pressable
+                key={entry.key}
+                onLayout={(event) => { pillX.current[position] = event.nativeEvent.layout.x; }}
+                style={[styles.menuPill, index === position && styles.menuPillActive]}
+                onPress={() => select(position)}
+              >
+                <Text style={index === position ? styles.menuPillActiveText : styles.menuPillText}>{entry.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      </Animated.View>
     </View>
   );
 }
@@ -347,6 +405,9 @@ const radiusInner = parseInt(tokens['radius-inner'], 10) || 14;
 
 const styles = StyleSheet.create({
   frame: { flex: 1, backgroundColor: paper },
+  chrome: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, backgroundColor: card },
+  chromeHeader: { height: 48, flexDirection: 'row', alignItems: 'center' },
+  chromeTitle: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   switcher: { backgroundColor: card, borderBottomWidth: 1, borderBottomColor: tokens.hair },
   menuRow: { gap: 6, paddingHorizontal: 12, paddingVertical: 8 },
   menuPill: { borderRadius: 99, paddingHorizontal: 13, paddingVertical: 6, backgroundColor: tokens.soft },
