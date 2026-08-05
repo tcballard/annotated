@@ -621,10 +621,13 @@ const publishedAnnotationBySlug = async (slug) => {
 // Every published clip gets a landing page whose HTML already carries its
 // title, description, canonical link, and OG card — crawlers never run the SPA.
 const servePermalink = async (response, slug) => {
+  const found = await publishedAnnotationBySlug(decodeURIComponent(slug)).catch(() => null);
+  // Unknown or unviewable slugs get the plain shell — default brand meta,
+  // absolutized like every other shell response.
+  if (!found) return serveAppShell(response);
   let html;
   try { html = await readFile(path.join(projectRoot, 'dist/index.html'), 'utf8'); } catch { return notFound(response); }
-  const found = await publishedAnnotationBySlug(decodeURIComponent(slug)).catch(() => null);
-  const payload = found ? injectAnnotationMeta(html, found.annotation, found.author, publicOrigin, { index: allowsIndexing(found.annotation) }) : html;
+  const payload = injectAnnotationMeta(html, found.annotation, found.author, publicOrigin, { index: allowsIndexing(found.annotation) });
   response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...securityHeaders() });
   return response.end(payload);
 };
@@ -662,8 +665,24 @@ const serveOgCard = async (response, slug) => {
   }
 };
 
+// The app shell ships default og:/twitter: images as root-relative paths;
+// crawlers require absolute URLs, so the served shell absolutizes them
+// against this deployment's public origin. Cached for the process lifetime.
+let appShellCache = null;
+const serveAppShell = async (response) => {
+  if (!appShellCache) {
+    try {
+      appShellCache = (await readFile(path.join(projectRoot, 'dist/index.html'), 'utf8'))
+        .replaceAll('content="/brand/og-default.png"', `content="${publicOrigin}/brand/og-default.png"`);
+    } catch { return notFound(response); }
+  }
+  response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...securityHeaders() });
+  return response.end(appShellCache);
+};
+
 const serveStatic = async (request, response, pathname) => {
-  const relative = pathname === '/' ? 'dist/index.html' : pathname === '/favicon.ico' ? 'dist/brand/favicon.ico' : pathname.replace(/^\//, '');
+  if (pathname === '/') return serveAppShell(response);
+  const relative = pathname === '/favicon.ico' ? 'dist/brand/favicon.ico' : pathname.replace(/^\//, '');
   const candidate = path.resolve(projectRoot, relative.startsWith('dist/') ? relative : `dist/${relative}`);
   if (!candidate.startsWith(path.resolve(projectRoot, 'dist'))) return notFound(response);
   try {
@@ -672,9 +691,7 @@ const serveStatic = async (request, response, pathname) => {
     response.writeHead(200, { 'content-type': contentType[path.extname(candidate)] || 'application/octet-stream', ...securityHeaders() });
     return createReadStream(candidate).pipe(response);
   } catch {
-    if (request.method === 'GET' && !path.extname(pathname)) {
-      try { response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...securityHeaders() }); return createReadStream(path.join(projectRoot, 'dist/index.html')).pipe(response); } catch { return notFound(response); }
-    }
+    if (request.method === 'GET' && !path.extname(pathname)) return serveAppShell(response);
     return notFound(response);
   }
 };

@@ -251,9 +251,13 @@ test('local API serves the acceptance-critical health, identity, publish, social
     assert.match(permalinkHtml, /<meta property="og:title" content="[^"]*on annotated" \/>/);
     assert.match(permalinkHtml, new RegExp(`<meta property="og:image" content="[^"]*/og/${published.payload.annotation.slug}\\.png" />`));
     assert.match(permalinkHtml, /<meta name="twitter:card" content="summary_large_image" \/>/);
+    // A missing permalink serves the plain shell: the default brand card,
+    // never a leaked annotation card.
     const missingPermalink = await fetch(`${baseUrl}/a/not-a-real-slug`);
     assert.equal(missingPermalink.status, 200);
-    assert.doesNotMatch(await missingPermalink.text(), /og:image/);
+    const missingHtml = await missingPermalink.text();
+    assert.doesNotMatch(missingHtml, /\/og\/[^"]*\.png/);
+    assert.match(missingHtml, /<meta property="og:image" content="http:\/\/[^"]+\/brand\/og-default\.png" \/>/);
   }
 
   const profile = await request(baseUrl, '/api/profiles/tcballard');
@@ -452,9 +456,13 @@ test('local API serves the acceptance-critical health, identity, publish, social
   if (distReady) {
     const unlistedHtml = await (await fetch(`${baseUrl}/a/${unlisted.payload.annotation.slug}`)).text();
     assert.match(unlistedHtml, /<meta name="robots" content="noindex" \/>/);
-    assert.match(unlistedHtml, /og:image/);
+    assert.match(unlistedHtml, new RegExp(`/og/${unlisted.payload.annotation.slug}\\.png`));
+    // A private permalink serves the plain shell: default brand meta only,
+    // nothing derived from the annotation.
     const privateHtml = await (await fetch(`${baseUrl}/a/${priv.payload.annotation.slug}`)).text();
-    assert.doesNotMatch(privateHtml, /og:image/);
+    assert.doesNotMatch(privateHtml, /\/og\/[^"]*\.png/);
+    assert.doesNotMatch(privateHtml, new RegExp(priv.payload.annotation.slug));
+    assert.match(privateHtml, /og-default\.png/);
     const privateCard = await fetch(`${baseUrl}/og/${priv.payload.annotation.slug}.png`);
     assert.equal(privateCard.status, 404);
   }

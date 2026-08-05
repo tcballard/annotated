@@ -57,6 +57,20 @@ test('a screenshot capture puts the shot itself on the card, replacing the serif
   assert.match(clipFlat, /CardSerif/);
 });
 
+test('permalink meta injection replaces the shell defaults — one og:image, the annotation’s', () => {
+  const shell = `<html><head><title>annotated</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/brand/og-default.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="/brand/og-default.png" />
+  </head><body></body></html>`;
+  const injected = injectAnnotationMeta(shell, annotation, author, 'https://annotated.example.com');
+  assert.equal((injected.match(/property="og:image"/g) || []).length, 1);
+  assert.equal((injected.match(/name="twitter:image"/g) || []).length, 1);
+  assert.doesNotMatch(injected, /og-default\.png/);
+  assert.match(injected, /og\/the-future-abc123\.png/);
+});
+
 test('permalink meta injection escapes values and fills every required tag', () => {
   const hostile = { ...annotation, commentary: 'A "note" with <script>alert(1)</script>' };
   const html = '<html><head><title>annotated</title><meta name="description" content="x" /></head><body></body></html>';

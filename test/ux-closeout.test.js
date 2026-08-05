@@ -26,7 +26,8 @@ test('unavailable media renders shipped status states, never a fake play button'
 
 test('claim dialog has modal isolation, keyboard escape, focus trapping, and restoration', () => {
   assert.match(mainSource, /aria-modal="true"/u);
-  assert.match(mainSource, /element\.inert = state\.claimOpen/u);
+  assert.match(mainSource, /element\.inert = overlayOpen/u);
+  assert.match(mainSource, /const overlayOpen = state\.claimOpen \|\| Boolean\(state\.lightbox\)/u);
   assert.match(mainSource, /event\.key === 'Escape'/u);
   assert.match(mainSource, /event\.key !== 'Tab'/u);
   assert.match(mainSource, /restoreClaimFocus/u);

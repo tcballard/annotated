@@ -49,5 +49,8 @@ export const injectAnnotationMeta = (html, annotation, author, publicOrigin, { i
   return html
     .replace(/<title>[\s\S]*?<\/title>/, `<title>${escapeHtml(meta.title)}</title>`)
     .replace(/<meta name="description"[^>]*\/?>/, `<meta name="description" content="${escapeHtml(meta.description)}" />`)
+    // The shell ships default og:/twitter: tags for the home page; a
+    // permalink replaces them wholesale so crawlers never see two og:image.
+    .replace(/[ \t]*<meta (?:property="og:|name="twitter:)[^>]*\/?>\s*\n?/g, '')
     .replace('</head>', `    ${tags}\n  </head>`);
 };
