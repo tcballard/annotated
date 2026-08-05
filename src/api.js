@@ -40,6 +40,7 @@ export const api = {
   sourceHub: (host, cursor) => apiRequest(`/api/sources/${encodeURIComponent(host)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
   people: (q = '') => apiRequest(`/api/people${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   transparency: () => apiRequest('/api/transparency'),
+  trendingSources: () => apiRequest('/api/trending/sources'),
   fileClaim: (slug, reason) => apiRequest(`/api/annotations/${encodeURIComponent(slug)}/claims`, { method: 'POST', body: JSON.stringify({ reason }) }),
   claims: () => apiRequest('/api/claims'),
   moderationClaims: () => apiRequest('/api/moderation/claims'),

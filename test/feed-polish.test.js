@@ -23,6 +23,15 @@ test('audio notes carry their duration on the card', () => {
   assert.match(css, /\.srcaudio-time/);
 });
 
+test('the timeline offers Trending, and the rail sends readers to trending hubs', () => {
+  assert.match(main, /data-sort="trending"[^>]*>Trending</);
+  assert.match(main, /state\.feedSort === 'trending' && !state\.feedFollowing\) params\.set\('sort', 'trending'\)/);
+  assert.match(main, /Trending sources<\/h2>/);
+  assert.match(main, /data-action="open-hub" data-host="\$\{escapeHTML\(source\.host\)\}"/, 'trending rows are hub destinations');
+  assert.match(main, /Nothing is trending yet\./);
+  assert.match(css, /\.trend-row/);
+});
+
 test('hosted audio renders a seekable waveform from server peaks', () => {
   assert.match(main, /const waveform = \(peaks\)/);
   assert.match(main, /audioPeaks: Array\.isArray\(annotation\.audioPeaks\)/);

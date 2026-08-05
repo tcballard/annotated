@@ -874,6 +874,11 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .curator-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 0; border-top: 1px solid var(--hair); }
 .card .curator-row:first-of-type { border-top: none; }
+.trend-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 0; border-top: 1px solid var(--hair); min-height: 36px; }
+.card .trend-row:first-of-type { border-top: none; }
+.trend-row a { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trend-row .trend-stat { margin-left: auto; font-size: 12px; color: var(--meta); font-variant-numeric: tabular-nums; flex: none; }
+.trend-row .trend-stat strong { color: var(--ink); }
 .curator-row a { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .curator-row .curator-stat { margin-left: auto; font-size: 12px; color: var(--meta); font-variant-numeric: tabular-nums; flex: none; }
 .curator-row .curator-stat strong { color: var(--ink); }

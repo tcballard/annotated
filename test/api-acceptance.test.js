@@ -378,6 +378,21 @@ test('local API serves the acceptance-critical health, identity, publish, social
   const tombstonedComment = await request(baseUrl, `/api/annotations/${doomed.payload.annotation.slug}/comments`, { method: 'POST', body: { body: 'too late' } });
   assert.equal(tombstonedComment.response.status, 404);
 
+  // ── trending: same public set, engagement-decayed order, sources ranked ──
+  const recentFeed = await request(baseUrl, '/api/feed?limit=50');
+  const trendingFeed = await request(baseUrl, '/api/feed?limit=50&sort=trending');
+  assert.equal(trendingFeed.response.status, 200);
+  assert.equal(trendingFeed.payload.annotations.length, recentFeed.payload.annotations.length, 'trending reorders, never filters');
+  assert.deepEqual(
+    [...trendingFeed.payload.annotations.map((item) => item.slug)].sort(),
+    [...recentFeed.payload.annotations.map((item) => item.slug)].sort(),
+  );
+  const trendingSources = await request(baseUrl, '/api/trending/sources');
+  assert.equal(trendingSources.response.status, 200);
+  assert.ok(trendingSources.payload.sources.length >= 1);
+  assert.equal(trendingSources.payload.sources.some((source) => source.host === 'example.com'), true);
+  assert.ok(trendingSources.payload.sources.every((source) => typeof source.host === 'string' && 'opens' in source && 'annotationCount' in source));
+
   // ── the public transparency record ──
   const transparency = await request(baseUrl, '/api/transparency');
   assert.equal(transparency.response.status, 200);

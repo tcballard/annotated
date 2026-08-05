@@ -138,6 +138,8 @@ const initialState = {
   feedError: '',
   feedLoaded: false,
   feedFollowing: false,
+  feedSort: 'recent',
+  trendingSources: [],
   feedCursor: null,
   feedQuery: '',
   moderationClaims: [],
@@ -584,6 +586,9 @@ const railView = () => {
   const signCard = state.user
     ? `<div class="card"><h2>Your library</h2><p>Everything you publish keeps a live link back to its source.</p><button class="btn btn-wide" data-action="set-view" data-view="library">Open your library</button></div>`
     : `<div class="card"><h2>Build your public library</h2><p>Capture now. Sign in with X or Google when you are ready to publish, follow, or respond.</p>${enabledProviders(state.authProviders).map((provider) => `<a class="btn btn-wide" href="${escapeHTML(oauthStartUrl(provider))}">Sign in with ${providerLabel(provider)}</a>`).join('') || '<p>No sign-in provider is configured.</p>'}</div>`;
+  const trendingCard = state.trendingSources.length ? `
+    <div class="card"><h2>Trending sources</h2><p>Where attention is going right now — ranked by opens of the original.</p>${state.trendingSources.map((source) => `
+      <div class="trend-row"><a href="/s/${encodeURIComponent(source.host)}" data-action="open-hub" data-host="${escapeHTML(source.host)}">${escapeHTML(source.host)}</a><span class="trend-stat"><strong>${Number(source.opens) || 0}</strong> opens · ${Number(source.annotationCount) || 0} ${source.annotationCount === 1 ? 'note' : 'notes'}</span></div>`).join('')}</div>` : '';
   const curatorsCard = state.curators.length ? `
     <div class="card"><h2>Curators</h2><p>Ranked by opens of the original — the people sending readers back to sources.</p>${state.curators.map((person) => {
       const following = Boolean(state.followingIds[person.id] ?? person.isFollowing);
@@ -592,6 +597,7 @@ const railView = () => {
   return `
   <aside class="rail">
     ${signCard}
+    ${trendingCard}
     ${curatorsCard}
     <div class="card"><h2>The annotated rule</h2><p class="rulequote">&ldquo;A clip without its source is just a rumour.&rdquo;</p><p>Every public page points back to the original. Context travels with the moment.</p></div>
     <div class="card"><h2>Sidebar-first</h2><p>Capturing from the page you are on is faster in the Chrome sidebar.</p><p><a href="/extension" data-action="set-view" data-view="extension">Get the extension →</a></p></div>
@@ -600,8 +606,9 @@ const railView = () => {
 
 const feedView = () => {
   const items = state.feedAnnotations.map(annotationToFeedItem);
-  const emptyTitle = state.feedQuery ? `No annotations match “${escapeHTML(state.feedQuery)}”.` : state.feedFollowing ? 'No annotations from people you follow yet.' : 'No public annotations yet.';
-  const emptyBody = state.feedQuery ? 'Try a different source, author, or phrase.' : state.feedFollowing ? 'Follow someone whose context you want to keep up with.' : 'Capture the first source-backed moment and it will appear here.';
+  const trendingEmpty = !state.feedFollowing && state.feedSort === 'trending';
+  const emptyTitle = state.feedQuery ? `No annotations match “${escapeHTML(state.feedQuery)}”.` : state.feedFollowing ? 'No annotations from people you follow yet.' : trendingEmpty ? 'Nothing is trending yet.' : 'No public annotations yet.';
+  const emptyBody = state.feedQuery ? 'Try a different source, author, or phrase.' : state.feedFollowing ? 'Follow someone whose context you want to keep up with.' : trendingEmpty ? 'Annotations trend as readers open their originals and respond.' : 'Capture the first source-backed moment and it will appear here.';
   const emptyAction = state.feedQuery
     ? `<button class="ghost" data-action="clear-feed-search">Clear search</button>`
     : `<button class="btn" data-action="set-view" data-view="capture">Capture a moment</button>`;
@@ -616,8 +623,9 @@ const feedView = () => {
       <div class="feedhead">
         <h1>Timeline</h1>
         <div class="tabs" role="tablist" aria-label="Timeline filter">
-          <button class="tab ${state.feedFollowing ? '' : 'is-active'}" data-action="feed-filter" data-following="false" role="tab" aria-selected="${!state.feedFollowing}">Recent</button>
-          <button class="tab ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true" role="tab" aria-selected="${state.feedFollowing}">Following</button>
+          <button class="tab ${!state.feedFollowing && state.feedSort !== 'trending' ? 'is-active' : ''}" data-action="feed-filter" data-following="false" data-sort="recent" role="tab" aria-selected="${!state.feedFollowing && state.feedSort !== 'trending'}">Recent</button>
+          <button class="tab ${!state.feedFollowing && state.feedSort === 'trending' ? 'is-active' : ''}" data-action="feed-filter" data-following="false" data-sort="trending" role="tab" aria-selected="${!state.feedFollowing && state.feedSort === 'trending'}">Trending</button>
+          <button class="tab ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true" data-sort="recent" role="tab" aria-selected="${state.feedFollowing}">Following</button>
         </div>
       </div>
       ${state.feedError ? `<div class="feed-error" role="alert">${escapeHTML(state.feedError)} <button class="ghost" data-action="feed-retry">Try again</button></div>` : ''}
@@ -1336,6 +1344,9 @@ const loadCurators = async () => {
       if (person.id && !(person.id in state.followingIds)) state.followingIds[person.id] = Boolean(person.isFollowing);
     }
   } catch { /* the rail card simply stays hidden */ }
+  try {
+    state.trendingSources = (await api.trendingSources()).sources || [];
+  } catch { /* the rail card simply stays hidden */ }
 };
 
 const loadLibrary = async () => {
@@ -1358,6 +1369,7 @@ const loadFeed = async ({ append = false } = {}) => {
   if (!append) render();
   try {
     const params = new URLSearchParams({ limit: '20' });
+    if (state.feedSort === 'trending' && !state.feedFollowing) params.set('sort', 'trending');
     if (state.feedFollowing) params.set('following', 'true');
     if (state.feedQuery.trim()) params.set('q', state.feedQuery.trim());
     if (append && state.feedCursor) params.set('cursor', state.feedCursor);
@@ -1674,6 +1686,7 @@ app.addEventListener('click', (event) => {
     const following = target.dataset.following === 'true';
     if (following && requestSignIn('see the people you follow')) return;
     state.feedFollowing = following;
+    state.feedSort = target.dataset.sort === 'trending' ? 'trending' : 'recent';
     state.feedCursor = null;
     loadFeed().then(render);
     return;

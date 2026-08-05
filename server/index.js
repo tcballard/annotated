@@ -15,6 +15,7 @@ import { ogCardData, renderOgCardCached } from './og-card.js';
 import { escapeHtml, injectAnnotationMeta } from './permalink-meta.js';
 import { allowsIndexing, canViewAnnotation, isPubliclyListed, VISIBILITIES } from './visibility.js';
 import { matchesPersonQuery, normalizeHost, publicAnnotationsForHost, rankAnnotators } from './discovery.js';
+import { rankTrendingSources, sortByTrending } from './trending.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, parseCookies, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, requestId, securityHeaders } from './hardening.js';
@@ -217,7 +218,10 @@ const handleApi = async (request, response, pathname) => {
     if (followingFeedRequiresAuth({ requested: followingRequested, required: authIsRequired(), viewer })) return unauthorized(response);
     const followingOnly = followingRequested && Boolean(viewer);
     const followedIds = new Set((store.follows || []).filter((follow) => follow.followerId === viewer?.id).map((follow) => follow.followingId));
-    const candidates = store.annotations.filter((item) => item.status === 'published' && isPubliclyListed(item) && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id) && matchesFeedQuery(item, store.users || [], search) && matchesFeedUrl(item, urlKey)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const filtered = store.annotations.filter((item) => item.status === 'published' && isPubliclyListed(item) && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id) && matchesFeedQuery(item, store.users || [], search) && matchesFeedUrl(item, urlKey));
+    const candidates = query.get('sort') === 'trending'
+      ? sortByTrending(filtered, store)
+      : filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const page = candidates.slice(offset, offset + limit);
     return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null, query: search || null });
   }
@@ -247,6 +251,14 @@ const handleApi = async (request, response, pathname) => {
       annotations: page.map((item) => withComments(item, store, viewer?.id)),
       nextCursor: offset + page.length < all.length ? String(offset + page.length) : null,
     });
+  }
+
+  // Trending sources: hosts gathering attention now, by decayed opens. Feeds
+  // the hub system — every row is a /s/:host destination.
+  if (request.method === 'GET' && pathname === '/api/trending/sources') {
+    const store = await readStore();
+    const publicAnnotations = store.annotations.filter((item) => item.status === 'published' && isPubliclyListed(item));
+    return send(response, 200, { sources: rankTrendingSources(publicAnnotations).map(({ host, opens, annotationCount }) => ({ host, opens, annotationCount })) });
   }
 
   // People discovery: annotators ranked by opens of the original; a query
