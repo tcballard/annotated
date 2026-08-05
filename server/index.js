@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { checkStore, closeStore, readStore, storageDescription, updateStore } from './store.js';
-import { normalizeAudioMimeType, normalizeImageMimeType, serveStoredMedia, writeIncomingImage, writeIncomingMedia } from './media-store.js';
+import { normalizeAudioMimeType, normalizeImageMimeType, removeStoredMedia, serveStoredMedia, writeIncomingImage, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
@@ -23,6 +23,7 @@ import { canUseAudioAsset, canUseImageAsset } from './media-access.js';
 import { metricsSnapshot, recordRequest } from './observability.js';
 import { findIdempotentAnnotation } from './idempotency.js';
 import { findActiveClaim, validateClaimTransition } from './moderation.js';
+import { annotationAssetIds, canEditCommentary, removalTombstone, validateModerationAction } from './annotation-lifecycle.js';
 import { resolveCorsOrigin } from './cors.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -89,7 +90,7 @@ const publicUser = (user) => user ? {
 const viewableAnnotation = async (slugOrId, viewerId = '') => {
   const store = await readStore();
   const annotation = store.annotations.find((item) => item.slug === slugOrId || item.id === slugOrId);
-  return annotation && canViewAnnotation(annotation, viewerId) ? annotation : null;
+  return annotation && annotation.status === 'published' && canViewAnnotation(annotation, viewerId) ? annotation : null;
 };
 
 const withComments = (annotation, store, viewerId = '') => ({
@@ -374,6 +375,8 @@ const handleApi = async (request, response, pathname) => {
     const viewer = await currentUser(request);
     const annotation = store.annotations.find((item) => item.slug === annotationMatch[1] || item.id === annotationMatch[1]);
     if (!annotation || !canViewAnnotation(annotation, viewer?.id)) return notFound(response);
+    // A rights takedown leaves a public tombstone — accountability, not a 404.
+    if (annotation.status === 'removed') return send(response, 410, removalTombstone(annotation));
     return send(response, 200, { annotation: withComments(annotation, store, viewer?.id) });
   }
 
@@ -492,14 +495,43 @@ const handleApi = async (request, response, pathname) => {
     if (!currentClaim) return notFound(response);
     const transitionError = validateClaimTransition(currentClaim.status, payload.status);
     if (transitionError) return send(response, 422, { error: transitionError });
+    const actionError = validateModerationAction(payload.status, payload.action);
+    if (actionError) return send(response, 422, { error: actionError });
     let found = false;
+    let removedAssets = [];
     const result = await updateStore((store) => {
       const claim = (store.claims || []).find((item) => item.id === moderateClaimMatch[1]);
       if (!claim) return store;
       found = true;
       const updated = { ...claim, status: payload.status, moderatorId: actor.id, resolutionNote: String(payload.note || '').slice(0, 2000), updatedAt: new Date().toISOString() };
-      return { ...store, claims: store.claims.map((item) => item.id === claim.id ? updated : item), moderationAudit: [...(store.moderationAudit || []), { id: randomUUID(), claimId: claim.id, actorId: actor.id, from: claim.status, to: updated.status, note: updated.resolutionNote, createdAt: new Date().toISOString() }] };
+      let next = { ...store, claims: store.claims.map((item) => item.id === claim.id ? updated : item), moderationAudit: [...(store.moderationAudit || []), { id: randomUUID(), claimId: claim.id, actorId: actor.id, from: claim.status, to: updated.status, note: updated.resolutionNote, action: payload.action === 'remove' ? 'remove' : null, createdAt: new Date().toISOString() }] };
+      // A resolved claim with the remove action takes the annotation down:
+      // public tombstone stays, hosted media goes.
+      if (payload.action === 'remove') {
+        const annotation = next.annotations.find((item) => item.id === claim.annotationId);
+        if (annotation && annotation.status !== 'removed') {
+          const assetIds = annotationAssetIds(annotation);
+          removedAssets = (next.media || []).filter((media) => assetIds.includes(media.id));
+          next = {
+            ...next,
+            media: (next.media || []).filter((media) => !assetIds.includes(media.id)),
+            annotations: next.annotations.map((item) => item.id === annotation.id ? {
+              ...item,
+              status: 'removed',
+              removedAt: new Date().toISOString(),
+              removedBy: actor.id,
+              removedReason: 'rights-claim',
+              mediaAssetId: null,
+              audioAssetId: null,
+              screenshotAssetId: null,
+              mediaStatus: 'not-applicable',
+            } : item),
+          };
+        }
+      }
+      return next;
     });
+    for (const media of removedAssets) await removeStoredMedia(media).catch((error) => console.error('takedown media removal failed', error.message));
     return found ? send(response, 200, { claim: result.claims.find((item) => item.id === moderateClaimMatch[1]) }) : notFound(response);
   }
 

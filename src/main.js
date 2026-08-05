@@ -129,6 +129,7 @@ const initialState = {
   publishedSlug: '',
   publishedAnnotation: null,
   publishedLoading: false,
+  publishedRemoved: '',
   feedAnnotations: [],
   feedLoading: false,
   feedError: '',
@@ -409,7 +410,10 @@ const bootstrap = async () => {
         const { annotation } = await api.getAnnotation(state.publishedSlug);
         hydrateAnnotation(annotation);
         watchMediaProcessing();
-      } catch { /* the not-found state renders below */ }
+      } catch (error) {
+        if (error?.status === 410) state.publishedRemoved = error.body?.reason || 'rights-claim';
+        /* otherwise the not-found state renders below */
+      }
       state.publishedLoading = false;
     }
     if (state.profileHandle) await loadProfile();
@@ -613,6 +617,9 @@ const playerBlock = (annotation) => {
 const permalinkView = () => {
   if (state.publishedLoading) {
     return `<div class="page single"><div class="permacard">${skeletonPost()}${skeletonPost()}</div></div>`;
+  }
+  if (state.publishedRemoved) {
+    return `<div class="page single"><div class="perma-empty"><h2>This annotation was removed after a rights claim.</h2><p>The source owner asked for it to come down, and the hosted media has been deleted. The claim trail is retained for accountability.</p><button class="ghost" data-action="set-view" data-view="feed">${icon('back')} Back to the timeline</button></div></div>`;
   }
   const annotation = state.publishedAnnotation;
   if (!annotation) {
@@ -860,7 +867,7 @@ const moderationView = () => {
         <h3>${escapeHTML(annotation.sourceTitle || 'Untitled annotation')}</h3>
         <p class="mod-reason">${escapeHTML(claim.reason || 'No reason supplied.')}</p>
         <div class="mod-meta"><span>Reported by ${escapeHTML(claim.reporter?.displayName || claim.reporter?.handle || claim.reporterId || 'unknown')}</span><a href="${escapeHTML(annotation.sourceUrl || '#')}" target="_blank" rel="noreferrer">Open source ${icon('open')}</a></div>
-        <div class="mod-actions">${statuses.map((status) => `<button class="${current === status ? 'is-current' : ''}" data-action="moderate-claim" data-claim-id="${escapeHTML(claim.id)}" data-status="${status}" ${current === status ? 'disabled' : ''}>${status.replace('_', ' ')}</button>`).join('')}</div>
+        <div class="mod-actions">${statuses.map((status) => `<button class="${current === status ? 'is-current' : ''}" data-action="moderate-claim" data-claim-id="${escapeHTML(claim.id)}" data-status="${status}" ${current === status ? 'disabled' : ''}>${status.replace('_', ' ')}</button>`).join('')}${annotation.id && annotation.status !== 'removed' && current !== 'resolved' ? `<button class="is-takedown" data-action="moderate-claim" data-claim-id="${escapeHTML(claim.id)}" data-status="resolved" data-takedown="true">Resolve &amp; take down</button>` : ''}${annotation.status === 'removed' ? '<span class="vis-tag">taken down</span>' : ''}</div>
         ${claim.resolutionNote ? `<p class="mod-note">${escapeHTML(claim.resolutionNote)}</p>` : ''}
       </article>`;
     }).join('') : `<div class="perma-empty"><h2>${state.moderationLoading ? 'Loading claims…' : 'The queue is clear.'}</h2><p>New rights reports appear here with their source and reporter attached.</p></div>`}
@@ -1329,6 +1336,7 @@ const closeClaimDialog = () => {
 const openAnnotation = async (slug) => {
   if (!slug) return;
   state.publishedSlug = slug;
+  state.publishedRemoved = '';
   state.publishedAnnotation = state.feedAnnotations.find((item) => item.slug === slug) || null;
   state.published = Boolean(state.publishedAnnotation);
   if (state.publishedAnnotation) {
@@ -1342,7 +1350,14 @@ const openAnnotation = async (slug) => {
     hydrateAnnotation(annotation);
     watchMediaProcessing();
     render();
-  } catch { /* rendered from feed data; a fetch miss keeps that view */ }
+  } catch (error) {
+    if (error?.status === 410) {
+      state.publishedRemoved = error.body?.reason || 'rights-claim';
+      state.publishedAnnotation = null;
+      render();
+    }
+    /* otherwise rendered from feed data; a fetch miss keeps that view */
+  }
 };
 
 const openProfile = (handle) => {
@@ -1436,12 +1451,14 @@ app.addEventListener('click', (event) => {
     if (!canModerate() || state.serverStatus !== 'online') { notify('Moderation is unavailable while the backend is offline.'); return; }
     const claimId = target.dataset.claimId;
     const status = target.dataset.status;
+    const takedown = target.dataset.takedown === 'true';
+    if (takedown && !window.confirm('Resolve this claim and take the annotation down? The hosted media is deleted and the page becomes a public tombstone.')) return;
     (async () => {
       try {
-        await api.moderateClaim(claimId, status);
+        await api.moderateClaim(claimId, status, '', takedown ? 'remove' : undefined);
         await loadModerationClaims();
         render();
-        notify(`Claim marked ${status.replace('_', ' ')}.`);
+        notify(takedown ? 'Claim resolved — annotation taken down.' : `Claim marked ${status.replace('_', ' ')}.`);
       } catch (error) { notify(error.message || 'Claim status could not be saved.'); }
     })();
     return;

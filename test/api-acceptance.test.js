@@ -459,6 +459,37 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.equal(emptyHub.response.status, 200);
   assert.equal(emptyHub.payload.annotations.length, 0);
 
+  // ── rights takedown: resolve + remove leaves a public tombstone and
+  //    deletes the hosted media ──
+  const doomedShotResponse = await fetch(`${baseUrl}/api/media/screenshot`, { method: 'POST', headers: { 'content-type': 'image/png' }, body: pngBytes });
+  assert.equal(doomedShotResponse.status, 201);
+  const doomedShot = await doomedShotResponse.json();
+  const doomed = await request(baseUrl, '/api/annotations', {
+    method: 'POST',
+    body: { sourceUrl: 'https://example.com/contested', sourceType: 'article', sourceTitle: 'Contested source', sourceExcerpt: 'A disputed passage.', commentaryMode: 'text', commentary: 'This will be claimed.', screenshotAssetId: doomedShot.media.id, clientRequestId: 'acceptance-takedown' },
+  });
+  assert.equal(doomed.response.status, 201);
+  const takedownClaim = await request(baseUrl, `/api/annotations/${doomed.payload.annotation.slug}/claims`, { method: 'POST', body: { reason: 'This uses my work without permission.' } });
+  assert.equal(takedownClaim.response.status, 201);
+  const badAction = await request(baseUrl, `/api/moderation/claims/${takedownClaim.payload.claim.id}`, { method: 'POST', body: { status: 'in_review', action: 'remove' } });
+  assert.equal(badAction.response.status, 422);
+  const takedown = await request(baseUrl, `/api/moderation/claims/${takedownClaim.payload.claim.id}`, { method: 'POST', body: { status: 'resolved', action: 'remove', note: 'Verified rights holder.' } });
+  assert.equal(takedown.response.status, 200);
+  assert.equal(takedown.payload.claim.status, 'resolved');
+  const tombstone = await request(baseUrl, `/api/annotations/${doomed.payload.annotation.slug}`);
+  assert.equal(tombstone.response.status, 410);
+  assert.equal(tombstone.payload.removed, true);
+  assert.equal(tombstone.payload.reason, 'rights-claim');
+  assert.equal('commentary' in tombstone.payload, false);
+  const removedFromFeed = await request(baseUrl, '/api/feed?limit=50');
+  assert.equal(removedFromFeed.payload.annotations.some((item) => item.slug === doomed.payload.annotation.slug), false);
+  const removedMedia = await fetch(`${baseUrl}/media/${doomedShot.media.id}`);
+  assert.equal(removedMedia.status, 404, 'the hosted media record is deleted with the takedown');
+  const untouchedMedia = await fetch(`${baseUrl}/media/${shot.media.id}`);
+  assert.equal(untouchedMedia.status, 200, 'other annotations keep their own assets');
+  const tombstonedComment = await request(baseUrl, `/api/annotations/${doomed.payload.annotation.slug}/comments`, { method: 'POST', body: { body: 'too late' } });
+  assert.equal(tombstonedComment.response.status, 404);
+
   const people = await request(baseUrl, '/api/people');
   assert.equal(people.response.status, 200);
   assert.ok(people.payload.people.length >= 1);

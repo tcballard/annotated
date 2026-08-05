@@ -1,6 +1,7 @@
 export const apiError = (body = {}, status, fallback) => {
   const error = new Error(body.errors?.join(' ') || body.error || fallback);
   error.status = status;
+  error.body = body;
   return error;
 };
 
@@ -39,6 +40,6 @@ export const api = {
   fileClaim: (slug, reason) => apiRequest(`/api/annotations/${encodeURIComponent(slug)}/claims`, { method: 'POST', body: JSON.stringify({ reason }) }),
   claims: () => apiRequest('/api/claims'),
   moderationClaims: () => apiRequest('/api/moderation/claims'),
-  moderateClaim: (id, status, note = '') => apiRequest(`/api/moderation/claims/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify({ status, note }) }),
+  moderateClaim: (id, status, note = '', action = undefined) => apiRequest(`/api/moderation/claims/${encodeURIComponent(id)}`, { method: 'POST', body: JSON.stringify({ status, note, action }) }),
   uploadAudio: (blob) => uploadRequest('/api/media/audio', blob),
 };
