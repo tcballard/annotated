@@ -518,7 +518,7 @@ const srcCard = (item) => {
     : '';
   return `
   <div class="srccard">
-    <div class="srchead"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ` · ` : ''}</span>${hubLink(item.host)}</div>
+    <div class="srchead">${item.type !== 'article' ? `<span class="chip">${escapeHTML(chipFor(item))}</span>` : ''}<span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ` · ` : ''}</span>${hubLink(item.host)}</div>
     ${srcCardMedia(item)}
     ${quote}
     ${audioNote}
@@ -685,7 +685,7 @@ const permalinkView = () => {
     : annotation.commentary
       ? `<p class="note">${escapeHTML(annotation.commentary)}</p>`
       : commentaryAudio ? '' : '<p class="note empty-note">An audio annotation of this moment.</p>';
-  const srcstrip = `<div class="srcstrip"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ' · ' : ''}</span>${hubLink(item.host)}<a class="open" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}">${escapeHTML(openOriginalLabel(item))} ↗</a></div>`;
+  const srcstrip = `<div class="srcstrip">${item.type !== 'article' ? `<span class="chip">${escapeHTML(chipFor(item))}</span>` : ''}<span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ' · ' : ''}</span>${hubLink(item.host)}<a class="open" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}">${escapeHTML(openOriginalLabel(item))} ↗</a></div>`;
   const screenshot = item.screenshotUrl && !isMedia
     ? `<a class="shot" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}"><img src="${escapeHTML(item.screenshotUrl)}" alt="Screenshot of ${escapeHTML(item.sourceTitle)}" loading="lazy" /></a>`
     : '';
@@ -747,7 +747,7 @@ const passageRow = () => {
   const excerpt = articleExcerpt();
   return `
     <div class="passage">
-      <div class="passage-head"><span class="chip">¶</span><span>Selected passage</span><button class="passage-clear" data-action="clear-passage" aria-label="Clear the selected passage">${icon('close')}</button></div>
+      <div class="passage-head"><span>Selected passage</span><button class="passage-clear" data-action="clear-passage" aria-label="Clear the selected passage">${icon('close')}</button></div>
       <textarea data-action="article-excerpt" maxlength="2000" aria-label="Selected passage" placeholder="Paste the passage you are annotating…">${escapeHTML(excerpt)}</textarea>
       <span class="passage-hint" data-passage-hint>${excerpt.length} characters · the landing page deep-links to this passage</span>
     </div>`;

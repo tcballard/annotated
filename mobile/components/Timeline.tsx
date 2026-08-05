@@ -77,7 +77,7 @@ const SourceCard = ({ item }: { item: FeedItem }) => {
   return (
     <View style={styles.srccard}>
       <View style={styles.srchead}>
-        <Text style={styles.chip}>{chipFor(item)}</Text>
+        {item.type !== 'article' ? <Text style={styles.chip}>{chipFor(item)}</Text> : null}
         <Text style={styles.srcname} numberOfLines={1}>{item.sourceTitle}</Text>
       </View>
       {item.clipUrl && item.mediaStatus === 'ready' && item.type === 'video' ? (

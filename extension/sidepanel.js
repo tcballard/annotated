@@ -922,9 +922,8 @@ const timelinePost = (item) => {
   const noteLine = item.commentary
     ? `<p class="note">${escapeHTML(item.commentary)}</p>`
     : `<p class="note">Audio note — listen on the page.</p>`;
-  const chip = item.type === 'article'
-    ? (item.anchorParagraph ? `¶ ${item.anchorParagraph}` : '¶')
-    : `${format(item.clipStart)}–${format(item.clipEnd)}`;
+  // The quote below carries the passage; only media moments need a chip.
+  const chip = item.type === 'article' ? '' : `${format(item.clipStart)}–${format(item.clipEnd)}`;
   const quote = item.quote ? `<blockquote>&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
   return `
   <article class="post">
@@ -935,7 +934,7 @@ const timelinePost = (item) => {
       <div class="byline"><span class="name">@${escapeHTML(item.handle)}</span><span class="meta">· ${escapeHTML(item.time)}${item.editedAt ? ' · edited' : ''}</span></div>
       ${noteLine}
       <div class="srccard">
-        <div class="srchead"><span class="chip">${escapeHTML(chip)}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(item.type)}</span></div>
+        <div class="srchead">${chip ? `<span class="chip">${escapeHTML(chip)}</span>` : ''}<span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(item.type)}</span></div>
         ${timelineMedia(item)}
         ${quote}
       </div>
