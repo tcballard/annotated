@@ -828,6 +828,21 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .lib-section { font-size: 13px; font-weight: 700; margin: 18px 0 8px; }
 
+/* ── discovery: hubs, people, curators ──────────────────────────────── */
+
+.people-strip { border-bottom: 1px solid var(--hair); padding: 0 16px 12px; }
+.people-strip .lib-section { margin-top: 12px; }
+.people-strip .librow { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 6px; }
+
+.hub-feed { border: 1px solid var(--border); border-radius: 10px; min-height: 0; overflow: hidden; }
+
+.curator-row { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 6px 0; border-top: 1px solid var(--hair); }
+.card .curator-row:first-of-type { border-top: none; }
+.curator-row a { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.curator-row .curator-stat { margin-left: auto; font-size: 12px; color: var(--meta); font-variant-numeric: tabular-nums; flex: none; }
+.curator-row .curator-stat strong { color: var(--ink); }
+.curator-row .ghost { min-height: 32px; padding: 4px 10px; font-size: 12px; flex: none; }
+
 /* ── moderation ─────────────────────────────────────────────────────── */
 
 .modhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 16px 0 12px; }

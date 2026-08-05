@@ -73,3 +73,7 @@ laws, not suggestions; `test/terracotta-audit.test.js` enforces the first one.
 - **Library** (`/library`): signed-in list of published annotations with
   per-annotation stats (opens of the original), the local draft, and a
   share-library card.
+- **Source hubs** (`/s/:host`): discovery by shared attention — a host's
+  public annotations and its top annotators ranked by opens driven back to
+  the source. Reached from any source card's host link; never lists
+  unlisted or private notes.

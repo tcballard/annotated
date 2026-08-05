@@ -553,7 +553,7 @@ const serveOgCard = async (response, slug) => {
 };
 
 const serveStatic = async (request, response, pathname) => {
-  const relative = pathname === '/' ? 'dist/index.html' : pathname.replace(/^\//, '');
+  const relative = pathname === '/' ? 'dist/index.html' : pathname === '/favicon.ico' ? 'dist/brand/favicon.ico' : pathname.replace(/^\//, '');
   const candidate = path.resolve(projectRoot, relative.startsWith('dist/') ? relative : `dist/${relative}`);
   if (!candidate.startsWith(path.resolve(projectRoot, 'dist'))) return notFound(response);
   try {
@@ -589,6 +589,9 @@ const server = http.createServer(async (request, response) => {
     if (ogMatch) return serveOgCard(response, ogMatch[1]);
     const permalinkMatch = request.method === 'GET' ? url.pathname.match(/^\/a\/([^/]+)$/) : null;
     if (permalinkMatch) return servePermalink(response, permalinkMatch[1]);
+    // Hub routes contain dots (hosts), which the static extension check would
+    // otherwise mistake for file requests — serve the app shell explicitly.
+    if (request.method === 'GET' && /^\/s\/[^/]+$/.test(url.pathname)) return serveStatic(request, response, '/');
     if (url.pathname.startsWith('/api/')) {
       const result = await handleApi(request, response, url.pathname);
       if (result !== null) return;

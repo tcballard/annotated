@@ -87,6 +87,11 @@ const initialState = {
   profileLoading: false,
   libraryData: null,
   libraryLoading: false,
+  hubHost: '',
+  hubData: null,
+  hubLoading: false,
+  peopleResults: [],
+  curators: [],
   sourceType: 'video',
   sourceUrl: '',
   clipStart: 0,
@@ -283,6 +288,7 @@ const routeFor = (view) => view === 'feed' ? '/'
   : view === 'moderation' ? '/moderation'
   : view === 'published' && state.publishedSlug ? `/a/${encodeURIComponent(state.publishedSlug)}`
   : view === 'profile' && state.profileHandle ? `/u/${encodeURIComponent(state.profileHandle)}`
+  : view === 'hub' && state.hubHost ? `/s/${encodeURIComponent(state.hubHost)}`
   : '/';
 
 const navigate = (view, { push = true } = {}) => {
@@ -291,6 +297,7 @@ const navigate = (view, { push = true } = {}) => {
   if (push) window.history.pushState({}, '', routeFor(view));
   if (view === 'moderation') loadModerationClaims().then(render);
   if (view === 'library') loadLibrary().then(render);
+  if (view === 'hub') loadHub().then(render);
   render();
   window.scrollTo(0, 0);
 };
@@ -298,10 +305,14 @@ const navigate = (view, { push = true } = {}) => {
 const applyLocation = () => {
   const routeMatch = window.location.pathname.match(/^\/a\/([^/]+)/);
   const profileMatch = window.location.pathname.match(/^\/u\/([^/]+)/);
+  const hubMatch = window.location.pathname.match(/^\/s\/([^/]+)/);
   const requestedView = new URLSearchParams(window.location.search).get('view');
   if (routeMatch) {
     state.publishedSlug = decodeURIComponent(routeMatch[1]);
     state.activeView = 'published';
+  } else if (hubMatch) {
+    state.hubHost = decodeURIComponent(hubMatch[1]);
+    state.activeView = 'hub';
   } else if (profileMatch) {
     state.profileHandle = decodeURIComponent(profileMatch[1]);
     state.activeView = 'profile';
@@ -401,7 +412,9 @@ const bootstrap = async () => {
     }
     if (state.profileHandle) await loadProfile();
     if (state.activeView === 'library') await loadLibrary();
+    if (state.activeView === 'hub' && state.hubHost) await loadHub();
     await loadFeed();
+    await loadCurators();
   } catch (error) {
     state.serverStatus = 'offline';
     state.serverError = error.message;
@@ -436,6 +449,8 @@ const openOriginalAction = (item, { withLabel = true } = {}) => {
   return `<a class="act primary" href="${escapeHTML(href)}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug || '')}">${icon('open')}${withLabel ? `Open original${count}` : `Open${count}`}</a>`;
 };
 
+const hubLink = (host) => host ? `<a href="/s/${encodeURIComponent(host)}" data-action="open-hub" data-host="${escapeHTML(host)}" title="See everything annotated from ${escapeHTML(host)}">${escapeHTML(host)}</a>` : '';
+
 const srcCard = (item) => {
   const quote = item.quote ? `<blockquote>&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
   const audioNote = item.commentaryMode === 'audio' && item.audioUrl
@@ -443,9 +458,27 @@ const srcCard = (item) => {
     : '';
   return `
   <div class="srccard">
-    <div class="srchead"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ` · ${escapeHTML(item.host)}` : ''}</span></div>
+    <div class="srchead"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ` · ` : ''}</span>${hubLink(item.host)}</div>
     ${quote}
     ${audioNote}
+  </div>`;
+};
+
+// One row per person, shared by people search, hub annotators, and curators.
+const personRow = (person, { stat = 'opens' } = {}) => {
+  const following = Boolean(state.followingIds[person.id] ?? person.isFollowing);
+  const stats = stat === 'opens'
+    ? `<span><strong>${Number(person.opens) || 0}</strong> opens</span><span><strong>${Number(person.annotationCount) || 0}</strong> notes</span>`
+    : `<span><strong>${Number(person.followers) || 0}</strong> followers</span>`;
+  return `
+  <div class="librow">
+    <div class="avatar" aria-hidden="true">${escapeHTML((person.displayName || person.handle || 'A').slice(0, 1).toUpperCase())}</div>
+    <div class="librow-main">
+      <div class="librow-title"><a href="/u/${encodeURIComponent(person.handle)}" data-action="open-profile" data-handle="${escapeHTML(person.handle)}">@${escapeHTML(person.handle)}</a></div>
+      <div class="librow-note">${escapeHTML(person.displayName || '')}</div>
+    </div>
+    <div class="libstats">${stats}</div>
+    ${person.id !== state.user?.id ? `<button class="ghost" data-action="toggle-follow" data-user-id="${escapeHTML(person.id)}">${following ? 'Following' : 'Follow'}</button>` : ''}
   </div>`;
 };
 
@@ -489,9 +522,15 @@ const railView = () => {
   const signCard = state.user
     ? `<div class="card"><h2>Your library</h2><p>Everything you publish keeps a live link back to its source.</p><button class="btn btn-wide" data-action="set-view" data-view="library">Open your library</button></div>`
     : `<div class="card"><h2>Build your public library</h2><p>Capture now. Sign in with X or Google when you are ready to publish, follow, or respond.</p>${enabledProviders(state.authProviders).map((provider) => `<a class="btn btn-wide" href="${escapeHTML(oauthStartUrl(provider))}">Sign in with ${providerLabel(provider)}</a>`).join('') || '<p>No sign-in provider is configured.</p>'}</div>`;
+  const curatorsCard = state.curators.length ? `
+    <div class="card"><h2>Curators</h2><p>Ranked by opens of the original — the people sending readers back to sources.</p>${state.curators.map((person) => {
+      const following = Boolean(state.followingIds[person.id] ?? person.isFollowing);
+      return `<div class="curator-row"><a href="/u/${encodeURIComponent(person.handle)}" data-action="open-profile" data-handle="${escapeHTML(person.handle)}">@${escapeHTML(person.handle)}</a><span class="curator-stat"><strong>${Number(person.opens) || 0}</strong> opens</span>${person.id !== state.user?.id ? `<button class="ghost" data-action="toggle-follow" data-user-id="${escapeHTML(person.id)}">${following ? 'Following' : 'Follow'}</button>` : ''}</div>`;
+    }).join('')}</div>` : '';
   return `
   <aside class="rail">
     ${signCard}
+    ${curatorsCard}
     <div class="card"><h2>The annotated rule</h2><p class="rulequote">&ldquo;A clip without its source is just a rumour.&rdquo;</p><p>Every public page points back to the original. Context travels with the moment.</p></div>
     <div class="card"><h2>Sidebar-first</h2><p>Capturing from the page you are on is faster in the Chrome sidebar.</p><p><a href="/CHROMEWEBSTORE.md" data-action="extension-note">Get the extension →</a></p></div>
   </aside>`;
@@ -521,6 +560,7 @@ const feedView = () => {
       </div>
       ${state.feedError ? `<div class="feed-error" role="alert">${escapeHTML(state.feedError)} <button class="ghost" data-action="feed-retry">Try again</button></div>` : ''}
       ${state.feedQuery && !state.feedLoading ? `<div class="feed-error" role="status">Results for “${escapeHTML(state.feedQuery)}” <button class="ghost" data-action="clear-feed-search">Clear</button></div>` : ''}
+      ${state.feedQuery && state.peopleResults.length && !state.feedLoading ? `<div class="people-strip"><div class="lib-section">People</div>${state.peopleResults.map((person) => personRow(person, { stat: 'followers' })).join('')}</div>` : ''}
       ${list}
       ${state.feedCursor ? '<button class="feed-more" data-action="feed-more">Load more</button>' : ''}
     </main>
@@ -568,7 +608,7 @@ const permalinkView = () => {
   const note = annotation.commentary
     ? `<p class="note">${escapeHTML(annotation.commentary)}</p>`
     : commentaryAudio ? '' : '<p class="note empty-note">An audio annotation of this moment.</p>';
-  const srcstrip = `<div class="srcstrip"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ` · ${escapeHTML(item.host)}` : ''}</span><a class="open" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}">${escapeHTML(openOriginalLabel(item))} ↗</a></div>`;
+  const srcstrip = `<div class="srcstrip"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ' · ' : ''}</span>${hubLink(item.host)}<a class="open" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}">${escapeHTML(openOriginalLabel(item))} ↗</a></div>`;
   const screenshot = item.screenshotUrl && !isMedia
     ? `<a class="shot" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}"><img src="${escapeHTML(item.screenshotUrl)}" alt="Screenshot of ${escapeHTML(item.sourceTitle)}" loading="lazy" /></a>`
     : '';
@@ -744,6 +784,26 @@ const libraryView = () => {
   </div>`;
 };
 
+const hubView = () => {
+  if (state.hubLoading && !state.hubData) return `<div class="page single">${skeletonPost()}${skeletonPost()}</div>`;
+  if (!state.hubData) return `<div class="page single"><div class="perma-empty"><h2>This source could not be loaded.</h2><p>${escapeHTML(state.hubHost)} may be unreachable, or the backend is offline.</p><button class="ghost" data-action="set-view" data-view="feed">${icon('back')} Back to the timeline</button></div></div>`;
+  const { source: hubSource, annotators, annotations } = state.hubData;
+  const items = (annotations || []).map(annotationToFeedItem);
+  return `
+  <div class="page single">
+    <div class="libhead">
+      <div class="avatar" aria-hidden="true">${escapeHTML((hubSource.host || 'S').slice(0, 1).toUpperCase())}</div>
+      <div><h1>${escapeHTML(hubSource.host)}</h1><div class="lib-meta">source hub · everything annotated from here</div></div>
+      <div class="lib-counts"><span><strong>${Number(hubSource.annotationCount) || 0}</strong> annotations</span><span><strong>${Number(hubSource.opens) || 0}</strong> opens driven</span></div>
+    </div>
+    ${annotators?.length ? `<div class="lib-section">Top annotators</div><div class="librows">${annotators.map((person) => personRow(person)).join('')}</div>` : ''}
+    <div class="lib-section">Annotations</div>
+    <main class="feed hub-feed">
+      ${items.length ? items.map(feedPost).join('') : `<div class="feed-empty"><h3>Nothing public from ${escapeHTML(hubSource.host)} yet.</h3><p>Capture the first source-backed moment from this source.</p><button class="btn" data-action="set-view" data-view="capture">Capture a moment</button></div>`}
+    </main>
+  </div>`;
+};
+
 const profileView = () => {
   if (state.profileLoading) return `<div class="page single">${skeletonPost()}${skeletonPost()}</div>`;
   if (!state.profileData) return `<div class="page single"><div class="perma-empty"><h2>We could not load this profile.</h2><p>${escapeHTML(state.serverError || 'Check the handle and try again.')}</p><button class="ghost" data-action="set-view" data-view="feed">${icon('back')} Back to the timeline</button></div></div>`;
@@ -814,6 +874,7 @@ const render = () => {
     : state.activeView === 'published' ? permalinkView()
     : state.activeView === 'library' ? libraryView()
     : state.activeView === 'profile' ? profileView()
+    : state.activeView === 'hub' ? hubView()
     : state.activeView === 'moderation' ? moderationView()
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
@@ -989,6 +1050,33 @@ const loadProfile = async () => {
   }
 };
 
+const loadHub = async () => {
+  if (!state.hubHost || state.serverStatus !== 'online') return;
+  state.hubLoading = true;
+  try {
+    const result = await api.sourceHub(state.hubHost);
+    state.hubData = result;
+    for (const person of result.annotators || []) {
+      if (person.id && !(person.id in state.followingIds)) state.followingIds[person.id] = Boolean(person.isFollowing);
+    }
+  } catch {
+    state.hubData = null;
+  } finally {
+    state.hubLoading = false;
+  }
+};
+
+const loadCurators = async () => {
+  if (state.serverStatus !== 'online') return;
+  try {
+    const result = await api.people();
+    state.curators = (result.people || []).slice(0, 3);
+    for (const person of state.curators) {
+      if (person.id && !(person.id in state.followingIds)) state.followingIds[person.id] = Boolean(person.isFollowing);
+    }
+  } catch { /* the rail card simply stays hidden */ }
+};
+
 const loadLibrary = async () => {
   if (!state.user?.handle || state.serverStatus !== 'online') return;
   state.libraryLoading = true;
@@ -1016,6 +1104,15 @@ const loadFeed = async ({ append = false } = {}) => {
     state.feedAnnotations = append ? [...state.feedAnnotations, ...(result.annotations || [])] : (result.annotations || []);
     state.feedCursor = result.nextCursor || null;
     state.feedLoaded = true;
+    if (!append && state.feedQuery.trim()) {
+      const people = await api.people(state.feedQuery.trim()).catch(() => ({ people: [] }));
+      state.peopleResults = people.people || [];
+      for (const person of state.peopleResults) {
+        if (person.id && !(person.id in state.followingIds)) state.followingIds[person.id] = Boolean(person.isFollowing);
+      }
+    } else if (!state.feedQuery.trim()) {
+      state.peopleResults = [];
+    }
   } catch (error) {
     if (state.feedFollowing && error?.status === 401) {
       state.feedFollowing = false;
@@ -1273,6 +1370,13 @@ app.addEventListener('click', (event) => {
     openProfile(target.dataset.handle);
     return;
   }
+  if (action === 'open-hub') {
+    event.preventDefault();
+    state.hubHost = target.dataset.host || '';
+    state.hubData = null;
+    navigate('hub');
+    return;
+  }
   if (action === 'open-respond') {
     pendingCommentFocus = true;
     openAnnotation(target.dataset.slug);
@@ -1504,6 +1608,7 @@ window.addEventListener('popstate', () => {
   }
   if (state.activeView === 'profile' && state.profileHandle) { loadProfile().then(render); }
   if (state.activeView === 'library') { loadLibrary().then(render); }
+  if (state.activeView === 'hub' && state.hubHost) { loadHub().then(render); }
   render();
 });
 

@@ -34,6 +34,8 @@ export const api = {
   follow: (userId) => apiRequest(`/api/users/${encodeURIComponent(userId)}/follow`, { method: 'POST' }),
   unfollow: (userId) => apiRequest(`/api/users/${encodeURIComponent(userId)}/unfollow`, { method: 'POST' }),
   profile: (handle) => apiRequest(`/api/profiles/${encodeURIComponent(handle)}`),
+  sourceHub: (host) => apiRequest(`/api/sources/${encodeURIComponent(host)}`),
+  people: (q = '') => apiRequest(`/api/people${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   fileClaim: (slug, reason) => apiRequest(`/api/annotations/${encodeURIComponent(slug)}/claims`, { method: 'POST', body: JSON.stringify({ reason }) }),
   claims: () => apiRequest('/api/claims'),
   moderationClaims: () => apiRequest('/api/moderation/claims'),
