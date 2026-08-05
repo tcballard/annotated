@@ -118,6 +118,7 @@ const initialState = {
   followingIds: {},
   commentDraft: '',
   claimOpen: false,
+  lightbox: null,
   claimSlug: '',
   claimTitle: '',
   claimReason: '',
@@ -361,6 +362,7 @@ const annotationToFeedItem = (annotation) => ({
   commentary: annotation.commentary || '',
   commentaryMode: annotation.commentaryMode || 'text',
   audioUrl: annotation.audioUrl || '',
+  audioDuration: Number(annotation.audioDuration) || 0,
   clipUrl: annotation.clipUrl || '',
   mediaStatus: annotation.mediaStatus || 'not-applicable',
   opens: Number(annotation.opens) || 0,
@@ -485,7 +487,7 @@ const srcCardMedia = (item) => {
     return `<div class="srcmedia srcmedia-audio"><span class="cliptag">CLIP</span><audio controls preload="none" src="${escapeHTML(item.clipUrl)}"></audio><span class="badge">${escapeHTML(formatTime(clipSeconds))} · audio</span></div>`;
   }
   if (item.screenshotUrl) {
-    return `<div class="srcmedia"><img loading="lazy" src="${escapeHTML(item.screenshotUrl)}" alt="Screenshot of ${escapeHTML(item.sourceTitle)}" /></div>`;
+    return `<div class="srcmedia"><button class="shot-open" data-action="open-lightbox" data-src="${escapeHTML(item.screenshotUrl)}" data-alt="Screenshot of ${escapeHTML(item.sourceTitle)}" data-href="${escapeHTML(openOriginalHref(item))}" aria-label="Enlarge screenshot of ${escapeHTML(item.sourceTitle)}"><img loading="lazy" src="${escapeHTML(item.screenshotUrl)}" alt="Screenshot of ${escapeHTML(item.sourceTitle)}" /><span class="shot-hint">Click to enlarge</span></button></div>`;
   }
   return '';
 };
@@ -493,7 +495,7 @@ const srcCardMedia = (item) => {
 const srcCard = (item) => {
   const quote = item.quote ? `<blockquote>&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
   const audioNote = item.commentaryMode === 'audio' && item.audioUrl
-    ? `<div class="srcaudio"><span class="icon">${icons.mic}</span><audio controls preload="none" src="${escapeHTML(item.audioUrl)}"></audio></div>`
+    ? `<div class="srcaudio"><span class="icon">${icons.mic}</span><audio controls preload="none" src="${escapeHTML(item.audioUrl)}"></audio>${item.audioDuration ? `<span class="srcaudio-time">${escapeHTML(formatTime(item.audioDuration))}</span>` : ''}</div>`
     : '';
   return `
   <div class="srccard">
@@ -525,7 +527,7 @@ const personRow = (person, { stat = 'opens' } = {}) => {
 const feedPost = (item) => {
   const note = item.commentary
     ? `<p class="note">${escapeHTML(item.commentary)}</p>`
-    : `<p class="note">${icon('mic')} Audio note — listen on the page.</p>`;
+    : `<p class="note">${icon('mic')} Audio note${item.audioDuration ? ` · ${escapeHTML(formatTime(item.audioDuration))}` : ''} — listen below.</p>`;
   const followAct = item.authorId && item.authorId !== state.user?.id
     ? `<button class="act ${state.followingIds[item.authorId] ? 'is-on' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${icon('follow')}${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>`
     : '';
@@ -898,6 +900,14 @@ const moderationView = () => {
   </div>`;
 };
 
+// A screenshot enlarged in place — the moment at full size, the original one
+// click away. Backdrop or Esc closes.
+const lightboxView = () => state.lightbox ? `<div class="lightbox" data-action="close-lightbox" role="dialog" aria-modal="true" aria-label="${escapeHTML(state.lightbox.alt || 'Enlarged screenshot')}">
+  <button class="modal-close" data-action="close-lightbox" aria-label="Close enlarged screenshot">${icon('close')}</button>
+  <img src="${escapeHTML(state.lightbox.src)}" alt="${escapeHTML(state.lightbox.alt || '')}" data-action="stop-modal" data-stop-click="true" />
+  ${state.lightbox.href ? `<a class="lightbox-open" href="${escapeHTML(state.lightbox.href)}" target="_blank" rel="noreferrer">${icon('open')} Open original</a>` : ''}
+</div>` : '';
+
 const claimModal = () => `<div class="modal-backdrop" data-action="close-claim">
   <div class="claim-modal" role="dialog" aria-modal="true" aria-labelledby="claim-title" aria-describedby="claim-description" data-action="stop-modal" data-stop-click="true">
     <button class="modal-close" data-action="close-claim" aria-label="Close claim form">${icon('close')}</button>
@@ -1055,10 +1065,11 @@ const render = () => {
     : state.activeView === 'terms' ? termsView()
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
-  app.innerHTML = `${chromeBar()}${offline}${authStateView()}${view}${footerView()}${state.claimOpen ? claimModal() : ''}${toast()}`;
+  app.innerHTML = `${chromeBar()}${offline}${authStateView()}${view}${footerView()}${state.claimOpen ? claimModal() : ''}${lightboxView()}${toast()}`;
+  const overlayOpen = state.claimOpen || Boolean(state.lightbox);
   for (const element of app.querySelectorAll('.chrome, .auth-notice, .auth-prompt, .page, footer, .offline-note')) {
-    element.inert = state.claimOpen;
-    if (state.claimOpen) element.setAttribute('aria-hidden', 'true');
+    element.inert = overlayOpen;
+    if (overlayOpen) element.setAttribute('aria-hidden', 'true');
   }
   if (pendingCommentFocus) {
     pendingCommentFocus = false;
@@ -1720,11 +1731,28 @@ app.addEventListener('click', (event) => {
     return;
   }
   if (action === 'close-claim') { closeClaimDialog(); return; }
+  if (action === 'open-lightbox') {
+    state.lightbox = { src: target.dataset.src || '', alt: target.dataset.alt || '', href: target.dataset.href || '' };
+    render();
+    app.querySelector('.lightbox .modal-close')?.focus();
+    return;
+  }
+  if (action === 'close-lightbox') {
+    state.lightbox = null;
+    render();
+    return;
+  }
   if (action === 'submit-claim') { submitClaim(); return; }
   if (action === 'logout') { api.logout().then(() => { state.user = null; render(); notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
 });
 
 app.addEventListener('keydown', (event) => {
+  if (state.lightbox && event.key === 'Escape') {
+    event.preventDefault();
+    state.lightbox = null;
+    render();
+    return;
+  }
   if (state.claimOpen) {
     const dialog = app.querySelector('.claim-modal');
     if (!dialog) return;
