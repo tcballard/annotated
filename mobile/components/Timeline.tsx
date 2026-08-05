@@ -1,9 +1,11 @@
 // The native timeline: the app's reading surface, built with the shared
 // core (domain model, API client, deep links) and the web's own design
 // tokens — FlatList physics, pull-to-refresh, cursor paging, haptic pane
-// switches. Annotation pages, profiles, and hubs push as web surfaces;
-// originals open OUT in the real browser. Media plays on the permalink —
-// the list shows posters, screenshots, waveforms, and quotes.
+// switches. The top menu scrolls, X-style: Recent · Trending · Following,
+// then every topic as its own feed. Annotation pages, profiles, and hubs
+// push as web surfaces; originals open OUT in the real browser. Media
+// plays on the permalink — the list shows posters, screenshots,
+// waveforms, and quotes.
 
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
@@ -23,18 +25,18 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
 import Feather from '@expo/vector-icons/Feather';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { annotationToFeedItem, chipFor, formatTime } from '../lib/core/feed-item';
 import type { FeedItem } from '../lib/core/feed-item';
 import { avatarColor } from '../lib/core/avatar';
-import { topicLabel } from '../lib/core/topics';
+import { TOPICS, topicLabel } from '../lib/core/topics';
 import { openOriginalHref } from '../lib/core/deep-link';
 import { publicAnnotationUrl } from '../lib/core/share-links';
 import { api } from '../lib/api';
 import { ORIGIN } from '../lib/origin';
 import { signInNatively } from '../lib/native-auth';
-import { card, ink, meta, paper, tokens } from '../lib/tokens';
+import { AccountContext } from './AccountContext';
 import { SessionEpochContext } from './WebScreen';
+import { card, ink, meta, paper, tokens } from '../lib/tokens';
 
 const serif = Platform.select({ ios: 'Georgia', default: 'serif' });
 
@@ -42,22 +44,23 @@ const serif = Platform.select({ ios: 'Georgia', default: 'serif' });
 // same-origin, so absolutize against the deployment.
 const absolute = (url: string): string => (/^https?:\/\//.test(url) ? url : `${ORIGIN}${url}`);
 
-type PaneKey = 'recent' | 'trending' | 'following';
-const PANES: { key: PaneKey; label: string }[] = [
-  { key: 'recent', label: 'Recent' },
-  { key: 'trending', label: 'Trending' },
-  { key: 'following', label: 'Following' },
+// The scrollable feed menu: the three panes, then a feed per topic
+// (a topic feed is trending scoped to that topic).
+type Selection = { pane: 'recent' | 'trending' | 'following'; topic: string | null };
+const MENU: { key: string; label: string; selection: Selection }[] = [
+  { key: 'recent', label: 'Recent', selection: { pane: 'recent', topic: null } },
+  { key: 'trending', label: 'Trending', selection: { pane: 'trending', topic: null } },
+  { key: 'following', label: 'Following', selection: { pane: 'following', topic: null } },
+  ...TOPICS.map((topic) => ({ key: `topic:${topic.slug}`, label: topic.label, selection: { pane: 'trending' as const, topic: topic.slug } })),
 ];
 
-type TopicEntry = { slug: string; label: string; count: number };
-
-const feedQuery = (pane: PaneKey, topic: string | null, cursor: string | null): string => {
+const feedQuery = (selection: Selection, cursor: string | null): string => {
   const params = new URLSearchParams({ limit: '20' });
-  if (pane === 'trending') {
+  if (selection.pane === 'trending') {
     params.set('sort', 'trending');
-    if (topic) params.set('topic', topic);
+    if (selection.topic) params.set('topic', selection.topic);
   }
-  if (pane === 'following') params.set('following', 'true');
+  if (selection.pane === 'following') params.set('following', 'true');
   if (cursor) params.set('cursor', cursor);
   return params.toString();
 };
@@ -114,6 +117,42 @@ const SourceCard = ({ item }: { item: FeedItem }) => {
   );
 };
 
+// The card's tap targets, shared by every native list that renders feed
+// items (timeline, search results).
+export const useFeedActions = () => {
+  const router = useRouter();
+  const { bump } = useContext(SessionEpochContext);
+  const [followingIds, setFollowingIds] = useState<Record<string, boolean>>({});
+
+  const openAnnotation = (item: FeedItem) => {
+    if (!item.slug) return;
+    api.recordOpen(item.slug).catch(() => {});
+    router.push(`/web/a/${encodeURIComponent(item.slug)}`);
+  };
+  const openProfile = (item: FeedItem) => router.push(`/web/u/${encodeURIComponent(item.handle)}`);
+  const openOriginal = (item: FeedItem) => {
+    if (item.slug) api.recordOpen(item.slug).catch(() => {});
+    void WebBrowser.openBrowserAsync(openOriginalHref(item));
+  };
+  const share = (item: FeedItem) => {
+    const url = publicAnnotationUrl(item, ORIGIN);
+    if (url) void Share.share(Platform.OS === 'ios' ? { url } : { message: url });
+  };
+  const toggleFollow = async (item: FeedItem) => {
+    const next = !followingIds[item.authorId];
+    setFollowingIds((current) => ({ ...current, [item.authorId]: next }));
+    try {
+      await (next ? api.follow(item.authorId) : api.unfollow(item.authorId));
+      void Haptics.selectionAsync();
+    } catch (error: any) {
+      setFollowingIds((current) => ({ ...current, [item.authorId]: !next }));
+      if (error?.status === 401 && await signInNatively()) bump();
+    }
+  };
+
+  return { followingIds, openAnnotation, openProfile, openOriginal, share, toggleFollow };
+};
+
 type CardProps = {
   item: FeedItem;
   following: boolean;
@@ -125,7 +164,7 @@ type CardProps = {
   onShare: (item: FeedItem) => void;
 };
 
-const FeedCard = ({ item, following, ownId, onOpenAnnotation, onOpenProfile, onOpenOriginal, onToggleFollow, onShare }: CardProps) => (
+export const FeedCard = ({ item, following, ownId, onOpenAnnotation, onOpenProfile, onOpenOriginal, onToggleFollow, onShare }: CardProps) => (
   <Pressable style={({ pressed }) => [styles.post, pressed && styles.postPressed]} onPress={() => onOpenAnnotation(item)}>
     <Pressable onPress={() => onOpenProfile(item)} hitSlop={6}>
       {item.avatarUrl
@@ -171,30 +210,26 @@ const FeedCard = ({ item, following, ownId, onOpenAnnotation, onOpenProfile, onO
 );
 
 export default function Timeline() {
-  const router = useRouter();
-  const { epoch, bump } = useContext(SessionEpochContext);
-  const [pane, setPane] = useState<PaneKey>('recent');
-  const [topic, setTopic] = useState<string | null>(null);
+  const { epoch } = useContext(SessionEpochContext);
+  const { me } = useContext(AccountContext);
+  const actions = useFeedActions();
+  const [selection, setSelection] = useState<Selection>({ pane: 'recent', topic: null });
   const [items, setItems] = useState<FeedItem[]>([]);
-  const [topics, setTopics] = useState<TopicEntry[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [offline, setOffline] = useState(false);
-  const [ownId, setOwnId] = useState('');
-  const [followingIds, setFollowingIds] = useState<Record<string, boolean>>({});
   const requestSeq = useRef(0);
 
-  const load = useCallback(async (target: PaneKey, targetTopic: string | null, { append = false, cursorAt = null as string | null } = {}) => {
+  const load = useCallback(async (target: Selection, { append = false, cursorAt = null as string | null } = {}) => {
     const seq = ++requestSeq.current;
     try {
-      const result = await api.feed(feedQuery(target, targetTopic, append ? cursorAt : null));
+      const result = await api.feed(feedQuery(target, append ? cursorAt : null));
       if (seq !== requestSeq.current) return;
       const mapped = (result.annotations || []).map(annotationToFeedItem);
       setItems((current) => append ? [...current, ...mapped] : mapped);
       setCursor(result.nextCursor || null);
-      setTopics(Array.isArray(result.topics) ? result.topics : []);
       setOffline(false);
     } catch {
       if (seq !== requestSeq.current) return;
@@ -206,97 +241,59 @@ export default function Timeline() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const result = await api.me().catch(() => ({ user: null }));
-      if (!cancelled) setOwnId(result.user?.id || '');
-      await load(pane, topic);
+      await load(selection);
       if (!cancelled) setLoading(false);
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [epoch]);
 
-  const switchPane = (next: PaneKey) => {
-    if (next === pane) return;
+  const switchTo = (next: Selection) => {
+    if (next.pane === selection.pane && next.topic === selection.topic) return;
     void Haptics.selectionAsync();
-    setPane(next);
-    setTopic(null);
+    setSelection(next);
     setLoading(true);
-    void load(next, null).then(() => setLoading(false));
-  };
-
-  const switchTopic = (next: string | null) => {
-    setTopic(next);
-    void load(pane, next);
+    void load(next).then(() => setLoading(false));
   };
 
   const refresh = async () => {
     setRefreshing(true);
-    await load(pane, topic);
+    await load(selection);
     setRefreshing(false);
   };
 
   const loadMore = async () => {
     if (!cursor || loadingMore || loading) return;
     setLoadingMore(true);
-    await load(pane, topic, { append: true, cursorAt: cursor });
+    await load(selection, { append: true, cursorAt: cursor });
     setLoadingMore(false);
   };
 
-  const openAnnotation = (item: FeedItem) => {
-    if (!item.slug) return;
-    api.recordOpen(item.slug).catch(() => {});
-    router.push(`/web/a/${encodeURIComponent(item.slug)}`);
-  };
-  const openProfile = (item: FeedItem) => router.push(`/web/u/${encodeURIComponent(item.handle)}`);
-  const openOriginal = (item: FeedItem) => {
-    if (item.slug) api.recordOpen(item.slug).catch(() => {});
-    void WebBrowser.openBrowserAsync(openOriginalHref(item));
-  };
-  const share = (item: FeedItem) => {
-    const url = publicAnnotationUrl(item, ORIGIN);
-    if (url) void Share.share(Platform.OS === 'ios' ? { url } : { message: url });
-  };
-  const toggleFollow = async (item: FeedItem) => {
-    const next = !followingIds[item.authorId];
-    setFollowingIds((current) => ({ ...current, [item.authorId]: next }));
-    try {
-      await (next ? api.follow(item.authorId) : api.unfollow(item.authorId));
-      void Haptics.selectionAsync();
-    } catch (error: any) {
-      setFollowingIds((current) => ({ ...current, [item.authorId]: !next }));
-      if (error?.status === 401 && await signInNatively()) bump();
-    }
-  };
+  const isActive = (entry: typeof MENU[number]) => entry.selection.pane === selection.pane && entry.selection.topic === selection.topic;
 
-  const emptyTitle = pane === 'following' ? 'No annotations from people you follow yet.'
-    : pane === 'trending' ? 'Nothing is trending yet.'
+  const emptyTitle = selection.topic ? `Nothing in ${topicLabel(selection.topic)} yet.`
+    : selection.pane === 'following' ? 'No annotations from people you follow yet.'
+    : selection.pane === 'trending' ? 'Nothing is trending yet.'
     : 'No public annotations yet.';
-  const emptyBody = pane === 'following' ? 'Follow someone whose context you want to keep up with.'
-    : pane === 'trending' ? 'Annotations trend as readers open their originals and respond.'
+  const emptyBody = selection.topic ? 'Tag an annotation with this topic and it will appear here.'
+    : selection.pane === 'following' ? 'Follow someone whose context you want to keep up with.'
+    : selection.pane === 'trending' ? 'Annotations trend as readers open their originals and respond.'
     : 'Capture the first source-backed moment and it will appear here.';
 
   return (
-    <SafeAreaView edges={['top']} style={styles.frame}>
+    <View style={styles.frame}>
       <View style={styles.switcher}>
-        <View style={styles.tabs}>
-          {PANES.map(({ key, label }) => (
-            <Pressable key={key} style={[styles.tab, pane === key && styles.tabActive]} onPress={() => switchPane(key)}>
-              <Text style={pane === key ? styles.tabActiveText : styles.tabText}>{label}</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.menuRow}>
+          {MENU.map((entry) => (
+            <Pressable
+              key={entry.key}
+              style={[styles.menuPill, isActive(entry) && styles.menuPillActive]}
+              onPress={() => switchTo(entry.selection)}
+            >
+              <Text style={isActive(entry) ? styles.menuPillActiveText : styles.menuPillText}>{entry.label}</Text>
             </Pressable>
           ))}
-        </View>
-        {pane === 'trending' && topics.length ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips} contentContainerStyle={styles.chipsRow}>
-            <Pressable style={[styles.topicChip, !topic && styles.topicChipActive]} onPress={() => switchTopic(null)}>
-              <Text style={!topic ? styles.topicChipActiveText : styles.topicChipText}>All</Text>
-            </Pressable>
-            {topics.map((entry) => (
-              <Pressable key={entry.slug} style={[styles.topicChip, topic === entry.slug && styles.topicChipActive]} onPress={() => switchTopic(entry.slug)}>
-                <Text style={topic === entry.slug ? styles.topicChipActiveText : styles.topicChipText}>{entry.label} {entry.count}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        ) : null}
+        </ScrollView>
       </View>
       {offline ? (
         <View style={styles.offline}><Text style={styles.offlineText}>The annotated backend is unreachable. Pull to retry.</Text></View>
@@ -310,13 +307,13 @@ export default function Timeline() {
           renderItem={({ item }) => (
             <FeedCard
               item={item}
-              following={Boolean(followingIds[item.authorId])}
-              ownId={ownId}
-              onOpenAnnotation={openAnnotation}
-              onOpenProfile={openProfile}
-              onOpenOriginal={openOriginal}
-              onToggleFollow={toggleFollow}
-              onShare={share}
+              following={Boolean(actions.followingIds[item.authorId])}
+              ownId={me?.id || ''}
+              onOpenAnnotation={actions.openAnnotation}
+              onOpenProfile={actions.openProfile}
+              onOpenOriginal={actions.openOriginal}
+              onToggleFollow={actions.toggleFollow}
+              onShare={actions.share}
             />
           )}
           contentContainerStyle={styles.list}
@@ -332,7 +329,7 @@ export default function Timeline() {
           )}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -341,22 +338,16 @@ const radiusInner = parseInt(tokens['radius-inner'], 10) || 14;
 
 const styles = StyleSheet.create({
   frame: { flex: 1, backgroundColor: paper },
-  switcher: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4, backgroundColor: paper },
-  tabs: { flexDirection: 'row', backgroundColor: card, borderWidth: 1, borderColor: tokens.border, borderRadius: 99, padding: 4 },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: 99 },
-  tabActive: { backgroundColor: tokens.chrome },
-  tabText: { fontSize: 13.5, color: meta },
-  tabActiveText: { fontSize: 13.5, color: '#fff', fontWeight: '700' },
-  chips: { marginTop: 8 },
-  chipsRow: { gap: 6, paddingRight: 14 },
-  topicChip: { borderWidth: 1, borderColor: tokens.border, backgroundColor: card, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 5 },
-  topicChipActive: { backgroundColor: tokens['ink-soft'], borderColor: tokens['ink-soft'] },
-  topicChipText: { fontSize: 12.5, color: tokens['ink-soft'] },
-  topicChipActiveText: { fontSize: 12.5, color: '#fff', fontWeight: '600' },
+  switcher: { backgroundColor: card, borderBottomWidth: 1, borderBottomColor: tokens.hair },
+  menuRow: { gap: 6, paddingHorizontal: 12, paddingVertical: 8 },
+  menuPill: { borderRadius: 99, paddingHorizontal: 13, paddingVertical: 6, backgroundColor: tokens.soft },
+  menuPillActive: { backgroundColor: tokens.chrome },
+  menuPillText: { fontSize: 13, color: tokens['ink-soft'], fontWeight: '600' },
+  menuPillActiveText: { fontSize: 13, color: '#fff', fontWeight: '700' },
   offline: { margin: 14, padding: 12, backgroundColor: card, borderRadius: radiusInner, borderWidth: 1, borderColor: tokens.border },
   offlineText: { color: tokens['ink-soft'], fontSize: 13 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  list: { padding: 14, paddingTop: 8 },
+  list: { padding: 14, paddingTop: 10 },
   footer: { paddingVertical: 16 },
   post: {
     flexDirection: 'row',

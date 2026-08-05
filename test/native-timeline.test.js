@@ -25,11 +25,19 @@ test('the reading surface has native physics: list, pull-to-refresh, cursor pagi
 
 test('the pane and topic contract matches the web feed exactly', () => {
   assert.match(timeline, /params\.set\('sort', 'trending'\)/);
-  assert.match(timeline, /params\.set\('topic', topic\)/);
+  assert.match(timeline, /params\.set\('topic', selection\.topic\)/);
   assert.match(timeline, /params\.set\('following', 'true'\)/);
   assert.match(timeline, /'No public annotations yet\.'/, 'empty copy matches the web');
   assert.match(timeline, /'Nothing is trending yet\.'/);
   assert.match(timeline, /'No annotations from people you follow yet\.'/);
+});
+
+test('the top menu scrolls, X-style: panes then a feed per topic', () => {
+  assert.match(timeline, /ScrollView horizontal/);
+  assert.match(timeline, /\.\.\.TOPICS\.map\(\(topic\) => \(\{ key: `topic:\$\{topic\.slug\}`/, 'every topic is a feed in the menu');
+  assert.match(timeline, /pane: 'trending' as const, topic: topic\.slug/, 'a topic feed is trending scoped to the topic');
+  assert.match(timeline, /export const FeedCard/, 'the card is shared with search');
+  assert.match(timeline, /export const useFeedActions/, 'card actions are shared with search');
 });
 
 test('originals open OUT and opens are counted, same as every other surface', () => {

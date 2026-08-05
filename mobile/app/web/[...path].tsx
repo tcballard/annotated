@@ -8,11 +8,20 @@ import WebScreen from '../../components/WebScreen';
 import { ORIGIN } from '../../lib/origin';
 import { shellUrl } from '../../lib/shell';
 
+const PAGE_TITLES: Record<string, string> = {
+  library: 'Library',
+  moderation: 'Moderation',
+  transparency: 'Transparency',
+  about: 'About',
+  rights: 'Rights & claims',
+  terms: 'Terms',
+};
+
 const titleFor = (segments: string[]): string => {
   if (segments[0] === 'a') return 'Annotation';
   if (segments[0] === 'u' && segments[1]) return `@${decodeURIComponent(segments[1])}`;
   if (segments[0] === 's' && segments[1]) return decodeURIComponent(segments[1]);
-  return 'annotated';
+  return PAGE_TITLES[segments[0]] || 'annotated';
 };
 
 export default function WebPage() {

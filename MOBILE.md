@@ -1,14 +1,18 @@
 # The mobile app (Expo)
 
-`mobile/` is a hybrid app with a fully native reading surface: **native
-chrome and timeline, web everywhere the desk work happens**. Navigation is
-a real bottom tab bar (expo-router: Timeline · Capture · Library) with
-haptic feedback and safe-area handling. The Timeline tab is native React
-Native — FlatList physics, pull-to-refresh, cursor paging — built on the
-shared core packages; Capture and Library host the deployed web app in
-*shell mode* (`?shell=1`), where the page renders content only. Annotation
-pages, profiles, and source hubs push over the tabs as web surfaces under
-a native header. On top of that the app does the things the web cannot do
+`mobile/` is a hybrid app with a fully native reading surface and X-anatomy
+navigation in annotated's identity: your avatar top-left opens **the
+drawer** (swipe right works too), the wordmark sits center, four tabs run
+along the bottom — **Home · Search · Notifications · Profile** — and
+capture floats as the ink **FAB**. Home's feed menu scrolls horizontally:
+Recent · Trending · Following, then every topic as its own feed. The
+timeline and search results are native React Native (FlatList physics,
+pull-to-refresh, cursor paging) built on the shared core packages; the
+capture desk, your profile, the library, and every pushed page (permalinks,
+profiles, hubs, doc pages) stay the deployed web app in *shell mode*
+(`?shell=1`). Notifications are served by the API (responses, likes, and
+follows aimed at you, derived on read; a last-seen watermark powers the
+bell badge). On top of that the app does the things the web cannot do
 alone on a phone: **the native share sheet** (an iOS Share Extension and an
 Android intent filter via `expo-share-intent`) and **OAuth through the
 system browser** (Google refuses to run OAuth inside WebViews).
@@ -25,10 +29,11 @@ test suite fails if either goes stale.
 - `app/_layout.tsx` — root stack: the tab bar plus pushed web surfaces;
   share-intent routing and the session epoch that keeps sign-in consistent
   across surfaces.
-- `app/(tabs)/_layout.tsx` — the tab bar, painted with the web's tokens.
-- `app/(tabs)/index.tsx` → `components/Timeline.tsx` — the native feed.
-- `app/(tabs)/capture.tsx` · `app/(tabs)/library.tsx` — web surfaces in
+- `app/(drawer)/(tabs)/index.tsx` → `components/Timeline.tsx` — the native
+  feed; `search.tsx` → `components/SearchScreen.tsx`; `notifications.tsx` →
+  `components/NotificationsScreen.tsx`; `profile.tsx` — your public page in
   shell mode.
+- `app/capture.tsx` — the capture desk, pushed from the FAB or a share.
 - `app/web/[...path].tsx` — any internal page (permalink `/a/…`, profile
   `/u/…`, hub `/s/…`) pushed under a native header.
 - `components/WebScreen.tsx` — the WebView wrapper: shell-mode URL, OAuth

@@ -3,10 +3,11 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const rootLayout = await readFile(new URL('../mobile/app/_layout.tsx', import.meta.url), 'utf8');
-const tabsLayout = await readFile(new URL('../mobile/app/(tabs)/_layout.tsx', import.meta.url), 'utf8');
-const timelineTab = await readFile(new URL('../mobile/app/(tabs)/index.tsx', import.meta.url), 'utf8');
-const captureTab = await readFile(new URL('../mobile/app/(tabs)/capture.tsx', import.meta.url), 'utf8');
-const libraryTab = await readFile(new URL('../mobile/app/(tabs)/library.tsx', import.meta.url), 'utf8');
+const drawerLayout = await readFile(new URL('../mobile/app/(drawer)/_layout.tsx', import.meta.url), 'utf8');
+const tabsLayout = await readFile(new URL('../mobile/app/(drawer)/(tabs)/_layout.tsx', import.meta.url), 'utf8');
+const timelineTab = await readFile(new URL('../mobile/app/(drawer)/(tabs)/index.tsx', import.meta.url), 'utf8');
+const profileTab = await readFile(new URL('../mobile/app/(drawer)/(tabs)/profile.tsx', import.meta.url), 'utf8');
+const captureScreen = await readFile(new URL('../mobile/app/capture.tsx', import.meta.url), 'utf8');
 const webPage = await readFile(new URL('../mobile/app/web/[...path].tsx', import.meta.url), 'utf8');
 const webScreen = await readFile(new URL('../mobile/components/WebScreen.tsx', import.meta.url), 'utf8');
 const shellHelpers = await readFile(new URL('../mobile/lib/shell.ts', import.meta.url), 'utf8');
@@ -28,35 +29,36 @@ test('the shell is configured for the share sheet on both platforms', () => {
   assert.ok(packageJson.dependencies['react-native-webview']);
 });
 
-test('navigation chrome is native: a stack over expo-router tabs, with haptic feedback', () => {
+test('navigation is native, X-anatomy: a stack over a drawer over tabs', () => {
   assert.equal(packageJson.main, 'expo-router/entry');
   assert.ok(appConfig.expo.plugins.includes('expo-router'), 'expo-router config plugin must be registered');
-  assert.ok(packageJson.dependencies['expo-router']);
-  assert.ok(packageJson.dependencies['expo-haptics']);
   assert.match(rootLayout, /<Stack/);
-  assert.match(rootLayout, /name="\(tabs\)"/);
+  assert.match(rootLayout, /name="\(drawer\)"/);
+  assert.match(rootLayout, /name="capture"/, 'the capture desk pushes over the tabs');
   assert.match(rootLayout, /name="web\/\[\.\.\.path\]"/, 'internal pages push over the tabs');
-  for (const name of ['index', 'capture', 'library']) {
+  assert.match(drawerLayout, /<Drawer/);
+  assert.match(drawerLayout, /swipeEdgeWidth/, 'the drawer answers an edge swipe');
+  for (const name of ['index', 'search', 'notifications', 'profile']) {
     assert.match(tabsLayout, new RegExp(`name="${name}"`), `the ${name} tab must exist`);
   }
   assert.match(tabsLayout, /tabPress: \(\) => \{ void Haptics\.selectionAsync\(\); \}/, 'tab switches give haptic feedback');
   assert.match(webScreen, /SafeAreaView edges=\{padTop \? \['top'\] : \[\]\}/, 'pushed screens under a native header do not double-pad the inset');
 });
 
-test('the timeline is native; capture and library host web surfaces in shell mode', () => {
+test('the timeline is native; capture, profile, and pushed pages stay shell-mode web', () => {
   assert.match(timelineTab, /<Timeline \/>/);
   assert.doesNotMatch(timelineTab, /WebScreen/, 'the reading surface is not a WebView');
   assert.match(shellHelpers, /searchParams\.set\('shell', '1'\)/);
-  assert.match(captureTab, /shellUrl\(ORIGIN, '\/capture'\)/);
-  assert.match(libraryTab, /shellUrl\(ORIGIN, '\/library'\)/);
+  assert.match(captureScreen, /shellUrl\(ORIGIN, '\/capture'\)/);
+  assert.match(profileTab, /shellUrl\(ORIGIN, `\/u\/\$\{encodeURIComponent\(me\.handle\)\}`\)/, 'the profile tab is your public page');
   assert.match(webPage, /shellUrl\(ORIGIN, target\)/, 'pushed permalinks/profiles/hubs stay shell-mode web');
   assert.match(webPage, /padTop=\{false\}/);
 });
 
-test('shares land on the Capture tab via the same contract the PWA share target uses', () => {
+test('shares land on the capture desk via the same contract the PWA share target uses', () => {
   assert.match(rootLayout, /useShareIntent/);
-  assert.match(rootLayout, /pathname: '\/capture', params: \{ shared: payload/, 'a share routes to the Capture tab');
-  assert.match(captureTab, /captureUrlFromShare\(ORIGIN, \{ text: shared \}\)/);
+  assert.match(rootLayout, /pathname: '\/capture', params: \{ shared: payload/, 'a share routes to the capture screen');
+  assert.match(captureScreen, /captureUrlFromShare\(ORIGIN, \{ text: shared \}\)/);
   assert.match(shellHelpers, /new URL\('\/capture', origin\)/);
   assert.match(shellHelpers, /searchParams\.set\('text', payload\)/);
 });
@@ -96,7 +98,7 @@ test('native styling derives from the web stylesheet — one source of truth', (
       `token --${name} is stale in mobile/lib/tokens.ts — run node scripts/generate-mobile-tokens.mjs`,
     );
   }
-  assert.match(tabsLayout, /from '\.\.\/\.\.\/lib\/tokens'/);
+  assert.match(tabsLayout, /from '\.\.\/\.\.\/\.\.\/lib\/tokens'/);
   assert.match(webScreen, /from '\.\.\/lib\/tokens'/);
 });
 
