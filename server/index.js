@@ -634,8 +634,26 @@ const serveOgCard = async (response, slug) => {
   if (!found) return notFound(response);
   const { annotation, author } = found;
   try {
-    const cacheKey = `${annotation.id}:${annotation.mediaStatus}:${annotation.openCount || 0}`;
-    const png = await renderOgCardCached(cacheKey, ogCardData(annotation, author));
+    const cacheKey = [annotation.id, annotation.mediaStatus, annotation.openCount || 0, annotation.editedAt || '', annotation.visibility || 'public', annotation.screenshotAssetId || ''].join(':');
+    const png = await renderOgCardCached(cacheKey, async () => {
+      const data = ogCardData(annotation, author);
+      // Screenshot captures put the actual image on the card. PNG only (the
+      // panel captures PNG), verified by magic bytes so a mistyped or corrupt
+      // upload degrades to the text layout instead of failing the render.
+      if (annotation.screenshotAssetId) {
+        const store = await readStore();
+        const record = (store.media || []).find((item) => item.id === annotation.screenshotAssetId);
+        if (record?.mimeType === 'image/png') {
+          try {
+            const bytes = await getObjectStore().getBytes(record);
+            if (bytes.length > 24 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+              data.screenshot = `data:image/png;base64,${bytes.toString('base64')}`;
+            }
+          } catch { /* text layout */ }
+        }
+      }
+      return data;
+    });
     response.writeHead(200, { 'content-type': 'image/png', 'content-length': png.length, 'cache-control': 'public, max-age=3600', ...securityHeaders({ api: true }) });
     return response.end(png);
   } catch (error) {

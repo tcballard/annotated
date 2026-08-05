@@ -42,6 +42,21 @@ test('the card tree carries the ink chrome, the CLIP framing, and both voices', 
   assert.match(flat, /THE ORIGINAL IS ONE CLICK AWAY/);
 });
 
+test('a screenshot capture puts the shot itself on the card, replacing the serif block', () => {
+  const article = { ...annotation, sourceType: 'article', screenshotAssetId: 'shot-1' };
+  const shotData = { ...ogCardData(article, author), screenshot: 'data:image/png;base64,AAAA' };
+  const flat = JSON.stringify(annotationCard(shotData));
+  assert.match(flat, /"SHOT"/);
+  assert.match(flat, /data:image\/png;base64,AAAA/);
+  assert.doesNotMatch(flat, /CardSerif/);   // the source speaks visually here
+  // Hosted media keeps its CLIP framing; a stray screenshot never displaces it.
+  const clipData = { ...ogCardData(annotation, author), screenshot: 'data:image/png;base64,AAAA' };
+  const clipFlat = JSON.stringify(annotationCard(clipData));
+  assert.match(clipFlat, /"CLIP"/);
+  assert.doesNotMatch(clipFlat, /"SHOT"/);
+  assert.match(clipFlat, /CardSerif/);
+});
+
 test('permalink meta injection escapes values and fills every required tag', () => {
   const hostile = { ...annotation, commentary: 'A "note" with <script>alert(1)</script>' };
   const html = '<html><head><title>annotated</title><meta name="description" content="x" /></head><body></body></html>';
@@ -66,6 +81,25 @@ test('the satori pipeline renders a PNG when card fonts are present', async (t) 
     return;
   }
   const png = await renderOgCard(ogCardData(annotation, author));
+  assert.ok(png.length > 10_000, 'PNG should be a real render');
+  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+});
+
+test('the satori pipeline renders a card with a real embedded screenshot', async (t) => {
+  const fontDir = process.env.OG_FONT_DIR || '/usr/share/fonts/truetype/dejavu';
+  try {
+    await access(`${fontDir}/DejaVuSans.ttf`);
+  } catch {
+    t.skip('card fonts unavailable in this environment');
+    return;
+  }
+  const { Resvg } = await import('@resvg/resvg-js');
+  const shotPng = new Resvg('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="36"><rect width="64" height="36" fill="#B0674D"/></svg>').render().asPng();
+  const data = {
+    ...ogCardData({ ...annotation, sourceType: 'article' }, author),
+    screenshot: `data:image/png;base64,${Buffer.from(shotPng).toString('base64')}`,
+  };
+  const png = await renderOgCard(data);
   assert.ok(png.length > 10_000, 'PNG should be a real render');
   assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 });

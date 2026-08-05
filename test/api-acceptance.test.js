@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import { tmpdir as systemTmpdir } from 'node:os';
 import path from 'node:path';
@@ -462,7 +462,8 @@ test('local API serves the acceptance-critical health, identity, publish, social
   // ── screenshot capture: typed, bounded, owned, and rendered on the page ──
   const badShot = await fetch(`${baseUrl}/api/media/screenshot`, { method: 'POST', headers: { 'content-type': 'text/html' }, body: 'nope' });
   assert.equal(badShot.status, 415);
-  const pngBytes = Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex');
+  const { Resvg } = await import('@resvg/resvg-js');
+  const pngBytes = Buffer.from(new Resvg('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="36"><rect width="64" height="36" fill="#B0674D"/></svg>').render().asPng());
   const shotResponse = await fetch(`${baseUrl}/api/media/screenshot`, { method: 'POST', headers: { 'content-type': 'image/png' }, body: pngBytes });
   assert.equal(shotResponse.status, 201);
   const shot = await shotResponse.json();
@@ -478,6 +479,16 @@ test('local API serves the acceptance-critical health, identity, publish, social
     body: { sourceUrl: 'https://example.com/chart-page-2', sourceType: 'article', sourceTitle: 'Chart page 2', sourceExcerpt: 'p', commentaryMode: 'text', commentary: 'x', screenshotAssetId: 'not-a-real-asset', clientRequestId: 'acceptance-screenshot-2' },
   });
   assert.equal(stolenShot.response.status, 422);
+  // the OG card of a screenshot capture embeds the shot itself
+  // (font-gated exactly like the og-pipeline render test)
+  const cardFontsPresent = await access(`${process.env.OG_FONT_DIR || '/usr/share/fonts/truetype/dejavu'}/DejaVuSans.ttf`).then(() => true).catch(() => false);
+  if (cardFontsPresent) {
+    const shotCard = await fetch(`${baseUrl}/og/${shotAnnotation.payload.annotation.slug}.png`);
+    assert.equal(shotCard.status, 200);
+    const shotCardBytes = Buffer.from(await shotCard.arrayBuffer());
+    assert.deepEqual([...shotCardBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(shotCardBytes.length > 10_000, 'the embedded-shot card should be a real render');
+  }
 
   // ── discovery: source hubs and people, public record only ──
   const hub = await request(baseUrl, '/api/sources/EXAMPLE.com');

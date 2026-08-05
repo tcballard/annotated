@@ -56,6 +56,20 @@ export const ogCardData = (annotation, author = null) => {
   };
 };
 
+// A captured page region: the screenshot itself, SHOT tag top-left. Rendered
+// when the visual is the kept moment, in place of the serif quote block.
+const shotFrame = (dataUri) => el('div', {
+  height: 250, backgroundColor: T.player, borderRadius: 10, border: `2px solid ${T.hair}`,
+  display: 'flex', position: 'relative', overflow: 'hidden',
+}, [
+  { type: 'img', props: { src: dataUri, style: { width: '100%', height: 246, objectFit: 'cover' } } },
+  txt({
+    position: 'absolute', top: 10, left: 12, fontSize: 15, fontWeight: 700,
+    letterSpacing: 1, color: '#FFFFFF', backgroundColor: T.accent,
+    borderRadius: 4, padding: '2px 10px',
+  }, 'SHOT'),
+]);
+
 // The miniature 240p player: CLIP tag top-left, play affordance, badge
 // bottom-right. Only rendered for hosted media annotations.
 const clipFrame = (badge) => el('div', {
@@ -84,6 +98,9 @@ export function annotationCard(data) {
   const quote = clip(data.quote, 220);
   const note = clip(data.note, 150);
   const hasClipFrame = Boolean(data.clipBadge);
+  // For screenshot captures the source speaks visually: the shot replaces the
+  // serif quote block. Hosted media keeps its CLIP framing either way.
+  const hasShotFrame = Boolean(data.screenshot) && !hasClipFrame;
 
   return el('div', {
     width: 1200, height: 630, display: 'flex', flexDirection: 'column',
@@ -128,16 +145,18 @@ export function annotationCard(data) {
       }, [
         el('div', { display: 'flex', flexDirection: 'column' }, [
           ...(hasClipFrame ? [clipFrame(data.clipBadge)] : []),
-          // the source speaks in serif over the terracotta rule
-          el('div', {
-            display: 'flex', borderLeft: `6px solid ${T.accent}`,
-            backgroundColor: T.soft, borderRadius: '0 10px 10px 0', padding: '16px 24px',
-          }, [
-            txt({
-              fontFamily: 'CardSerif', fontSize: quoteSize(quote, hasClipFrame),
-              lineHeight: 1.3, color: T.inkSoft,
-            }, `“${quote}”`),
-          ]),
+          hasShotFrame
+            ? shotFrame(data.screenshot)
+            // the source speaks in serif over the terracotta rule
+            : el('div', {
+              display: 'flex', borderLeft: `6px solid ${T.accent}`,
+              backgroundColor: T.soft, borderRadius: '0 10px 10px 0', padding: '16px 24px',
+            }, [
+              txt({
+                fontFamily: 'CardSerif', fontSize: quoteSize(quote, hasClipFrame),
+                lineHeight: 1.3, color: T.inkSoft,
+              }, `“${quote}”`),
+            ]),
           // the annotator speaks in sans
           txt({ fontSize: 23, lineHeight: 1.4, marginTop: 18, color: T.ink }, note),
         ]),
@@ -188,13 +207,14 @@ export async function renderOgCard(data) {
   return new Resvg(svg, { fitTo: { mode: 'width', value: 1200 } }).render().asPng();
 }
 
-// Small keyed cache so repeated crawler fetches do not re-render.
+// Small keyed cache so repeated crawler fetches do not re-render. `data` may
+// be an async factory so expensive inputs (screenshot bytes) load on miss only.
 const cache = new Map();
 const CACHE_LIMIT = 100;
 export async function renderOgCardCached(cacheKey, data) {
   const cached = cache.get(cacheKey);
   if (cached) return cached;
-  const png = await renderOgCard(data);
+  const png = await renderOgCard(typeof data === 'function' ? await data() : data);
   if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value);
   cache.set(cacheKey, png);
   return png;
