@@ -66,7 +66,6 @@ export default function RootLayout() {
           <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: paper } }}>
             <Stack.Screen name="(drawer)" />
-            <Stack.Screen name="capture" options={{ ...webHeader, title: 'Capture' }} />
             <Stack.Screen name="web/[...path]" options={webHeader} />
           </Stack>
         </AccountContext.Provider>

@@ -6,6 +6,7 @@ import { useCallback, useContext, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { relTime } from '../lib/core/feed-item';
 import { avatarColor, avatarInitial } from '../lib/core/avatar';
 import { api } from '../lib/api';
@@ -37,6 +38,7 @@ export default function NotificationsScreen() {
   const { bump } = useContext(SessionEpochContext);
   const [items, setItems] = useState<Notification[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const load = useCallback(async () => {
     try {
@@ -77,7 +79,7 @@ export default function NotificationsScreen() {
       data={items}
       keyExtractor={(item, index) => `${item.type}-${item.createdAt}-${index}`}
       style={styles.frame}
-      contentContainerStyle={styles.list}
+      contentContainerStyle={[styles.list, { paddingBottom: 84 + Math.max(insets.bottom, 12) }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={meta} />}
       renderItem={({ item }) => (
         <Pressable

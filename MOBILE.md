@@ -2,9 +2,11 @@
 
 `mobile/` is a hybrid app with a fully native reading surface and X-anatomy
 navigation in annotated's identity: your avatar top-left opens **the
-drawer** (swipe right works too), the wordmark sits center, four tabs run
-along the bottom — **Home · Search · Notifications · Profile** — and
-capture floats as the ink **FAB**. Home's feed menu scrolls horizontally:
+drawer** (swipe right works too), the wordmark sits center, and five tabs
+sit in a **floating pill** padded off the screen edges above the home
+indicator — **Home · Search · Capture (the pen, center) · Notifications ·
+Profile** — with the feeds scrolling behind it, the same floating-pill
+language as the web's mobile dock. Home's feed menu scrolls horizontally:
 Recent · Trending · Following, then every topic as its own feed. The
 timeline and search results are native React Native (FlatList physics,
 pull-to-refresh, cursor paging) built on the shared core packages; the
@@ -33,13 +35,14 @@ test suite fails if either goes stale.
   panel: account card, Library, Moderation (moderators), the public pages,
   sign out.
 - `app/(drawer)/(tabs)/_layout.tsx` — the header (avatar → drawer,
-  wordmark), the four tabs, and the capture FAB, painted with the web's
-  tokens.
+  wordmark) and the floating pill bar with its five tabs, painted with the
+  web's tokens.
 - `app/(drawer)/(tabs)/index.tsx` → `components/Timeline.tsx` — the native
   feed; `search.tsx` → `components/SearchScreen.tsx`; `notifications.tsx` →
-  `components/NotificationsScreen.tsx`; `profile.tsx` — your public page in
-  shell mode.
-- `app/capture.tsx` — the capture desk, pushed from the FAB or a share.
+  `components/NotificationsScreen.tsx`; `profile.tsx` — your public page
+  in shell mode.
+- `app/(drawer)/(tabs)/capture.tsx` — the capture desk: the center pen
+  tab, and where a share-sheet arrival lands.
 - `app/web/[...path].tsx` — any internal page (permalink `/a/…`, profile
   `/u/…`, hub `/s/…`) pushed under a native header.
 - `components/WebScreen.tsx` — the WebView wrapper: shell-mode URL, OAuth
@@ -60,8 +63,8 @@ test suite fails if either goes stale.
   annotation's web page; media plays there. Native fetches share the
   system cookie jar with the WebViews, so the timeline is signed in the
   moment any surface is.
-- **Share → capture desk.** Sharing a page/video into annotated pushes the
-  capture screen with `/capture?text=<shared payload>` — the same contract
+- **Share → capture desk.** Sharing a page/video into annotated lands on
+  the Capture tab with `/capture?text=<shared payload>` — the same contract
   the PWA share target uses. Cold start and warm share both work; sharing
   the same link twice still reloads the desk.
 - **Sign in.** From a WebView, tapped sign-in links are intercepted; from
@@ -124,8 +127,9 @@ EXPO_PUBLIC_ORIGIN=http://localhost:8787 npx expo start --web
 
 ## What to test on the device
 
-1. Install, open — avatar top-left, wordmark center, four tabs below, the
-   ink FAB floating; the feed menu scrolls sideways and switches tick.
+1. Install, open — avatar top-left, wordmark center, the floating pill
+   bar below with the pen at its center; the feed menu scrolls sideways,
+   switches tick, and the feed scrolls behind the bar.
 2. Swipe right from the left edge (or tap your avatar) — the drawer slides
    out with your account card and the public pages.
 3. Notifications — the bell badge counts unseen; opening the tab clears it.
@@ -143,8 +147,9 @@ EXPO_PUBLIC_ORIGIN=http://localhost:8787 npx expo start --web
 
 - `expo-share-intent` requires a real build (dev build or TestFlight); the
   share extension does not exist inside Expo Go.
-- The timeline is native; every other product surface stays web, so a web
-  deploy updates them instantly. Chrome-level changes (tabs, timeline,
-  share sheet, auth plumbing) need an app release.
-- Timeline media playback happens on the pushed annotation page (the web
-  player) — native inline playback is a deliberate later step.
+- The timeline, search, and notifications are native; the desk-work
+  surfaces stay web, so a web deploy updates them instantly. Chrome-level
+  changes (tabs, timeline, share sheet, auth plumbing) need an app
+  release.
+- Clips and audio play inline in the feed (players mounted on tap); the
+  pushed annotation page remains the full playback surface.

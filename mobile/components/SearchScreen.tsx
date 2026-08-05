@@ -6,6 +6,7 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { annotationToFeedItem } from '../lib/core/feed-item';
 import type { FeedItem } from '../lib/core/feed-item';
 import { avatarColor, avatarInitial } from '../lib/core/avatar';
@@ -25,6 +26,7 @@ export default function SearchScreen() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [searching, setSearching] = useState(false);
   const requestSeq = useRef(0);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const text = query.trim();
@@ -91,7 +93,7 @@ export default function SearchScreen() {
         data={items}
         keyExtractor={(item, index) => item.slug || String(index)}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: 84 + Math.max(insets.bottom, 12) }]}
         ListHeaderComponent={people.length ? (
           <View style={styles.peopleBlock}>
             <Text style={styles.sectionLabel}>People</Text>

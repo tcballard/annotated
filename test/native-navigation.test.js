@@ -17,10 +17,13 @@ test('the header is X-anatomy in our identity: avatar opens the drawer, the word
   assert.match(brandMark, /annotated<Text style=\{\{ color: accent \}\}>\.<\/Text>/, 'the terracotta dot is the one accent in chrome');
 });
 
-test('capture floats as the FAB and pushes the desk', () => {
-  assert.match(tabsLayout, /router\.push\('\/capture'\)/);
-  assert.match(tabsLayout, /accessibilityLabel="Capture a moment"/);
-  assert.match(tabsLayout, /name="plus"/);
+test('capture is the pen at the center of a floating pill bar', () => {
+  assert.match(tabsLayout, /name="capture"/);
+  assert.match(tabsLayout, /name="edit-3"/, 'the pen, not a plus');
+  assert.doesNotMatch(tabsLayout, /name="plus"/, 'the FAB is gone');
+  assert.match(tabsLayout, /position: 'absolute',\s*\n\s*left: 14,\s*\n\s*right: 14,/, 'the bar is inset from the edges');
+  assert.match(tabsLayout, /borderRadius: 29/, 'a full pill');
+  assert.match(tabsLayout, /Math\.max\(insets\.bottom, 12\)/, 'padded above the home indicator');
 });
 
 test('the drawer carries account, library, and the public pages', () => {

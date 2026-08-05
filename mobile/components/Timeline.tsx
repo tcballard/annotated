@@ -26,6 +26,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
 import Feather from '@expo/vector-icons/Feather';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { annotationToFeedItem, chipFor, formatTime } from '../lib/core/feed-item';
 import type { FeedItem } from '../lib/core/feed-item';
 import { avatarColor } from '../lib/core/avatar';
@@ -194,6 +195,7 @@ export const FeedCard = ({ item, following, ownId, onOpenAnnotation, onOpenProfi
 // sign-in lands anywhere in the app, and owns its own refresh + paging.
 const FeedPane = ({ selection, active, actions, ownId }: { selection: Selection; active: boolean; actions: FeedActions; ownId: string }) => {
   const { epoch } = useContext(SessionEpochContext);
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<FeedItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -275,7 +277,7 @@ const FeedPane = ({ selection, active, actions, ownId }: { selection: Selection;
             onShare={actions.share}
           />
         )}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: 84 + Math.max(insets.bottom, 12) }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={meta} />}
         onEndReached={loadMore}
         onEndReachedThreshold={0.4}

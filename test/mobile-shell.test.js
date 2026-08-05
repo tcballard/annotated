@@ -7,7 +7,7 @@ const drawerLayout = await readFile(new URL('../mobile/app/(drawer)/_layout.tsx'
 const tabsLayout = await readFile(new URL('../mobile/app/(drawer)/(tabs)/_layout.tsx', import.meta.url), 'utf8');
 const timelineTab = await readFile(new URL('../mobile/app/(drawer)/(tabs)/index.tsx', import.meta.url), 'utf8');
 const profileTab = await readFile(new URL('../mobile/app/(drawer)/(tabs)/profile.tsx', import.meta.url), 'utf8');
-const captureScreen = await readFile(new URL('../mobile/app/capture.tsx', import.meta.url), 'utf8');
+const captureScreen = await readFile(new URL('../mobile/app/(drawer)/(tabs)/capture.tsx', import.meta.url), 'utf8');
 const webPage = await readFile(new URL('../mobile/app/web/[...path].tsx', import.meta.url), 'utf8');
 const webScreen = await readFile(new URL('../mobile/components/WebScreen.tsx', import.meta.url), 'utf8');
 const shellHelpers = await readFile(new URL('../mobile/lib/shell.ts', import.meta.url), 'utf8');
@@ -34,11 +34,10 @@ test('navigation is native, X-anatomy: a stack over a drawer over tabs', () => {
   assert.ok(appConfig.expo.plugins.includes('expo-router'), 'expo-router config plugin must be registered');
   assert.match(rootLayout, /<Stack/);
   assert.match(rootLayout, /name="\(drawer\)"/);
-  assert.match(rootLayout, /name="capture"/, 'the capture desk pushes over the tabs');
   assert.match(rootLayout, /name="web\/\[\.\.\.path\]"/, 'internal pages push over the tabs');
   assert.match(drawerLayout, /<Drawer/);
   assert.match(drawerLayout, /swipeEdgeWidth/, 'the drawer answers an edge swipe');
-  for (const name of ['index', 'search', 'notifications', 'profile']) {
+  for (const name of ['index', 'search', 'capture', 'notifications', 'profile']) {
     assert.match(tabsLayout, new RegExp(`name="${name}"`), `the ${name} tab must exist`);
   }
   assert.match(tabsLayout, /tabPress: \(\) => \{ void Haptics\.selectionAsync\(\); \}/, 'tab switches give haptic feedback');
