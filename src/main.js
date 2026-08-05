@@ -285,10 +285,13 @@ const recoverAuthError = (error, message = 'Your session has expired. Sign in ag
 
 /* ── routing ───────────────────────────────────────────────────────── */
 
+const DOC_VIEWS = { about: '/about', extension: '/extension', audit: '/audit', rights: '/rights', terms: '/terms' };
+
 const routeFor = (view) => view === 'feed' ? '/'
   : view === 'capture' ? '/capture'
   : view === 'library' ? '/library'
   : view === 'moderation' ? '/moderation'
+  : DOC_VIEWS[view] ? DOC_VIEWS[view]
   : view === 'published' && state.publishedSlug ? `/a/${encodeURIComponent(state.publishedSlug)}`
   : view === 'profile' && state.profileHandle ? `/u/${encodeURIComponent(state.profileHandle)}`
   : view === 'hub' && state.hubHost ? `/s/${encodeURIComponent(state.hubHost)}`
@@ -325,6 +328,8 @@ const applyLocation = () => {
     state.activeView = 'library';
   } else if (window.location.pathname === '/moderation') {
     state.activeView = 'moderation';
+  } else if (Object.values(DOC_VIEWS).includes(window.location.pathname)) {
+    state.activeView = Object.keys(DOC_VIEWS).find((view) => DOC_VIEWS[view] === window.location.pathname);
   } else {
     state.activeView = 'feed';
   }
@@ -567,7 +572,7 @@ const railView = () => {
     ${signCard}
     ${curatorsCard}
     <div class="card"><h2>The annotated rule</h2><p class="rulequote">&ldquo;A clip without its source is just a rumour.&rdquo;</p><p>Every public page points back to the original. Context travels with the moment.</p></div>
-    <div class="card"><h2>Sidebar-first</h2><p>Capturing from the page you are on is faster in the Chrome sidebar.</p><p><a href="/CHROMEWEBSTORE.md" data-action="extension-note">Get the extension →</a></p></div>
+    <div class="card"><h2>Sidebar-first</h2><p>Capturing from the page you are on is faster in the Chrome sidebar.</p><p><a href="/extension" data-action="set-view" data-view="extension">Get the extension →</a></p></div>
   </aside>`;
 };
 
@@ -908,10 +913,131 @@ const toast = () => state.toast
   ? `<div class="toast" role="status">${icon('check')}<span>${escapeHTML(state.toast)}</span>${state.toastLink ? `<a href="${escapeHTML(state.toastLink.href)}" data-action="toast-link">${escapeHTML(state.toastLink.label)}</a>` : ''}</div>`
   : '';
 
+/* ── public doc pages ──────────────────────────────────────────────── */
+
+const docPage = (title, lead, body) => `
+  <div class="page single">
+    <div class="libhead doc-head"><div><h1>${title}</h1><div class="lib-meta">${lead}</div></div></div>
+    <div class="docbody">${body}</div>
+  </div>`;
+
+const aboutView = () => docPage('What this is', 'source-first notes', `
+  <div class="card"><h2>The rule</h2>
+    <p class="rulequote">&ldquo;A clip without its source is just a rumour.&rdquo;</p>
+    <p>annotated keeps a specific moment from the web — a passage, a bounded clip, a screenshot — with your context and a live link back to the original. Every public page points at its source. Context travels with the moment.</p>
+  </div>
+  <div class="card"><h2>How it works</h2>
+    <ol class="doc-steps">
+      <li><strong>Clip the moment.</strong> Select a passage, mark in/out on the page&rsquo;s own player, or capture the visible tab — from the Chrome side panel or the web capture desk.</li>
+      <li><strong>Say why it matters.</strong> A written note or a recorded audio note, up to 90 seconds.</li>
+      <li><strong>Publish with the source attached.</strong> The annotation gets its own landing page, a share card, and a deep link that lands on the exact moment — <code>&amp;t=</code> for media, <code>#:~:text=</code> for passages.</li>
+    </ol>
+  </div>
+  <div class="card"><h2>What gets hosted</h2>
+    <p>Media clips are transcoded and hosted as bounded excerpts: at most 90 seconds, video at 240p, verified server-side before they can publish. Screenshots are stored as captured. The full work never leaves its home — the prominent action on every page is <em>Open original</em>, and we count those opens as the measure that matters.</p>
+  </div>
+  <div class="card"><h2>Visibility</h2>
+    <p><strong>Public</strong> annotations appear in the timeline, hubs, and profiles. <strong>Unlisted</strong> pages unfurl for anyone with the link but ask crawlers not to index. <strong>Private</strong> is you-only. Authors can edit the note for 30 minutes, change visibility anytime, and delete outright.</p>
+  </div>
+  <p class="doc-footnote">Questions or issues: the <a href="https://github.com/tcballard/annotated/issues" target="_blank" rel="noreferrer">public tracker</a>. Rights holders: <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>.</p>
+`);
+
+const extensionView = () => docPage('The Chrome side panel', 'the primary surface', `
+  <div class="card"><h2>What it does</h2>
+    <p>annotated lives in Chrome&rsquo;s side panel, docked next to the page you are reading. Four full-height modes — <strong>Capture &middot; Recent &middot; Following &middot; This page</strong> — with Capture first on open.</p>
+    <ul class="doc-list">
+      <li>Mark in/out read the page&rsquo;s own player — YouTube and HTML5 media — with typed <span class="kbd-mono">mm:ss</span> fallback when no player is reachable.</li>
+      <li>Selected passages carry a &para; anchor and text-quote context, so the deep link lands on the exact words.</li>
+      <li>Screenshot capture keeps the visible tab as the moment.</li>
+      <li>Notes are text or recorded audio; drafts persist per tab; captures made offline queue and publish when the backend returns.</li>
+    </ul>
+  </div>
+  <div class="card"><h2>Keyboard</h2>
+    <table class="doc-table"><tbody>
+      <tr><td><kbd>I</kbd> / <kbd>O</kbd></td><td>Mark in / mark out from the player (returns you to Capture)</td></tr>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Publish</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Clear the current draft</td></tr>
+    </tbody></table>
+  </div>
+  <div class="card"><h2>Install</h2>
+    <p>The Chrome Web Store listing is in review. Until it lands, load it unpacked in under a minute:</p>
+    <ol class="doc-steps">
+      <li>Clone or download <a href="https://github.com/tcballard/annotated" target="_blank" rel="noreferrer">the repository</a>.</li>
+      <li>Open <span class="kbd-mono">chrome://extensions</span> and turn on <strong>Developer mode</strong>.</li>
+      <li>Choose <strong>Load unpacked</strong> and select the <span class="kbd-mono">extension/</span> folder.</li>
+      <li>Open any page, click the annotated icon, and pin the side panel.</li>
+    </ol>
+    <p>The panel talks to this deployment by default; point it elsewhere from its options page.</p>
+  </div>
+`);
+
+const auditRows = [
+  ['Chrome sidebar is the primary surface', 'A Manifest V3 side panel with four full-height modes; capture is the default state, not a pop-up.'],
+  ['Clip text, screenshots, and media from the page', 'Passage selection with paragraph and text-quote anchors, visible-tab screenshots, and in/out marks read from the page&rsquo;s own player.'],
+  ['Hosted 240p clips — not third-party embeds', 'The bounded excerpt is transcoded (<span class="kbd-mono">scale=-2:240</span>) and hosted here. Output is probe-verified &le;240p before it can publish; a failed probe fails the clip, never relaxes it.'],
+  ['90-second maximum, enforced server-side', 'A 91-second range is rejected with 422 at the API; the transcoder clamps; the probe re-verifies the artifact. Recorded audio commentary is held to the same ceiling.'],
+  ['Text and recorded audio commentary', 'A Text &middot; Audio toggle in the panel and the capture desk; audio is staged in the browser and uploaded on publish.'],
+  ['Every annotation links its original', 'Deep links land on the moment — <span class="kbd-mono">&amp;t=</span> for media, <span class="kbd-mono">#:~:text=</span> for passages — and opens of the original are counted and ranked.'],
+  ['A landing page per clip', 'Every annotation gets <span class="kbd-mono">/a/:slug</span> with server-injected social meta and a rendered share card at <span class="kbd-mono">/og/:slug.png</span>.'],
+  ['Public feed, follow, comment', 'A public timeline with Recent and Following, responses on every page, profiles, per-source hubs, and curators ranked by opens driven back to sources.'],
+  ['Sign in with X or Google only', 'Both providers ship enabled; production refuses to boot unless both credential pairs are configured.'],
+  ['File a claim on every annotation page', 'Above the fold on every page. Claims persist, deduplicate, and feed a moderation queue that can resolve into a real takedown — a public tombstone with the hosted media deleted.'],
+  ['YouTube, podcasts, and articles', 'YouTube via the extractor pipeline, podcasts from RSS enclosures and direct audio, articles through a bounded resolver — one annotation model across all three.'],
+];
+
+const auditView = () => docPage('The brief, enforced', `${auditRows.length} requirements &middot; enforced in code, not policy`, `
+  <div class="card"><h2>Where we stand</h2>
+    <p>Every requirement below is live in this build and enforced at the server boundary — the UI is polite about limits, but the API is the law. The one deliberate reading: &ldquo;hosted clips&rdquo; means <em>hosted</em>. annotated transcodes the bounded excerpt and serves it from its own storage with a required link back, rather than embedding third-party players and calling it a clip.</p>
+  </div>
+  <table class="doc-table audit-table"><tbody>
+    ${auditRows.map(([requirement, enforcement]) => `<tr><td class="audit-req">${requirement}</td><td>${enforcement}</td></tr>`).join('')}
+  </tbody></table>
+  <div class="card"><h2>Open items, honestly</h2>
+    <p>The Chrome Web Store listing is awaiting review (the panel loads unpacked today — see <a href="/extension" data-action="set-view" data-view="extension">the extension page</a>). Provider egress for YouTube transcodes is configured per deployment. Both are deployment gates, not code gaps; the enforcement above ships either way.</p>
+  </div>
+  <p class="doc-footnote">The dated engineering record behind this page lives in the repository: acceptance evidence, staging smokes, and the failure modes we chose to keep visible.</p>
+`);
+
+const rightsView = () => docPage('Rights &amp; claims', 'for source owners', `
+  <div class="card"><h2>Our posture</h2>
+    <p>annotated hosts bounded excerpts — at most 90 seconds, video at 240p — with a required, prominent link to the original on every page. The point of the product is to send readers back to the source; opens of the original are the number we rank by.</p>
+  </div>
+  <div class="card"><h2>Filing a claim</h2>
+    <p>Every annotation page has a <strong>File a claim</strong> action above the fold. A claim is persisted, attached to the annotation, deduplicated while active, and lands in a moderation queue with the source and reporter attached.</p>
+  </div>
+  <div class="card"><h2>What a takedown looks like</h2>
+    <p>A claim resolved with a takedown removes the annotation for real: the hosted media is deleted and the page becomes a public tombstone stating that the source owner asked for it to come down. The claim trail is retained for accountability — takedowns are visible, not silent.</p>
+  </div>
+  <div class="card"><h2>Author removals</h2>
+    <p>Authors can delete their own annotations at any time; those pages return a plain not-found. Only rights takedowns leave a tombstone.</p>
+  </div>
+  <p class="doc-footnote">To reach a person about a rights issue, use the <a href="https://github.com/tcballard/annotated/issues" target="_blank" rel="noreferrer">public tracker</a> without posting personal data. The publisher is Tom Ballard.</p>
+`);
+
+const termsView = () => docPage('Terms', 'short and honest', `
+  <div class="card"><h2>The service</h2>
+    <p>annotated is an early-stage service operated from the UK by Tom Ballard. It is provided as-is while in active development: no uptime promise, and features may change. If we ever retire it, public pages will be given a wind-down notice first.</p>
+  </div>
+  <div class="card"><h2>Your content</h2>
+    <p>Your annotations remain yours. By publishing you grant annotated the right to host and display the note and the bounded excerpt you captured, at the visibility you chose. You are responsible for having the right to post what you capture; the 90-second and 240p ceilings are enforced by the service and are not yours to waive.</p>
+  </div>
+  <div class="card"><h2>Sources and claims</h2>
+    <p>Rights holders can file a claim on any annotation page. Upheld claims result in a public takedown — see <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>. Do not use annotated to republish works wholesale; it is built to excerpt and point back.</p>
+  </div>
+  <div class="card"><h2>Accounts and conduct</h2>
+    <p>Sign-in is via X or Google only; we store the minimum identity needed to attribute your work (see the <a href="/privacy.html">privacy policy</a>). We may remove content or accounts that abuse the service, impersonate others, or ignore upheld claims.</p>
+  </div>
+  <p class="doc-footnote">Questions about these terms: the <a href="https://github.com/tcballard/annotated/issues" target="_blank" rel="noreferrer">public tracker</a>.</p>
+`);
+
 const footerView = () => `
   <footer>
+    <a href="/about" data-action="set-view" data-view="about">About</a>
+    <a href="/extension" data-action="set-view" data-view="extension">Extension</a>
+    <a href="/audit" data-action="set-view" data-view="audit">Brief audit</a>
+    <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>
+    <a href="/terms" data-action="set-view" data-view="terms">Terms</a>
     <a href="/privacy.html">Privacy</a>
-    <a href="#" data-action="rights-note">Rights &amp; claims</a>
     <span class="footer-note">annotated © 2026 · source-first notes</span>
   </footer>`;
 
@@ -922,6 +1048,11 @@ const render = () => {
     : state.activeView === 'profile' ? profileView()
     : state.activeView === 'hub' ? hubView()
     : state.activeView === 'moderation' ? moderationView()
+    : state.activeView === 'about' ? aboutView()
+    : state.activeView === 'extension' ? extensionView()
+    : state.activeView === 'audit' ? auditView()
+    : state.activeView === 'rights' ? rightsView()
+    : state.activeView === 'terms' ? termsView()
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
   app.innerHTML = `${chromeBar()}${offline}${authStateView()}${view}${footerView()}${state.claimOpen ? claimModal() : ''}${toast()}`;
@@ -1406,6 +1537,7 @@ app.addEventListener('click', (event) => {
     return;
   }
   if (action === 'set-view') {
+    if (target.tagName === 'A') event.preventDefault();
     if (target.dataset.view === 'moderation' && !canModerate()) { notify('Moderation access is required.'); return; }
     if (state.activeView !== 'profile') state.profileHandle = '';
     navigate(target.dataset.view);
@@ -1589,8 +1721,6 @@ app.addEventListener('click', (event) => {
   }
   if (action === 'close-claim') { closeClaimDialog(); return; }
   if (action === 'submit-claim') { submitClaim(); return; }
-  if (action === 'rights-note') { event.preventDefault(); notify('Use “File a claim” on any annotation page to report a rights issue.'); return; }
-  if (action === 'extension-note') { event.preventDefault(); notify('The extension ships with the repository — see CHROMEWEBSTORE.md.'); return; }
   if (action === 'logout') { api.logout().then(() => { state.user = null; render(); notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
 });
 
