@@ -38,6 +38,19 @@ test('originals open OUT and opens are counted, same as every other surface', ()
   assert.match(timeline, /router\.push\(`\/web\/a\/\$\{encodeURIComponent\(item\.slug\)\}`\)/, 'annotation pages push as web surfaces');
 });
 
+test('avatars: OAuth profile photos when present, deterministic colored initials when not', async () => {
+  const { readFile } = await import('node:fs/promises');
+  assert.match(timeline, /item\.avatarUrl\s*\n?\s*\? <Image source=\{\{ uri: item\.avatarUrl \}\}/);
+  assert.match(timeline, /avatarColor\(item\.handle/);
+  const authServer = await readFile(new URL('../server/auth.js', import.meta.url), 'utf8');
+  assert.match(authServer, /providerAvatarUrl/, 'the stored avatar URL is bounded and https-only');
+  assert.match(authServer, /_400x400/, "X's 48px _normal variant upgrades for retina");
+  const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+  assert.match(main, /avatarColor\(person\.handle/, 'the web renders the same shared avatar identity');
+  const panel = await readFile(new URL('../extension/sidepanel.js', import.meta.url), 'utf8');
+  assert.match(panel, /from '\.\/avatar\.js'/, 'the panel renders the same shared avatar identity');
+});
+
 test('native sign-in is the same ticket exchange, driven without a WebView', () => {
   assert.match(nativeAuth, /openAuthSessionAsync\(withMobileReturn\(startUrl\), 'annotated:\/\/auth'\)/);
   assert.match(nativeAuth, /sessionExchangeUrl\(ORIGIN, ticket, '\/'\)/);

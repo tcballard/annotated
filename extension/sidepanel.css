@@ -432,6 +432,10 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .post:hover { background: var(--hover-row); }
 
+.avatar.has-photo { overflow: hidden; }
+
+.avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+
 .avatar {
   width: 30px;
   height: 30px;

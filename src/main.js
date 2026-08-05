@@ -9,6 +9,7 @@ import { openOriginalHref, openOriginalLabel } from './deep-link.js';
 import { sharedUrlFromParams } from './share-capture.js';
 import { isTopic, TOPICS, topicLabel } from './topics.js';
 import { annotationToFeedItem, annotationVerb, chipFor, formatTime, hostOf, parseTimeInput, relTime, sourceLabels, VISIBILITIES } from './feed-item.js';
+import { avatarColor, avatarInitial } from './avatar.js';
 
 const app = document.querySelector('#app');
 
@@ -232,6 +233,13 @@ const notify = (message, link = null) => {
 
 const icon = (name, className = '') => `<span class="icon ${className}">${icons[name] || ''}</span>`;
 
+// One avatar everywhere: the OAuth profile photo when the account has one,
+// otherwise a deterministic colored initial — same color for the same
+// handle on web, extension, and the native app.
+const avatarHtml = (person = {}) => person.avatarUrl
+  ? `<span class="avatar has-photo" aria-hidden="true"><img src="${escapeHTML(person.avatarUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" /></span>`
+  : `<span class="avatar" aria-hidden="true" style="background:${avatarColor(person.handle || person.displayName)};color:#fff">${escapeHTML(avatarInitial(person))}</span>`;
+
 /* ── auth ──────────────────────────────────────────────────────────── */
 
 const authLinks = (className = 'auth-prompt-link') => enabledProviders(state.authProviders)
@@ -241,7 +249,10 @@ const authLinks = (className = 'auth-prompt-link') => enabledProviders(state.aut
 const chromeAuth = () => {
   if (state.user) {
     const initials = escapeHTML((state.user.displayName || state.user.handle || 'A').slice(0, 2).toUpperCase());
-    return `<span class="auth"><button class="me" data-action="logout" aria-label="Sign out ${escapeHTML(state.user.handle || '')}" title="Sign out">${initials}</button></span>`;
+    const face = state.user.avatarUrl
+      ? `<img src="${escapeHTML(state.user.avatarUrl)}" alt="" referrerpolicy="no-referrer" />`
+      : initials;
+    return `<span class="auth"><button class="me ${state.user.avatarUrl ? 'has-photo' : ''}" data-action="logout" aria-label="Sign out ${escapeHTML(state.user.handle || '')}" title="Sign out">${face}</button></span>`;
   }
   const providers = enabledProviders(state.authProviders);
   if (!providers.length) return `<span class="auth"><span class="connection-note">${state.serverStatus === 'offline' ? 'offline' : 'local'}</span></span>`;
@@ -504,7 +515,7 @@ const personRow = (person, { stat = 'opens' } = {}) => {
     : `<span><strong>${Number(person.followers) || 0}</strong> followers</span>`;
   return `
   <div class="librow">
-    <div class="avatar" aria-hidden="true">${escapeHTML((person.displayName || person.handle || 'A').slice(0, 1).toUpperCase())}</div>
+    ${avatarHtml(person)}
     <div class="librow-main">
       <div class="librow-title"><a href="/u/${encodeURIComponent(person.handle)}" data-action="open-profile" data-handle="${escapeHTML(person.handle)}">@${escapeHTML(person.handle)}</a></div>
       <div class="librow-note">${escapeHTML(person.displayName || '')}</div>
@@ -523,7 +534,7 @@ const feedPost = (item) => {
     : '';
   return `
   <article class="post" data-action="open-annotation" data-slug="${escapeHTML(item.slug || '')}">
-    <div class="avatar" aria-hidden="true">${escapeHTML(item.initials)}</div>
+    ${avatarHtml(item)}
     <div class="content">
       <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a><span class="meta">· ${escapeHTML(item.time)} · ${escapeHTML(annotationVerb(item.type))}${item.editedAt ? ' · edited' : ''}</span>${item.topic ? `<button class="topic-tag" data-action="feed-topic" data-topic="${escapeHTML(item.topic)}" title="See what's trending in ${escapeHTML(topicLabel(item.topic))}">${escapeHTML(topicLabel(item.topic))}</button>` : ''}</div>
       ${note}
@@ -669,7 +680,7 @@ const permalinkView = () => {
   <div class="page single">
     <article class="permacard">
       <div class="byline">
-        <div class="avatar" aria-hidden="true">${escapeHTML(item.initials)}</div>
+        ${avatarHtml(item)}
         <div class="who">
           <a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a>
           <span class="meta">${escapeHTML(item.time)}${item.editedAt ? ' · edited' : ''} · ${isMine
@@ -696,7 +707,7 @@ const permalinkView = () => {
     </article>
     <section class="responses">
       <h2>Responses</h2>
-      ${comments.length ? comments.map((comment) => `<div class="resp"><div class="avatar" aria-hidden="true">${escapeHTML((comment.author?.handle || 'A').slice(0, 1).toUpperCase())}</div><div class="resp-body"><b>@${escapeHTML(comment.author?.handle || comment.authorId)}</b> <span class="meta">· ${escapeHTML(relTime(comment.createdAt))}</span><br>${escapeHTML(comment.body)}</div></div>`).join('') : '<div class="resp"><span class="meta">No responses yet. Add the first considered response.</span></div>'}
+      ${comments.length ? comments.map((comment) => `<div class="resp">${avatarHtml(comment.author || {})}<div class="resp-body"><b>@${escapeHTML(comment.author?.handle || comment.authorId)}</b> <span class="meta">· ${escapeHTML(relTime(comment.createdAt))}</span><br>${escapeHTML(comment.body)}</div></div>`).join('') : '<div class="resp"><span class="meta">No responses yet. Add the first considered response.</span></div>'}
       ${respondArea}
     </section>
   </div>`;
@@ -809,7 +820,6 @@ const libraryView = () => {
   if (state.libraryLoading) return `<div class="page single">${skeletonPost()}${skeletonPost()}</div>`;
   const profile = state.libraryData;
   const annotations = (profile?.annotations || []).map(annotationToFeedItem);
-  const initials = escapeHTML((state.user.displayName || state.user.handle || 'A').slice(0, 1).toUpperCase());
   const hasDraft = Boolean(state.customSource || state.commentary.trim() || articleExcerpt());
   const draftRow = hasDraft ? `
     <div class="lib-section">Drafts</div>
@@ -830,7 +840,7 @@ const libraryView = () => {
   return `
   <div class="page single">
     <div class="libhead">
-      <div class="avatar" aria-hidden="true">${initials}</div>
+      ${avatarHtml(state.user)}
       <div><h1>Library</h1><div class="lib-meta">@${escapeHTML(state.user.handle || '')} · ${escapeHTML(state.user.displayName || '')}</div></div>
       <div class="lib-counts"><span><strong>${Number(profile?.annotationCount) || annotations.length}</strong> published</span><span><strong>${Number(profile?.followers) || 0}</strong> followers</span><span><strong>${Number(profile?.following) || 0}</strong> following</span></div>
       ${SHELL_MODE ? `<button class="ghost" data-action="logout">Sign out</button>` : ''}
@@ -874,7 +884,7 @@ const profileView = () => {
   return `
   <div class="page single">
     <div class="libhead">
-      <div class="avatar" aria-hidden="true">${escapeHTML((profile.displayName || profile.handle || 'A').slice(0, 1).toUpperCase())}</div>
+      ${avatarHtml(profile)}
       <div><h1>${escapeHTML(profile.displayName || profile.handle)}</h1><div class="lib-meta">@${escapeHTML(profile.handle)}${profile.bio ? ` · ${escapeHTML(profile.bio)}` : ''}</div></div>
       <div class="lib-counts"><span><strong>${Number(profile.annotationCount) || items.length}</strong> annotations</span><span><strong>${Number(profile.followers) || 0}</strong> followers</span></div>
       ${!isCurrentUser ? `<button class="ghost ${following ? 'is-on' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(profile.id)}">${following ? 'Following' : 'Follow'}</button>` : ''}

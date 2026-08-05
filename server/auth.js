@@ -172,8 +172,15 @@ const profileFromProvider = async (providerName, provider, accessToken) => {
     handle: String(data.preferred_username || data.username || data.email?.split('@')[0] || `${providerName}-${String(data.sub || data.id).slice(0, 8)}`).slice(0, 80),
     displayName: String(data.name || data.email || 'Annotated user').slice(0, 120),
     email: data.email || null,
-    avatarUrl: data.picture || data.profile_image_url || null,
+    avatarUrl: providerAvatarUrl(data.picture || data.profile_image_url),
   };
+};
+
+// Only an https URL is ever stored, bounded; X hands out the 48px
+// `_normal` variant, which upgrades to 400px for retina rendering.
+const providerAvatarUrl = (value) => {
+  const url = String(value || '').replace('_normal.', '_400x400.').slice(0, 500);
+  return /^https:\/\//.test(url) ? url : null;
 };
 
 const upsertUser = async (identity) => {

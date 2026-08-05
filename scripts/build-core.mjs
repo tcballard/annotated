@@ -30,6 +30,7 @@ export const CORE_MODULES = {
   'share-links': ['src/share-links.js'],
   'share-capture': ['src/share-capture.js'],
   'auth-ui': ['src/auth-ui.js'],
+  'avatar': ['src/avatar.js', 'extension/avatar.js'],
 };
 
 export const MOBILE_CORE_DIR = 'mobile/lib/core';

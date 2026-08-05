@@ -24,8 +24,9 @@ import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
 import Feather from '@expo/vector-icons/Feather';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { annotationToFeedItem, annotationVerb, chipFor, formatTime } from '../lib/core/feed-item';
+import { annotationToFeedItem, chipFor, formatTime } from '../lib/core/feed-item';
 import type { FeedItem } from '../lib/core/feed-item';
+import { avatarColor } from '../lib/core/avatar';
 import { topicLabel } from '../lib/core/topics';
 import { openOriginalHref } from '../lib/core/deep-link';
 import { publicAnnotationUrl } from '../lib/core/share-links';
@@ -126,15 +127,21 @@ type CardProps = {
 
 const FeedCard = ({ item, following, ownId, onOpenAnnotation, onOpenProfile, onOpenOriginal, onToggleFollow, onShare }: CardProps) => (
   <Pressable style={({ pressed }) => [styles.post, pressed && styles.postPressed]} onPress={() => onOpenAnnotation(item)}>
-    <Pressable style={styles.avatar} onPress={() => onOpenProfile(item)} hitSlop={6}>
-      <Text style={styles.avatarText}>{item.initials}</Text>
+    <Pressable onPress={() => onOpenProfile(item)} hitSlop={6}>
+      {item.avatarUrl
+        ? <Image source={{ uri: item.avatarUrl }} style={styles.avatarImage} />
+        : (
+          <View style={[styles.avatar, { backgroundColor: avatarColor(item.handle || item.displayName) }]}>
+            <Text style={styles.avatarText}>{item.initials}</Text>
+          </View>
+        )}
     </Pressable>
     <View style={styles.content}>
       <View style={styles.byline}>
-        <Pressable onPress={() => onOpenProfile(item)} hitSlop={6}>
-          <Text style={styles.handle}>@{item.handle}</Text>
+        <Pressable onPress={() => onOpenProfile(item)} hitSlop={6} style={styles.who}>
+          <Text style={styles.name} numberOfLines={1}>{item.displayName || `@${item.handle}`}</Text>
+          <Text style={styles.metaText} numberOfLines={1}>{`${item.displayName ? `@${item.handle} · ` : ''}${item.time}${item.editedAt ? ' · edited' : ''}`}</Text>
         </Pressable>
-        <Text style={styles.metaText} numberOfLines={1}> · {item.time} · {annotationVerb(item.type)}{item.editedAt ? ' · edited' : ''}</Text>
         {item.topic ? <Text style={styles.topicTag}>{topicLabel(item.topic)}</Text> : null}
       </View>
       {item.commentary
@@ -146,17 +153,16 @@ const FeedCard = ({ item, following, ownId, onOpenAnnotation, onOpenProfile, onO
           <Feather name="external-link" size={15} color={ink} />
           <Text style={styles.actText}>Open original{item.opens ? ` · ${item.opens}` : ''}</Text>
         </Pressable>
-        <Pressable style={styles.act} onPress={() => onOpenAnnotation(item)} hitSlop={8}>
+        <Pressable style={styles.act} onPress={() => onOpenAnnotation(item)} hitSlop={8} accessibilityLabel="Respond">
           <Feather name="message-circle" size={15} color={meta} />
-          <Text style={styles.actMuted}>{item.comments || 'Respond'}</Text>
+          {item.comments ? <Text style={styles.actMuted}>{item.comments}</Text> : null}
         </Pressable>
         {item.authorId && item.authorId !== ownId ? (
-          <Pressable style={styles.act} onPress={() => onToggleFollow(item)} hitSlop={8}>
+          <Pressable style={styles.act} onPress={() => onToggleFollow(item)} hitSlop={8} accessibilityLabel={following ? 'Following' : 'Follow'}>
             <Feather name={following ? 'user-check' : 'user-plus'} size={15} color={following ? ink : meta} />
-            <Text style={following ? styles.actText : styles.actMuted}>{following ? 'Following' : 'Follow'}</Text>
           </Pressable>
         ) : null}
-        <Pressable style={[styles.act, styles.actLast]} onPress={() => onShare(item)} hitSlop={8} accessibilityLabel="Share annotation">
+        <Pressable style={styles.act} onPress={() => onShare(item)} hitSlop={8} accessibilityLabel="Share annotation">
           <Feather name="share" size={15} color={meta} />
         </Pressable>
       </View>
@@ -357,8 +363,8 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: card,
     borderRadius: radiusCard,
-    padding: 14,
-    marginBottom: 12,
+    padding: 12,
+    marginBottom: 10,
     shadowColor: tokens['chrome-dark'],
     shadowOpacity: 0.06,
     shadowRadius: 10,
@@ -366,14 +372,16 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   postPressed: { opacity: 0.92 },
-  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: tokens.soft, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: tokens['ink-soft'], fontWeight: '700', fontSize: 15 },
+  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  avatarImage: { width: 40, height: 40, borderRadius: 20, backgroundColor: tokens.soft },
+  avatarText: { color: '#fff', fontWeight: '700', fontSize: 16 },
   content: { flex: 1, minWidth: 0 },
-  byline: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'nowrap' },
-  handle: { color: ink, fontWeight: '700', fontSize: 14 },
-  metaText: { color: meta, fontSize: 12.5, flexShrink: 1 },
-  topicTag: { marginLeft: 'auto', fontSize: 11, color: tokens['ink-soft'], backgroundColor: tokens.soft, borderRadius: 99, paddingHorizontal: 7, paddingVertical: 2, overflow: 'hidden' },
-  note: { color: ink, fontSize: 15, lineHeight: 21, marginTop: 3 },
+  byline: { flexDirection: 'row', alignItems: 'center' },
+  who: { flexDirection: 'row', alignItems: 'baseline', flexShrink: 1, minWidth: 0 },
+  name: { color: ink, fontWeight: '700', fontSize: 14.5, flexShrink: 1 },
+  metaText: { color: meta, fontSize: 12.5, flexShrink: 1, marginLeft: 5 },
+  topicTag: { marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: tokens['ink-soft'], backgroundColor: tokens.soft, borderRadius: 99, paddingHorizontal: 7, paddingVertical: 2, overflow: 'hidden' },
+  note: { color: ink, fontSize: 14.5, lineHeight: 20, marginTop: 2 },
   srccard: { marginTop: 8, backgroundColor: tokens.strip, borderWidth: 1, borderColor: tokens.hair, borderRadius: radiusInner, padding: 10 },
   srchead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   chip: { fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }), fontSize: 11, color: tokens['ink-soft'], backgroundColor: tokens.soft, borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2, overflow: 'hidden' },
@@ -388,9 +396,8 @@ const styles = StyleSheet.create({
   wave: { flex: 1, height: 34, flexDirection: 'row', alignItems: 'flex-end', gap: 1.5, overflow: 'hidden' },
   waveBar: { flex: 1, minWidth: 1.5, backgroundColor: tokens.border, borderRadius: 1 },
   audioTime: { fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }), fontSize: 11, color: meta },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 10 },
+  actions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, paddingRight: 4 },
   act: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  actLast: { marginLeft: 'auto' },
   actText: { color: ink, fontSize: 12.5, fontWeight: '600' },
   actMuted: { color: meta, fontSize: 12.5 },
   empty: { backgroundColor: card, borderRadius: radiusCard, padding: 22, alignItems: 'center' },

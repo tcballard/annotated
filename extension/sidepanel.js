@@ -5,6 +5,7 @@ import { deleteAudioDraft, readAudioDraft, stageAudioDraft } from './media-draft
 import { MAX_CLIP_SECONDS } from './clip-range.js';
 import { isTopic, TOPICS } from './topics.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
+import { avatarColor, avatarInitial } from './avatar.js';
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -803,6 +804,8 @@ const annotationToItem = (annotation) => ({
   url: annotation.url,
   handle: annotation.author?.handle || 'you',
   initials: (annotation.author?.displayName || annotation.author?.handle || 'A').slice(0, 1).toUpperCase(),
+  displayName: annotation.author?.displayName || '',
+  avatarUrl: annotation.author?.avatarUrl || '',
   time: relTime(annotation.createdAt),
   type: annotation.sourceType,
   sourceTitle: annotation.sourceTitle || annotation.sourceHost || 'Source',
@@ -925,7 +928,9 @@ const timelinePost = (item) => {
   const quote = item.quote ? `<blockquote>&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
   return `
   <article class="post">
-    <div class="avatar" aria-hidden="true">${escapeHTML(item.initials)}</div>
+    ${item.avatarUrl
+      ? `<span class="avatar has-photo" aria-hidden="true"><img src="${escapeHTML(item.avatarUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" /></span>`
+      : `<span class="avatar" aria-hidden="true" style="background:${avatarColor(item.handle || item.displayName)};color:#fff">${escapeHTML(avatarInitial(item))}</span>`}
     <div class="content">
       <div class="byline"><span class="name">@${escapeHTML(item.handle)}</span><span class="meta">· ${escapeHTML(item.time)}${item.editedAt ? ' · edited' : ''}</span></div>
       ${noteLine}

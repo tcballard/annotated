@@ -53,6 +53,8 @@ export type AnnotationRecord = Record<string, any>;
 export type FeedItem = {
   type: string;
   initials: string;
+  displayName: string;
+  avatarUrl: string;
   handle: string;
   time: string;
   host: string;
@@ -89,6 +91,8 @@ export type FeedItem = {
 export const annotationToFeedItem = (annotation: AnnotationRecord): FeedItem => ({
   type: annotation.sourceType || 'article',
   initials: (annotation.author?.displayName || annotation.author?.handle || 'A').slice(0, 1).toUpperCase(),
+  displayName: annotation.author?.displayName || '',
+  avatarUrl: annotation.author?.avatarUrl || '',
   handle: annotation.author?.handle || annotation.authorId || 'user',
   time: relTime(annotation.createdAt),
   host: annotation.sourceHost || hostOf(annotation.sourceUrl),

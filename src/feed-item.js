@@ -51,6 +51,8 @@ export const hostOf = (url) => {
 export const annotationToFeedItem = (annotation) => ({
     type: annotation.sourceType || 'article',
     initials: (annotation.author?.displayName || annotation.author?.handle || 'A').slice(0, 1).toUpperCase(),
+    displayName: annotation.author?.displayName || '',
+    avatarUrl: annotation.author?.avatarUrl || '',
     handle: annotation.author?.handle || annotation.authorId || 'user',
     time: relTime(annotation.createdAt),
     host: annotation.sourceHost || hostOf(annotation.sourceUrl),
