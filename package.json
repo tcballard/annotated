@@ -10,6 +10,7 @@
     "test": "node --test",
     "acceptance:staging": "node scripts/accept-staging.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
+    "seed:personas": "node scripts/seed-personas.mjs",
     "acceptance:staging:media": "node scripts/accept-staging-media.mjs",
     "acceptance:staging:rate-limit": "node scripts/accept-staging-rate-limit.mjs",
     "configure:object-retention": "node scripts/configure-object-retention.mjs",

@@ -83,7 +83,11 @@ Judging against the brief? Each requirement maps to a place you can click:
 | Landing page per clip | `curl -s <permalink> \| grep og:` — injected and escaped; the share card lives at `/og/:slug.png` |
 
 To seed a fresh deployment with demo content: `ANNOTATED_ORIGIN=<origin> npm run seed:demo`
-(see [`scripts/seed-demo.json`](scripts/seed-demo.json) for the operator slots).
+(see [`scripts/seed-demo.json`](scripts/seed-demo.json) for the operator slots). To make
+the feed read like a lived-in place, `npm run seed:personas` adds four demo annotators
+with real-source annotations (every `#:~:text=` deep link lands on the quoted words),
+cross-follows, responses, and likes — idempotent, store-level, and refusing to run in
+production without `ANNOTATED_SEED_PERSONAS=allow`.
 
 ## Release boundary
 
