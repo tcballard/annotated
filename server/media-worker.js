@@ -82,6 +82,13 @@ export const buildFfmpegArgs = (job, input, outputPath) => {
   return args;
 };
 
+// A poster frame for video clips: one jpeg pulled from a third of the way in
+// (talking heads usually face the camera by then; never past the clip's end).
+export const buildPosterArgs = (clipSeconds, clipPath, posterPath) => {
+  const seek = Math.max(0, Math.min(3, (Number(clipSeconds) || 0) / 3));
+  return ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(seek), '-i', clipPath, '-frames:v', '1', '-q:v', '4', posterPath];
+};
+
 export const validateMediaProbe = (sourceType, probe) => {
   const duration = Number(probe?.format?.duration);
   if (!Number.isFinite(duration) || duration <= 0) throw new Error('Media output has no measurable duration.');
@@ -237,6 +244,7 @@ const runJob = async (job) => {
   const key = `clips/${output.fileName}`;
   const outputPath = path.join(mediaWorkDirectory, output.fileName);
   let storedAsset;
+  let posterStored = null;
   try {
     await mkdir(mediaWorkDirectory, { recursive: true });
     const input = await resolveInput(job);
@@ -254,6 +262,22 @@ const runJob = async (job) => {
     }
     // Podcast clips carry waveform peaks for the player; failure is cosmetic.
     const peaks = job.sourceType === 'podcast' ? await extractAudioPeaks(outputPath) : null;
+    // Video clips carry a poster frame so cards never open on a black box.
+    // Poster failure is cosmetic and never fails the clip.
+    if (job.sourceType === 'video') {
+      const posterId = randomUUID();
+      const posterFileName = `${posterId}.jpg`;
+      const posterPath = path.join(mediaWorkDirectory, posterFileName);
+      try {
+        await run('ffmpeg', buildPosterArgs(Number(job.clipEnd) - Number(job.clipStart), outputPath, posterPath), { jobId: job.id });
+        const posterAsset = await storeMediaFile(posterPath, { id: posterId, key: `posters/${posterFileName}`, mimeType: 'image/jpeg' });
+        posterStored = { id: posterId, key: `posters/${posterFileName}`, fileName: posterAsset.fileName || `posters/${posterFileName}`, mimeType: 'image/jpeg', bytes: posterAsset.bytes, kind: 'poster', createdAt: new Date().toISOString() };
+      } catch (error) {
+        console.error(JSON.stringify({ event: 'poster_extraction_failed', jobId: job.id, error: String(error?.message || error).slice(0, 300) }));
+      } finally {
+        await removeMediaFile(posterPath);
+      }
+    }
     const asset = await storeMediaFile(outputPath, { id: assetId, key, mimeType: output.mimeType });
     storedAsset = { id: assetId, key, fileName: asset.fileName || key, mimeType: output.mimeType };
     let published = false;
@@ -262,13 +286,14 @@ const runJob = async (job) => {
       published = true;
       return {
         ...store,
-        media: [...(store.media || []), { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, peaks, kind: 'clip', createdAt: new Date().toISOString() }],
-        annotations: store.annotations.map((annotation) => annotation.id === job.annotationId ? { ...annotation, mediaAssetId: assetId, mediaStatus: 'ready', mediaError: null } : annotation),
+        media: [...(store.media || []), { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, peaks, kind: 'clip', createdAt: new Date().toISOString() }, ...(posterStored ? [posterStored] : [])],
+        annotations: store.annotations.map((annotation) => annotation.id === job.annotationId ? { ...annotation, mediaAssetId: assetId, posterAssetId: posterStored?.id || null, mediaStatus: 'ready', mediaError: null } : annotation),
         mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: 'ready', workerId: null, leaseUntil: null, completedAt: new Date().toISOString() } : item),
       };
     });
     if (!published) {
       await removeStoredMedia(storedAsset).catch(() => {});
+      if (posterStored) await removeStoredMedia(posterStored).catch(() => {});
       await removeMediaFile(outputPath);
       cancelledJobs.delete(job.id);
       return;
@@ -276,6 +301,7 @@ const runJob = async (job) => {
     await removeMediaFile(outputPath);
   } catch (error) {
     if (storedAsset) await removeStoredMedia(storedAsset).catch(() => {});
+    if (posterStored) await removeStoredMedia(posterStored).catch(() => {});
     await removeMediaFile(outputPath);
     const boundedError = String(error?.message || 'Media processing failed.').slice(0, 500);
     const latest = await readStore();

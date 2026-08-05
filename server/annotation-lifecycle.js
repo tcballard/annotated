@@ -44,4 +44,5 @@ export const annotationAssetIds = (annotation) => [
   annotation?.mediaAssetId,
   annotation?.audioAssetId,
   annotation?.screenshotAssetId,
+  annotation?.posterAssetId,
 ].filter(Boolean);

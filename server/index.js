@@ -110,6 +110,7 @@ const withComments = (annotation, store, viewerId = '') => ({
   audioPeaks: annotation.audioAssetId ? ((store.media || []).find((item) => item.id === annotation.audioAssetId)?.peaks || null) : null,
   clipUrl: annotation.mediaAssetId ? `${publicOrigin}/media/${annotation.mediaAssetId}` : null,
   clipPeaks: annotation.mediaAssetId ? ((store.media || []).find((item) => item.id === annotation.mediaAssetId)?.peaks || null) : null,
+  posterUrl: annotation.posterAssetId ? `${publicOrigin}/media/${annotation.posterAssetId}` : null,
   screenshotUrl: annotation.screenshotAssetId ? `${publicOrigin}/media/${annotation.screenshotAssetId}` : null,
   author: publicUser((store.users || []).find((user) => user.id === annotation.authorId)) || { id: annotation.authorId, handle: annotation.authorId, displayName: annotation.authorId },
   likes: (store.likes || []).filter((like) => like.annotationId === annotation.id).length,
@@ -619,6 +620,7 @@ const handleApi = async (request, response, pathname) => {
               mediaAssetId: null,
               audioAssetId: null,
               screenshotAssetId: null,
+              posterAssetId: null,
               mediaStatus: 'not-applicable',
             } : item),
           };

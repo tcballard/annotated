@@ -369,6 +369,7 @@ const annotationToFeedItem = (annotation) => ({
   audioDuration: Number(annotation.audioDuration) || 0,
   audioPeaks: Array.isArray(annotation.audioPeaks) ? annotation.audioPeaks : null,
   clipPeaks: Array.isArray(annotation.clipPeaks) ? annotation.clipPeaks : null,
+  posterUrl: annotation.posterUrl || '',
   clipUrl: annotation.clipUrl || '',
   mediaStatus: annotation.mediaStatus || 'not-applicable',
   opens: Number(annotation.opens) || 0,
@@ -500,7 +501,7 @@ const waveform = (peaks) => {
 const srcCardMedia = (item) => {
   const clipSeconds = Math.max(0, item.clipEnd - item.clipStart);
   if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'video') {
-    return `<div class="srcmedia"><video controls preload="metadata" src="${escapeHTML(item.clipUrl)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(formatTime(clipSeconds))} · 240p</span></div>`;
+    return `<div class="srcmedia"><video controls preload="metadata" ${item.posterUrl ? `poster="${escapeHTML(item.posterUrl)}" ` : ''}src="${escapeHTML(item.clipUrl)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(formatTime(clipSeconds))} · 240p</span></div>`;
   }
   if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'podcast') {
     return `<div class="srcmedia srcmedia-audio"><span class="cliptag">CLIP</span><div class="srcmedia-audio-main">${waveform(item.clipPeaks)}<audio controls preload="none" src="${escapeHTML(item.clipUrl)}"></audio></div><span class="badge">${escapeHTML(formatTime(clipSeconds))} · audio</span></div>`;
@@ -641,12 +642,12 @@ const playerBlock = (annotation) => {
   const recovery = state.mediaStatus === 'failed' ? `<div class="media-recovery"><span>${escapeHTML(state.mediaError || 'The source could not be prepared.')}</span><button data-action="retry-media" ${state.isRetryingMedia ? 'disabled' : ''}>${state.isRetryingMedia ? 'Retrying…' : 'Retry clip'}</button></div>` : '';
   if (annotation.sourceType === 'video') {
     const inner = media.kind === 'video' && media.src && media.status === 'ready'
-      ? `<video controls preload="metadata" src="${escapeHTML(media.src)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(badgeText)}</span>`
+      ? `<video controls preload="metadata" ${annotation.posterUrl ? `poster="${escapeHTML(annotation.posterUrl)}" ` : ''}src="${escapeHTML(media.src)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(badgeText)}</span>`
       : `<span class="cliptag">CLIP</span><div class="media-status"><span>${escapeHTML(status)}</span>${recovery}</div><span class="badge">${escapeHTML(badgeText)}</span>`;
     return `<div class="player ${media.status === 'ready' ? 'is-live' : ''}">${inner}</div>`;
   }
   const audioInner = media.kind === 'audio' && media.src && media.status === 'ready'
-    ? `<span class="cliptag">CLIP</span><audio controls preload="metadata" src="${escapeHTML(media.src)}"></audio><span class="badge">${escapeHTML(badgeText)}</span>`
+    ? `<span class="cliptag">CLIP</span><div class="srcmedia-audio-main">${waveform(annotation.clipPeaks)}<audio controls preload="metadata" src="${escapeHTML(media.src)}"></audio></div><span class="badge">${escapeHTML(badgeText)}</span>`
     : `<span class="cliptag">CLIP</span><div class="media-status"><span>${escapeHTML(status)}</span>${recovery}</div>`;
   return `<div class="audiobar">${audioInner}</div>`;
 };

@@ -30,6 +30,6 @@ test('tombstones expose the removal, never the content', () => {
 });
 
 test('removal collects every hosted asset the annotation holds', () => {
-  assert.deepEqual(annotationAssetIds({ mediaAssetId: 'clip-1', audioAssetId: 'audio-1', screenshotAssetId: 'shot-1' }), ['clip-1', 'audio-1', 'shot-1']);
+  assert.deepEqual(annotationAssetIds({ mediaAssetId: 'clip-1', audioAssetId: 'audio-1', screenshotAssetId: 'shot-1', posterAssetId: 'poster-1' }), ['clip-1', 'audio-1', 'shot-1', 'poster-1']);
   assert.deepEqual(annotationAssetIds({ mediaAssetId: null }), []);
 });
