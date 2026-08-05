@@ -107,7 +107,9 @@ const withComments = (annotation, store, viewerId = '') => ({
   ...annotation,
   url: `${publicOrigin}/a/${annotation.slug}`,
   audioUrl: annotation.audioAssetId ? `${publicOrigin}/media/${annotation.audioAssetId}` : null,
+  audioPeaks: annotation.audioAssetId ? ((store.media || []).find((item) => item.id === annotation.audioAssetId)?.peaks || null) : null,
   clipUrl: annotation.mediaAssetId ? `${publicOrigin}/media/${annotation.mediaAssetId}` : null,
+  clipPeaks: annotation.mediaAssetId ? ((store.media || []).find((item) => item.id === annotation.mediaAssetId)?.peaks || null) : null,
   screenshotUrl: annotation.screenshotAssetId ? `${publicOrigin}/media/${annotation.screenshotAssetId}` : null,
   author: publicUser((store.users || []).find((user) => user.id === annotation.authorId)) || { id: annotation.authorId, handle: annotation.authorId, displayName: annotation.authorId },
   likes: (store.likes || []).filter((like) => like.annotationId === annotation.id).length,
@@ -184,8 +186,8 @@ const handleApi = async (request, response, pathname) => {
       if (error.statusCode === 422) return send(response, 422, { error: error.message });
       throw error;
     }
-    await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, ownerId: actor?.id || 'local-tom', createdAt: media.createdAt }] }));
-    return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, url: `${publicOrigin}/media/${media.id}` } });
+    await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, peaks: media.peaks || null, ownerId: actor?.id || 'local-tom', createdAt: media.createdAt }] }));
+    return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, peaks: media.peaks || null, url: `${publicOrigin}/media/${media.id}` } });
   }
 
   // Screenshot capture: a bounded page image that publishes WITH its source
@@ -807,17 +809,23 @@ const serveOgCard = async (response, slug, { download = false } = {}) => {
 
 // The app shell ships default og:/twitter: images as root-relative paths;
 // crawlers require absolute URLs, so the served shell absolutizes them
-// against this deployment's public origin. Cached for the process lifetime.
+// against this deployment's public origin. Cached against the file's mtime —
+// a rebuild mid-process must never keep serving references to old bundles.
 let appShellCache = null;
 const serveAppShell = async (response) => {
-  if (!appShellCache) {
-    try {
-      appShellCache = (await readFile(path.join(projectRoot, 'dist/index.html'), 'utf8'))
-        .replaceAll('content="/brand/og-default.png"', `content="${publicOrigin}/brand/og-default.png"`);
-    } catch { return notFound(response); }
-  }
+  try {
+    const shellPath = path.join(projectRoot, 'dist/index.html');
+    const info = await stat(shellPath);
+    if (!appShellCache || appShellCache.mtimeMs !== info.mtimeMs) {
+      appShellCache = {
+        mtimeMs: info.mtimeMs,
+        html: (await readFile(shellPath, 'utf8'))
+          .replaceAll('content="/brand/og-default.png"', `content="${publicOrigin}/brand/og-default.png"`),
+      };
+    }
+  } catch { return notFound(response); }
   response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...securityHeaders() });
-  return response.end(appShellCache);
+  return response.end(appShellCache.html);
 };
 
 const serveStatic = async (request, response, pathname) => {

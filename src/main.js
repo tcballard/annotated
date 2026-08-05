@@ -367,6 +367,8 @@ const annotationToFeedItem = (annotation) => ({
   commentaryMode: annotation.commentaryMode || 'text',
   audioUrl: annotation.audioUrl || '',
   audioDuration: Number(annotation.audioDuration) || 0,
+  audioPeaks: Array.isArray(annotation.audioPeaks) ? annotation.audioPeaks : null,
+  clipPeaks: Array.isArray(annotation.clipPeaks) ? annotation.clipPeaks : null,
   clipUrl: annotation.clipUrl || '',
   mediaStatus: annotation.mediaStatus || 'not-applicable',
   opens: Number(annotation.opens) || 0,
@@ -480,6 +482,18 @@ const openOriginalAction = (item, { withLabel = true } = {}) => {
 
 const hubLink = (host) => host ? `<a href="/s/${encodeURIComponent(host)}" data-action="open-hub" data-host="${escapeHTML(host)}" title="See everything annotated from ${escapeHTML(host)}">${escapeHTML(host)}</a>` : '';
 
+// Waveform bars for hosted audio, rendered from server-extracted peaks.
+// Click seeks the sibling player; the played portion darkens via clip-path
+// (updated in place on timeupdate — no re-render). Peaks are 0..100.
+const waveform = (peaks) => {
+  if (!Array.isArray(peaks) || !peaks.length) return '';
+  const bars = peaks.map((peak) => `<span style="height:${Math.max(8, Math.min(100, Number(peak) || 0))}%"></span>`).join('');
+  return `<div class="wave" data-action="wave-seek" role="presentation">
+    <div class="wave-base">${bars}</div>
+    <div class="wave-played" style="clip-path: inset(0 100% 0 0)">${bars}</div>
+  </div>`;
+};
+
 // The media slot renders only what is actually ready — a playable hosted
 // clip or a screenshot. Processing states stay on the permalink; the feed
 // never shows a dead frame.
@@ -489,7 +503,7 @@ const srcCardMedia = (item) => {
     return `<div class="srcmedia"><video controls preload="metadata" src="${escapeHTML(item.clipUrl)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(formatTime(clipSeconds))} · 240p</span></div>`;
   }
   if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'podcast') {
-    return `<div class="srcmedia srcmedia-audio"><span class="cliptag">CLIP</span><audio controls preload="none" src="${escapeHTML(item.clipUrl)}"></audio><span class="badge">${escapeHTML(formatTime(clipSeconds))} · audio</span></div>`;
+    return `<div class="srcmedia srcmedia-audio"><span class="cliptag">CLIP</span><div class="srcmedia-audio-main">${waveform(item.clipPeaks)}<audio controls preload="none" src="${escapeHTML(item.clipUrl)}"></audio></div><span class="badge">${escapeHTML(formatTime(clipSeconds))} · audio</span></div>`;
   }
   if (item.screenshotUrl) {
     return `<div class="srcmedia"><button class="shot-open" data-action="open-lightbox" data-src="${escapeHTML(item.screenshotUrl)}" data-alt="Screenshot of ${escapeHTML(item.sourceTitle)}" data-href="${escapeHTML(openOriginalHref(item))}" aria-label="Enlarge screenshot of ${escapeHTML(item.sourceTitle)}"><img loading="lazy" src="${escapeHTML(item.screenshotUrl)}" alt="Screenshot of ${escapeHTML(item.sourceTitle)}" /><span class="shot-hint">Click to enlarge</span></button></div>`;
@@ -500,7 +514,7 @@ const srcCardMedia = (item) => {
 const srcCard = (item) => {
   const quote = item.quote ? `<blockquote>&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
   const audioNote = item.commentaryMode === 'audio' && item.audioUrl
-    ? `<div class="srcaudio"><span class="icon">${icons.mic}</span><audio controls preload="none" src="${escapeHTML(item.audioUrl)}"></audio>${item.audioDuration ? `<span class="srcaudio-time">${escapeHTML(formatTime(item.audioDuration))}</span>` : ''}</div>`
+    ? `<div class="srcaudio"><span class="icon">${icons.mic}</span><div class="srcaudio-main">${waveform(item.audioPeaks)}<audio controls preload="none" src="${escapeHTML(item.audioUrl)}"></audio></div>${item.audioDuration ? `<span class="srcaudio-time">${escapeHTML(formatTime(item.audioDuration))}</span>` : ''}</div>`
     : '';
   return `
   <div class="srccard">
@@ -653,7 +667,7 @@ const permalinkView = () => {
   const isMine = annotation.author?.id === state.user?.id;
   const comments = annotation.comments || [];
   const commentaryAudio = annotation.commentaryMode === 'audio' && annotation.audioUrl
-    ? `<div class="commentary-audio"><span>${icon('mic')} Their take</span><audio controls preload="metadata" src="${escapeHTML(annotation.audioUrl)}"></audio></div>`
+    ? `<div class="commentary-audio"><span>${icon('mic')} Their take</span><div class="srcaudio-main">${waveform(annotation.audioPeaks)}<audio controls preload="metadata" src="${escapeHTML(annotation.audioUrl)}"></audio></div></div>`
     : '';
   const note = state.editingNote && isMine
     ? `<div class="note-edit"><textarea class="cap-note" data-action="edit-note-draft" maxlength="280" aria-label="Edit your note">${escapeHTML(state.editNoteDraft)}</textarea><div class="note-edit-foot"><button class="btn" data-action="save-note">Save</button><button class="ghost" data-action="cancel-note">Cancel</button><span class="count">${state.editNoteDraft.length}/280</span></div></div>`
@@ -1786,6 +1800,15 @@ app.addEventListener('click', (event) => {
     return;
   }
   if (action === 'close-claim') { closeClaimDialog(); return; }
+  if (action === 'wave-seek') {
+    const audio = target.closest('.srcaudio-main, .srcmedia-audio-main')?.querySelector('audio');
+    if (!audio || !Number.isFinite(audio.duration) || !audio.duration) { audio?.play?.(); return; }
+    const rect = target.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * audio.duration;
+    if (audio.paused) audio.play().catch(() => { /* browser gesture policy */ });
+    return;
+  }
   if (action === 'open-lightbox') {
     state.lightbox = { src: target.dataset.src || '', alt: target.dataset.alt || '', href: target.dataset.href || '' };
     render();
@@ -1800,6 +1823,15 @@ app.addEventListener('click', (event) => {
   if (action === 'submit-claim') { submitClaim(); return; }
   if (action === 'logout') { api.logout().then(() => { state.user = null; render(); notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
 });
+
+// timeupdate does not bubble, so the waveform progress listens in the
+// capture phase and paints the played portion in place — no re-render.
+app.addEventListener('timeupdate', (event) => {
+  const audio = event.target;
+  if (audio.tagName !== 'AUDIO' || !Number.isFinite(audio.duration) || !audio.duration) return;
+  const played = audio.closest('.srcaudio-main, .srcmedia-audio-main')?.querySelector('.wave-played');
+  if (played) played.style.clipPath = `inset(0 ${Math.max(0, 100 - (audio.currentTime / audio.duration) * 100)}% 0 0)`;
+}, true);
 
 app.addEventListener('keydown', (event) => {
   if (state.lightbox && event.key === 'Escape') {

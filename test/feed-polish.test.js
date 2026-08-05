@@ -22,3 +22,13 @@ test('audio notes carry their duration on the card', () => {
   assert.match(main, /Audio note\$\{item\.audioDuration \? ` · \$\{escapeHTML\(formatTime\(item\.audioDuration\)\)\}` : ''\}/);
   assert.match(css, /\.srcaudio-time/);
 });
+
+test('hosted audio renders a seekable waveform from server peaks', () => {
+  assert.match(main, /const waveform = \(peaks\)/);
+  assert.match(main, /audioPeaks: Array\.isArray\(annotation\.audioPeaks\)/);
+  assert.match(main, /clipPeaks: Array\.isArray\(annotation\.clipPeaks\)/);
+  assert.match(main, /data-action="wave-seek"/);
+  assert.match(main, /addEventListener\('timeupdate'/, 'progress paints without re-render');
+  assert.match(main, /audio\.currentTime = ratio \* audio\.duration/);
+  assert.match(css, /\.wave-played span \{ background: var\(--ink-soft\); \}/, 'played fill stays ink — terracotta is not for chrome');
+});

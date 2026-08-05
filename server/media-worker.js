@@ -4,6 +4,7 @@ import { access, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mediaWorkDirectory, removeMediaFile, removeStoredMedia, storeMediaFile } from './media-store.js';
+import { extractAudioPeaks } from './audio-peaks.js';
 import { readStore, updateStore } from './store.js';
 import { assertPublicUrl } from './ssrf.js';
 import { parseSourceUrl } from './source-resolver.js';
@@ -251,6 +252,8 @@ const runJob = async (job) => {
       cancelledJobs.delete(job.id);
       return;
     }
+    // Podcast clips carry waveform peaks for the player; failure is cosmetic.
+    const peaks = job.sourceType === 'podcast' ? await extractAudioPeaks(outputPath) : null;
     const asset = await storeMediaFile(outputPath, { id: assetId, key, mimeType: output.mimeType });
     storedAsset = { id: assetId, key, fileName: asset.fileName || key, mimeType: output.mimeType };
     let published = false;
@@ -259,7 +262,7 @@ const runJob = async (job) => {
       published = true;
       return {
         ...store,
-        media: [...(store.media || []), { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, kind: 'clip', createdAt: new Date().toISOString() }],
+        media: [...(store.media || []), { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, peaks, kind: 'clip', createdAt: new Date().toISOString() }],
         annotations: store.annotations.map((annotation) => annotation.id === job.annotationId ? { ...annotation, mediaAssetId: assetId, mediaStatus: 'ready', mediaError: null } : annotation),
         mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: 'ready', workerId: null, leaseUntil: null, completedAt: new Date().toISOString() } : item),
       };

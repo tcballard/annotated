@@ -167,6 +167,10 @@ test('local API serves the acceptance-critical health, identity, publish, social
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const audioResponse = await fetch(`${baseUrl}/api/media/audio`, { method: 'POST', headers: { 'content-type': 'audio/webm;codecs=opus' }, body: Buffer.from(`audio fixture ${attempt}`) });
     assert.equal(audioResponse.status, 201);
+    if (attempt === 0) {
+      const audioMedia = await audioResponse.json();
+      assert.ok('peaks' in audioMedia.media, 'audio uploads carry a peaks field (null when the decoder is unavailable)');
+    }
   }
   const audioLimitResponse = await fetch(`${baseUrl}/api/media/audio`, { method: 'POST', headers: { 'content-type': 'audio/webm' }, body: Buffer.from('rate limit boundary') });
   const audioLimit = await audioLimitResponse.json();
