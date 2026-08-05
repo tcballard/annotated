@@ -58,8 +58,10 @@ export const parseCookies = (header = '') => Object.fromEntries(header.split(';'
 }));
 
 export const authIsRequired = () => authRequired;
+// The brief requires X or Google sign-in; both ship enabled unless an
+// operator narrows OAUTH_PROVIDERS explicitly.
 export const enabledProviderNames = () => {
-  const configured = String(process.env.OAUTH_PROVIDERS || 'x').split(',').map((name) => name.trim().toLowerCase()).filter(Boolean);
+  const configured = String(process.env.OAUTH_PROVIDERS || 'x,google').split(',').map((name) => name.trim().toLowerCase()).filter(Boolean);
   const names = [...new Set(configured)];
   const unsupported = names.filter((name) => !providers[name]);
   if (!names.length || unsupported.length) throw new Error(`Unsupported OAuth provider configuration: ${[...unsupported, ...(names.length ? [] : ['none'])].join(', ')}.`);

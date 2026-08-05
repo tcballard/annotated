@@ -4,7 +4,7 @@ The container is deliberately configuration-only: it does not contain provider c
 
 Before starting a production container:
 
-1. Load `DATABASE_URL`, `ANNOTATED_STORAGE=postgres`, and the enabled OAuth provider values from the deployment secret manager. For the current POC use `OAUTH_PROVIDERS=x` with the X client, callback, and secrets; add Google later only after its client and callback are configured.
+1. Load `DATABASE_URL`, `ANNOTATED_STORAGE=postgres`, and the enabled OAuth provider values from the deployment secret manager. The brief requires X **and** Google sign-in, so the default is `OAUTH_PROVIDERS=x,google` and production fails fast at boot unless `X_CLIENT_ID`/`X_CLIENT_SECRET` **and** `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are all present (callbacks default to `PUBLIC_ORIGIN/api/auth/<provider>/callback`; override with `X_REDIRECT_URI`/`GOOGLE_REDIRECT_URI` if the app origin differs). A deploy that boots without Google credentials is a checklist failure, not a working configuration.
 2. Load `ANNOTATED_ASSET_STORAGE=s3`, the S3/R2 bucket/endpoint/credentials, `PUBLIC_ORIGIN`, `APP_ORIGIN`, a non-wildcard `CORS_ORIGINS`, and `CHROME_EXTENSION_IDS` for packaged extension builds.
 3. Run `npm run db:migrate` from the same release artifact against the target database. Migration `004_rate_limit_buckets` creates the shared abuse-control ledger; do not route production traffic until it is applied.
 4. Start the container (the image binds `HOST=0.0.0.0`) and require `/api/ready` to return 200 before routing traffic; readiness now verifies the latest migration, performs a database health query, checks the S3-compatible bucket, and probes `ffmpeg`, `ffprobe`, and the configured `YTDLP_BIN` provider extractor. A missing or non-executable media runtime returns 503 instead of allowing provider jobs to fail after deployment. Audio uploads accept only the supported recorder/media MIME types, enforce the 25 MB payload cap, and use PostgreSQL-backed rate-limit buckets when production is configured with PostgreSQL; local development and tests retain the bounded in-process fallback. Provider extraction, FFmpeg, and FFprobe commands are killed after `MEDIA_WORKER_PROCESS_TIMEOUT_MS` (300 seconds by default), then persisted as retryable failures; keep that deadline below the worker lease. Forward structured `http_request` logs and `/api/health` telemetry to the deployment's log/metrics sink.
@@ -54,10 +54,11 @@ credential.
    `PUBLIC_ORIGIN`, `APP_ORIGIN`, `CORS_ORIGINS`, `CHROME_EXTENSION_IDS`, and the Google callback. Add
    `staging.annotated.tcballard.dev` later at the current DNS provider once the
    POC works; no Cloudflare zone transfer is required.
-5. Set the real X OAuth credentials before production startup, run
-   migrations from the release artifact, deploy, and require `/api/ready` to
-   return 200 before trying the media acceptance flow. It confirms PostgreSQL,
-   the private bucket, and the media runtime are usable with deployed settings.
+5. Set the real X **and** Google OAuth credentials before production startup
+   (the server refuses to boot with either pair missing), run migrations from
+   the release artifact, deploy, and require `/api/ready` to return 200 before
+   trying the media acceptance flow. It confirms PostgreSQL, the private
+   bucket, and the media runtime are usable with deployed settings.
 6. From a clean checkout, run `STAGING_ORIGIN=https://<railway-domain>
    npm run acceptance:staging`. The command is non-mutating: it verifies health,
    readiness, provider configuration shape, the public root/brand asset, the

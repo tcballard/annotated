@@ -29,7 +29,31 @@ export function validateAnnotation(input) {
   const end = Number(input.clipEnd || 0);
   if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < 0 || end < start) errors.push('Clip range is invalid.');
   if (input.sourceType !== 'article' && end - start > 90) errors.push('Media clips must be 90 seconds or shorter.');
-  return { errors, normalized: { ...input, sourceExcerpt, clientRequestId: input.clientRequestId || null, canonicalUrl: input.canonicalUrl || input.sourceUrl, clipStart: start, clipEnd: end, commentary: String(input.commentary || '').trim().slice(0, 280) } };
+  const audioDuration = Number(input.audioDuration || 0);
+  if (!Number.isFinite(audioDuration) || audioDuration < 0 || audioDuration > 90) errors.push('Audio commentary must be 90 seconds or shorter.');
+  // Article anchors carry the W3C text-quote context that landing pages turn
+  // into #:~:text= deep links, plus the paragraph number shown on the ¶ chip.
+  const anchorParagraph = Number(input.anchorParagraph || 0);
+  if (!Number.isInteger(anchorParagraph) || anchorParagraph < 0 || anchorParagraph > 9999) errors.push('anchorParagraph must be a small positive integer.');
+  for (const field of ['anchorPrefix', 'anchorSuffix']) {
+    if (input[field] !== undefined && (typeof input[field] !== 'string' || input[field].length > 300)) errors.push(`${field} must be text of 300 characters or fewer.`);
+  }
+  return {
+    errors,
+    normalized: {
+      ...input,
+      sourceExcerpt,
+      clientRequestId: input.clientRequestId || null,
+      canonicalUrl: input.canonicalUrl || input.sourceUrl,
+      clipStart: start,
+      clipEnd: end,
+      commentary: String(input.commentary || '').trim().slice(0, 280),
+      audioDuration,
+      anchorParagraph: anchorParagraph || null,
+      anchorPrefix: typeof input.anchorPrefix === 'string' ? input.anchorPrefix.slice(0, 300) : '',
+      anchorSuffix: typeof input.anchorSuffix === 'string' ? input.anchorSuffix.slice(0, 300) : '',
+    },
+  };
 }
 
 export function validateComment(input) {

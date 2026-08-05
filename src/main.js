@@ -4,30 +4,22 @@ import { deleteMediaDraft, readMediaDraft, stageMediaDraft } from './media-draft
 import { mediaPresentation } from './media-presentation.js';
 import { publicAnnotationUrl } from './share-links.js';
 import { authNoticeFromSearch, enabledProviders, oauthStartUrl, providerLabel } from './auth-ui.js';
-import { MAX_CLIP_SECONDS, moveClipBoundary, normalizeClipRange } from './clip-range.js';
+import { MAX_CLIP_SECONDS } from './clip-range.js';
+import { openOriginalHref, openOriginalLabel } from './deep-link.js';
 
 const app = document.querySelector('#app');
 
 const icons = {
-  arrow: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>',
-  back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
+  open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg>',
+  respond: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H4l3-3a8 8 0 1 1 14-5z"/></svg>',
+  share: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg>',
+  claim: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V4a1 1 0 0 1 1-1h11l-2 4 2 4H5"/></svg>',
+  follow: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 4h3a1 1 0 0 1 1 1v15l-8-4-8 4V5a1 1 0 0 1 1-1h3"/><path d="M12 3v8M8.5 7.5h7"/></svg>',
   check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4.3 4.3L19 7"/></svg>',
-  play: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 10 7-10 7V5Z"/></svg>',
-  pause: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>',
-  external: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8"/><path d="M17 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h5"/></svg>',
-  link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1"/></svg>',
-  playSmall: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 7 7 5-7 5V7Z"/></svg>',
-  message: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 17H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2Z"/></svg>',
-  heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 8.8c0 5.4-8.8 10.2-8.8 10.2S3.2 14.2 3.2 8.8A4.6 4.6 0 0 1 12 6.3a4.6 4.6 0 0 1 8.8 2.5Z"/></svg>',
-  mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg>',
-  text: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M12 6v13M8 19h8"/></svg>',
-  video: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m10 9 5 3-5 3V9Z"/></svg>',
-  article: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg>',
-  podcast: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="10" r="3"/><path d="M7 10a5 5 0 0 0 10 0M4 10a8 8 0 0 0 16 0M12 13v8"/></svg>',
-  more: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>',
   close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>',
-  search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4 4"/></svg>',
-  sun: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>'
+  back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg>',
+  stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>',
 };
 
 const escapeHTML = (value = '') => String(value)
@@ -38,82 +30,68 @@ const escapeHTML = (value = '') => String(value)
   .replaceAll("'", '&#039;');
 
 const formatTime = (seconds) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.max(0, Math.round(seconds % 60)).toString().padStart(2, '0');
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const mins = Math.floor(total / 60);
+  const secs = String(total % 60).padStart(2, '0');
   return `${mins}:${secs}`;
 };
 
-const sourceData = {
-  video: {
-    label: 'Video',
-    host: 'youtube.com',
-    url: 'https://www.youtube.com/watch?v=9u-MhC2x7kA',
-    title: 'The future is built by people who keep asking why',
-    author: 'J-Cal Conversations',
-    date: 'Yesterday',
-    duration: 368,
-    caption: 'A conversation about curiosity, leverage, and building in public.',
-  },
-  article: {
-    label: 'Article',
-    host: 'theverge.com',
-    url: 'https://www.theverge.com/ai-artificial-intelligence/annotated',
-    title: 'The internet is becoming a place you can’t search',
-    author: 'The Verge · David Pierce',
-    date: '2h ago',
-    duration: 0,
-    excerpt: 'The most valuable part of a link is often the part that doesn’t fit in the answer.',
-    caption: 'A considered argument about what gets lost when every answer arrives pre-packaged.',
-  },
-  podcast: {
-    label: 'Podcast',
-    host: 'overcast.fm',
-    url: 'https://overcast.fm/+annotated-demo',
-    title: 'The quiet advantage of paying attention',
-    author: 'Decoder Ring · Episode 142',
-    date: 'Today',
-    duration: 2764,
-    caption: 'A small moment from a long conversation, pulled out because it stayed with you.',
-  },
+// Accepts "62", "1:02", or "1:02:03" and returns whole seconds.
+export const parseTimeInput = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  if (!/^\d+(?::[0-5]?\d){0,2}$/.test(text)) return null;
+  return text.split(':').reduce((total, part) => total * 60 + Number(part), 0);
 };
 
-const sourceLabels = { video: 'Video', article: 'Article', podcast: 'Podcast' };
+const relTime = (iso) => {
+  const stamp = Date.parse(iso || '');
+  if (!Number.isFinite(stamp)) return 'just now';
+  const seconds = Math.max(0, (Date.now() - stamp) / 1000);
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`;
+  if (seconds < 7 * 86_400) return `${Math.floor(seconds / 86_400)}d`;
+  return new Date(stamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+const sourceLabels = { video: 'video', article: 'article', podcast: 'podcast' };
+const annotationVerb = (type) => type === 'article' ? 'annotated an article' : `annotated a ${sourceLabels[type] || 'source'}`;
 const canModerate = () => Boolean(state.user && ['owner', 'admin', 'moderator'].includes(state.user.role));
+
+const hostOf = (url) => {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
+};
 
 const normalizeSource = (item = {}) => {
   const type = item.sourceType || item.type || 'article';
   const url = item.sourceUrl || item.url || '';
-  let host = item.host || item.sourceHost || '';
-  if (!host && url) {
-    try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { host = ''; }
-  }
+  const host = item.host || item.sourceHost || hostOf(url);
   return {
-    label: sourceLabels[type] || 'Source',
+    label: sourceLabels[type] || 'source',
     host,
     url,
     canonicalUrl: item.canonicalUrl || url,
-    title: item.title || item.sourceTitle || 'Untitled source',
-    author: item.author || host || 'Unknown source',
-    date: item.date || 'Just now',
+    title: item.title || item.sourceTitle || host || 'Untitled source',
     duration: Number(item.duration) || 0,
-    caption: item.description || item.excerpt || 'A source ready to annotate.',
     excerpt: item.excerpt || item.sourceExcerpt || '',
-    imageUrl: item.imageUrl || item.thumbnailUrl || null,
     mediaUrl: item.mediaUrl || item.sourceMediaUrl || '',
     provider: item.provider || '',
   };
 };
 
 const initialState = {
-  activeView: 'capture',
+  activeView: 'feed',
   profileHandle: '',
   profileData: null,
   profileLoading: false,
+  libraryData: null,
+  libraryLoading: false,
   sourceType: 'video',
-  sourceUrl: sourceData.video.url,
-  clipStart: 14,
-  clipEnd: 62,
-  articleExcerpt: sourceData.article.excerpt,
+  sourceUrl: '',
+  clipStart: 0,
+  clipEnd: 0,
+  articleExcerpt: '',
   commentary: '',
   commentaryMode: 'text',
   isRecording: false,
@@ -130,11 +108,9 @@ const initialState = {
   mediaError: '',
   isRetryingMedia: false,
   published: false,
-  liked: false,
   following: false,
   followingIds: {},
   commentDraft: '',
-  comments: 12,
   claimOpen: false,
   claimSlug: '',
   claimTitle: '',
@@ -142,16 +118,18 @@ const initialState = {
   claimError: '',
   claimSubmitted: false,
   toast: '',
-  showSourceInput: false,
-  showMobileSourcePreview: false,
+  toastLink: null,
   customSource: null,
   publishedSlug: '',
   publishedAnnotation: null,
+  publishedLoading: false,
   feedAnnotations: [],
+  feedLoading: false,
+  feedError: '',
+  feedLoaded: false,
   feedFollowing: false,
   feedCursor: null,
   feedQuery: '',
-  showFeedSearch: false,
   moderationClaims: [],
   moderationLoading: false,
   user: null,
@@ -171,7 +149,7 @@ const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'article
 
 const saved = (() => {
   try {
-    const raw = localStorage.getItem(draftStorageKey) || localStorage.getItem('annotated-demo');
+    const raw = localStorage.getItem(draftStorageKey);
     const parsed = raw ? JSON.parse(raw) : {};
     return Object.fromEntries(draftFields.filter((field) => field in parsed).map((field) => [field, parsed[field]]));
   } catch { return {}; }
@@ -179,9 +157,6 @@ const saved = (() => {
 
 const state = { ...initialState, ...saved };
 state.clientRequestId ||= globalThis.crypto?.randomUUID?.() || `capture-${Date.now()}`;
-if (state.sourceType !== 'article') {
-  Object.assign(state, normalizeClipRange(state.clipStart, state.clipEnd, { max: Math.max(MAX_CLIP_SECONDS, Number(state.clipStart) || 0, Number(state.clipEnd) || 0) }));
-}
 state.published = false;
 state.publishedSlug = '';
 state.publishedAnnotation = null;
@@ -194,11 +169,12 @@ let recordingTimer;
 let recordingStartedAt = 0;
 let mediaPollTimer;
 let claimReturnFocus = null;
+let pendingCommentFocus = false;
 
 const persist = () => {
   try {
     localStorage.setItem(draftStorageKey, JSON.stringify({
-      version: 1,
+      version: 2,
       sourceType: state.sourceType,
       sourceUrl: state.sourceUrl,
       clipStart: state.clipStart,
@@ -217,23 +193,51 @@ const persist = () => {
 };
 
 const clearDraft = () => {
-  try {
-    localStorage.removeItem(draftStorageKey);
-    localStorage.removeItem('annotated-demo');
-  } catch { /* private mode or blocked storage; the app remains usable */ }
+  try { localStorage.removeItem(draftStorageKey); } catch { /* blocked storage */ }
+  state.customSource = null;
+  state.sourceUrl = '';
+  state.articleExcerpt = '';
+  state.commentary = '';
+  state.commentaryMode = 'text';
+  state.clipStart = 0;
+  state.clipEnd = 0;
+  state.audioAssetId = '';
+  state.audioUrl = '';
+  state.audioDuration = 0;
+  state.recordedAudio = false;
+  state.clientRequestId = globalThis.crypto?.randomUUID?.() || `capture-${Date.now()}`;
 };
 
-const notify = (message) => {
+const notify = (message, link = null) => {
   state.toast = message;
+  state.toastLink = link;
   render();
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     state.toast = '';
+    state.toastLink = null;
     render();
-  }, 2800);
+  }, link ? 5200 : 2800);
 };
 
-const authLinks = (className = 'auth-link') => enabledProviders(state.authProviders).map((provider) => `<a class="${className}" href="${escapeHTML(oauthStartUrl(provider))}">${providerLabel(provider)}</a>`).join('');
+const icon = (name, className = '') => `<span class="icon ${className}">${icons[name] || ''}</span>`;
+
+/* ── auth ──────────────────────────────────────────────────────────── */
+
+const authLinks = (className = 'auth-prompt-link') => enabledProviders(state.authProviders)
+  .map((provider) => `<a class="${className}" href="${escapeHTML(oauthStartUrl(provider))}">Sign in with ${providerLabel(provider)}</a>`)
+  .join('');
+
+const chromeAuth = () => {
+  if (state.user) {
+    const initials = escapeHTML((state.user.displayName || state.user.handle || 'A').slice(0, 2).toUpperCase());
+    return `<span class="auth"><button class="me" data-action="logout" aria-label="Sign out ${escapeHTML(state.user.handle || '')}" title="Sign out">${initials}</button></span>`;
+  }
+  const providers = enabledProviders(state.authProviders);
+  if (!providers.length) return `<span class="auth"><span class="connection-note">${state.serverStatus === 'offline' ? 'offline' : 'local'}</span></span>`;
+  const [first, ...rest] = providers;
+  return `<span class="auth"><a class="auth-link" href="${escapeHTML(oauthStartUrl(first))}">Sign in with ${providerLabel(first)}</a>${rest.map((provider) => `<a class="auth-link" href="${escapeHTML(oauthStartUrl(provider))}">${providerLabel(provider)}</a>`).join('')}</span>`;
+};
 
 const authStateView = () => {
   const noticeCopy = {
@@ -242,8 +246,8 @@ const authStateView = () => {
     cancelled: 'Sign-in was cancelled. Your draft is still here.',
   }[state.authNotice];
   const notice = noticeCopy ? `<div class="auth-notice ${state.authNotice === 'success' ? 'is-success' : 'is-error'}" role="status"><span>${escapeHTML(noticeCopy)}</span><button class="auth-notice-dismiss" data-action="dismiss-auth" aria-label="Dismiss sign-in message">${icon('close')}</button></div>` : '';
-  const promptLinks = authLinks('auth-prompt-link') || '<span class="auth-prompt-unavailable">No sign-in provider is available.</span>';
-  const prompt = state.authPrompt && !state.user ? `<div class="auth-prompt" role="alert"><div><span class="eyebrow">Sign-in required</span><strong>${escapeHTML(state.authPrompt)}</strong><span>Your draft and current page will be kept while you sign in.</span></div><div class="auth-prompt-actions">${promptLinks}<button class="auth-prompt-dismiss" data-action="dismiss-auth">Not now</button></div></div>` : '';
+  const promptLinks = authLinks() || '<span class="auth-prompt-unavailable">No sign-in provider is available.</span>';
+  const prompt = state.authPrompt && !state.user ? `<div class="auth-prompt" role="alert"><div><strong>${escapeHTML(state.authPrompt)}</strong><span class="auth-prompt-note">Your draft and current page stay put while you sign in.</span></div><div class="auth-prompt-actions">${promptLinks}<button class="auth-prompt-dismiss" data-action="dismiss-auth">Not now</button></div></div>` : '';
   return `${notice}${prompt}`;
 };
 
@@ -267,98 +271,110 @@ const recoverAuthError = (error, message = 'Your session has expired. Sign in ag
   return true;
 };
 
-const setSource = (type) => {
-  state.sourceType = type;
-  state.sourceUrl = sourceData[type].url;
-  state.customSource = null;
-  state.clientRequestId = globalThis.crypto?.randomUUID?.() || `capture-${Date.now()}`;
-  state.sourceError = '';
-  if (type === 'video') { state.clipStart = 14; state.clipEnd = 62; }
-  if (type === 'podcast') { state.clipStart = 10; state.clipEnd = 64; }
-  if (type === 'article') { state.clipStart = 0; state.clipEnd = 0; state.articleExcerpt = sourceData.article.excerpt; }
-  state.showSourceInput = false;
-  persist();
-  renderCapture();
+/* ── routing ───────────────────────────────────────────────────────── */
+
+const routeFor = (view) => view === 'feed' ? '/'
+  : view === 'capture' ? '/capture'
+  : view === 'library' ? '/library'
+  : view === 'moderation' ? '/moderation'
+  : view === 'published' && state.publishedSlug ? `/a/${encodeURIComponent(state.publishedSlug)}`
+  : view === 'profile' && state.profileHandle ? `/u/${encodeURIComponent(state.profileHandle)}`
+  : '/';
+
+const navigate = (view, { push = true } = {}) => {
+  state.activeView = view;
+  state.authPrompt = '';
+  if (push) window.history.pushState({}, '', routeFor(view));
+  if (view === 'moderation') loadModerationClaims().then(render);
+  if (view === 'library') loadLibrary().then(render);
+  render();
+  window.scrollTo(0, 0);
 };
 
-const source = () => state.customSource || sourceData[state.sourceType];
-
-const annotationToFeedItem = (annotation) => {
-  const type = sourceLabels[annotation.sourceType] || 'Source';
-  const comments = Array.isArray(annotation.comments) ? annotation.comments.length : 0;
-  return {
-    type,
-    label: type,
-    initials: (annotation.author?.displayName || annotation.author?.handle || 'A').slice(0, 2).toUpperCase(),
-    author: annotation.author?.displayName || 'Annotated user',
-    handle: `@${annotation.author?.handle || annotation.authorId || 'user'}`,
-    time: 'just now',
-    host: annotation.sourceHost || (() => { try { return new URL(annotation.sourceUrl).hostname.replace(/^www\./, ''); } catch { return 'source'; } })(),
-    sourceUrl: annotation.sourceUrl,
-    slug: annotation.slug,
-    url: annotation.url,
-    clipUrl: annotation.clipUrl || '',
-    audioUrl: annotation.audioUrl || '',
-    mediaStatus: annotation.mediaStatus || 'not-applicable',
-    duration: formatTime(Math.max(0, Number(annotation.clipEnd) - Number(annotation.clipStart))),
-    quote: annotation.sourceExcerpt || annotation.commentary || 'A moment kept with its context.',
-    title: annotation.sourceTitle,
-    commentary: annotation.commentary || 'An audio annotation attached to this moment.',
-    likes: Number(annotation.likes) || 0,
-    comments,
-    authorId: annotation.author?.id || annotation.authorId || '',
-    authorHandle: annotation.author?.handle || '',
-    likedByMe: Boolean(annotation.likedByMe),
-  };
+const applyLocation = () => {
+  const routeMatch = window.location.pathname.match(/^\/a\/([^/]+)/);
+  const profileMatch = window.location.pathname.match(/^\/u\/([^/]+)/);
+  const requestedView = new URLSearchParams(window.location.search).get('view');
+  if (routeMatch) {
+    state.publishedSlug = decodeURIComponent(routeMatch[1]);
+    state.activeView = 'published';
+  } else if (profileMatch) {
+    state.profileHandle = decodeURIComponent(profileMatch[1]);
+    state.activeView = 'profile';
+  } else if (window.location.pathname === '/capture' || requestedView === 'capture') {
+    state.activeView = 'capture';
+  } else if (window.location.pathname === '/library' || requestedView === 'published' || requestedView === 'library') {
+    state.activeView = 'library';
+  } else if (window.location.pathname === '/moderation') {
+    state.activeView = 'moderation';
+  } else {
+    state.activeView = 'feed';
+  }
 };
+
+/* ── data plumbing ─────────────────────────────────────────────────── */
+
+const source = () => state.customSource || (state.sourceUrl ? normalizeSource({ sourceType: state.sourceType, sourceUrl: state.sourceUrl }) : null);
+
+const articleExcerpt = () => String(state.articleExcerpt ?? '').trim();
+
+const annotationToFeedItem = (annotation) => ({
+  type: annotation.sourceType || 'article',
+  initials: (annotation.author?.displayName || annotation.author?.handle || 'A').slice(0, 1).toUpperCase(),
+  handle: annotation.author?.handle || annotation.authorId || 'user',
+  time: relTime(annotation.createdAt),
+  host: annotation.sourceHost || hostOf(annotation.sourceUrl),
+  sourceUrl: annotation.sourceUrl,
+  canonicalUrl: annotation.canonicalUrl || annotation.sourceUrl,
+  sourceTitle: annotation.sourceTitle || annotation.sourceHost || 'Source',
+  slug: annotation.slug,
+  url: annotation.url,
+  clipStart: Number(annotation.clipStart) || 0,
+  clipEnd: Number(annotation.clipEnd) || 0,
+  anchorParagraph: annotation.anchorParagraph || null,
+  anchorPrefix: annotation.anchorPrefix || '',
+  anchorSuffix: annotation.anchorSuffix || '',
+  quote: annotation.sourceExcerpt || '',
+  commentary: annotation.commentary || '',
+  commentaryMode: annotation.commentaryMode || 'text',
+  audioUrl: annotation.audioUrl || '',
+  opens: Number(annotation.opens) || 0,
+  comments: Array.isArray(annotation.comments) ? annotation.comments.length : 0,
+  authorId: annotation.author?.id || annotation.authorId || '',
+});
+
+const chipFor = (item) => item.type === 'article'
+  ? (item.anchorParagraph ? `¶ ${item.anchorParagraph}` : '¶')
+  : `${formatTime(item.clipStart)}–${formatTime(item.clipEnd)}`;
 
 const hydrateAnnotation = (annotation) => {
   state.publishedAnnotation = annotation;
   state.published = true;
   state.publishedSlug = annotation.slug;
-  state.sourceType = annotation.sourceType;
-  state.sourceUrl = annotation.sourceUrl;
-  state.customSource = normalizeSource({
-    ...annotation,
-    title: annotation.sourceTitle,
-    host: annotation.sourceHost,
-    excerpt: annotation.sourceExcerpt,
-  });
-  state.articleExcerpt = annotation.sourceExcerpt || '';
-  state.clipStart = Number(annotation.clipStart) || 0;
-  state.clipEnd = Number(annotation.clipEnd) || 0;
-  state.commentary = annotation.commentary || '';
-  state.commentaryMode = annotation.commentaryMode || 'text';
-  state.recordedAudio = state.commentaryMode === 'audio';
-  state.audioAssetId = annotation.audioAssetId || '';
-  state.audioUrl = annotation.audioUrl || '';
-  state.audioDuration = Number(annotation.audioDuration) || 0;
-  state.audioDraftId = '';
   state.clipUrl = annotation.clipUrl || '';
   state.mediaStatus = annotation.mediaStatus || 'not-applicable';
   state.mediaError = String(annotation.mediaError || '').slice(0, 280);
   state.isRetryingMedia = false;
 };
 
+const recordOpen = (slug) => {
+  if (!slug || state.serverStatus !== 'online') return;
+  const path = `/api/annotations/${encodeURIComponent(slug)}/open`;
+  try {
+    if (navigator.sendBeacon && navigator.sendBeacon(path)) return;
+  } catch { /* fall through to fetch */ }
+  fetch(path, { method: 'POST', keepalive: true, credentials: 'include' }).catch(() => {});
+};
+
 const bootstrap = async () => {
   state.authNotice = authNoticeFromSearch(window.location.search);
-  const requestedView = new URLSearchParams(window.location.search).get('view');
-  if (['capture', 'feed', 'published'].includes(requestedView)) state.activeView = requestedView;
+  applyLocation();
   if (state.authNotice) {
     const cleanUrl = new URL(window.location.href);
     cleanUrl.searchParams.delete('auth');
     window.history.replaceState({}, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
   }
-  const routeMatch = window.location.pathname.match(/^\/a\/([^/]+)/);
-  const profileMatch = window.location.pathname.match(/^\/u\/([^/]+)/);
-  if (routeMatch) {
-    state.publishedSlug = decodeURIComponent(routeMatch[1]);
-    state.activeView = 'published';
-  }
-  if (profileMatch) {
-    state.profileHandle = decodeURIComponent(profileMatch[1]);
-    state.activeView = 'profile';
-  }
+  render();
   try {
     await api.health();
     state.serverStatus = 'online';
@@ -366,13 +382,19 @@ const bootstrap = async () => {
     state.authProviders = providers.providers || {};
     state.authRequired = Boolean(providers.required);
     state.user = await api.me().then((result) => result.user).catch(() => null);
-    if (canModerate()) await loadModerationClaims();
+    if (canModerate() && state.activeView === 'moderation') await loadModerationClaims();
     if (state.publishedSlug) {
-      const { annotation } = await api.getAnnotation(state.publishedSlug);
-      hydrateAnnotation(annotation);
-      watchMediaProcessing();
+      state.publishedLoading = true;
+      render();
+      try {
+        const { annotation } = await api.getAnnotation(state.publishedSlug);
+        hydrateAnnotation(annotation);
+        watchMediaProcessing();
+      } catch { /* the not-found state renders below */ }
+      state.publishedLoading = false;
     }
     if (state.profileHandle) await loadProfile();
+    if (state.activeView === 'library') await loadLibrary();
     await loadFeed();
   } catch (error) {
     state.serverStatus = 'offline';
@@ -382,359 +404,460 @@ const bootstrap = async () => {
   render();
 };
 
-const icon = (name, className = '') => `<span class="icon ${className}">${icons[name] || ''}</span>`;
+/* ── shared markup ─────────────────────────────────────────────────── */
 
-const button = (label, action, className = '', extra = '') => `<button class="${className}" data-action="${action}" ${extra}>${label}</button>`;
-
-const sourceTypeButton = (type) => {
-  const item = sourceData[type];
-  return `<button class="source-type ${state.sourceType === type ? 'is-active' : ''}" data-action="source-type" data-type="${type}" aria-pressed="${state.sourceType === type}">${icon(type)}<span>${item.label}</span></button>`;
+const chromeBar = () => {
+  const links = [
+    ['feed', 'Timeline'],
+    ['capture', 'Capture'],
+    ['library', 'Library'],
+    ...(canModerate() ? [['moderation', 'Moderation']] : []),
+  ];
+  return `
+  <header class="chrome">
+    <button class="logo" data-action="set-view" data-view="feed" aria-label="annotated home">annotated<span class="dot">.</span></button>
+    <nav aria-label="Primary">
+      ${links.map(([view, label]) => `<button class="nav-link ${state.activeView === view ? 'is-active' : ''}" data-action="set-view" data-view="${view}">${label}</button>`).join('')}
+    </nav>
+    <form class="search" data-action="chrome-search-form"><input type="search" data-action="chrome-search" placeholder="Search annotations" aria-label="Search annotations" maxlength="80" value="${escapeHTML(state.feedQuery)}"></form>
+    ${chromeAuth()}
+  </header>`;
 };
 
-const authControls = () => state.user
-  ? `<span class="auth-user">${escapeHTML(state.user.displayName || state.user.handle || 'Signed in')}</span><button class="avatar" data-action="logout" aria-label="Sign out">${escapeHTML((state.user.displayName || state.user.handle || 'A').slice(0, 2).toUpperCase())}</button>`
-  : `<span class="auth-label">${state.authRequired ? 'Sign in' : 'Local account'}</span>${authLinks()}`;
+const openOriginalAction = (item, { withLabel = true } = {}) => {
+  const href = openOriginalHref(item);
+  const count = item.opens ? ` <span class="n">· ${item.opens}</span>` : '';
+  return `<a class="act primary" href="${escapeHTML(href)}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug || '')}">${icon('open')}${withLabel ? `Open original${count}` : `Open${count}`}</a>`;
+};
 
-const appHeader = () => `
-  <header class="app-header">
-    <div class="brand-lockup">
-      <button class="brand-mark" data-action="set-view" data-view="capture" aria-label="Go to capture"><img src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /></button>
-      <div>
-        <div class="brand-name">annotated<span class="brand-dot">.</span></div>
-        <div class="brand-caption">source-first notes</div>
+const srcCard = (item) => {
+  const quote = item.quote ? `<blockquote>&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
+  const audioNote = item.commentaryMode === 'audio' && item.audioUrl
+    ? `<div class="srcaudio"><span class="icon">${icons.mic}</span><audio controls preload="none" src="${escapeHTML(item.audioUrl)}"></audio></div>`
+    : '';
+  return `
+  <div class="srccard">
+    <div class="srchead"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ` · ${escapeHTML(item.host)}` : ''}</span></div>
+    ${quote}
+    ${audioNote}
+  </div>`;
+};
+
+const feedPost = (item) => {
+  const note = item.commentary
+    ? `<p class="note">${escapeHTML(item.commentary)}</p>`
+    : `<p class="note">${icon('mic')} Audio note — listen on the page.</p>`;
+  const followAct = item.authorId && item.authorId !== state.user?.id
+    ? `<button class="act ${state.followingIds[item.authorId] ? 'is-on' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${icon('follow')}${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>`
+    : '';
+  return `
+  <article class="post" data-action="open-annotation" data-slug="${escapeHTML(item.slug || '')}">
+    <div class="avatar" aria-hidden="true">${escapeHTML(item.initials)}</div>
+    <div class="content">
+      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a><span class="meta">· ${escapeHTML(item.time)} · ${escapeHTML(annotationVerb(item.type))}</span></div>
+      ${note}
+      ${srcCard(item)}
+      <div class="actions">
+        ${openOriginalAction(item)}
+        <button class="act" data-action="open-respond" data-slug="${escapeHTML(item.slug || '')}">${icon('respond')}<span class="n">${item.comments || 'Respond'}</span></button>
+        ${followAct}
+        <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(item, window.location.origin))}" aria-label="Share annotation">${icon('share')}</button>
       </div>
     </div>
-    <nav class="primary-nav" aria-label="Primary navigation">
-      ${button('Capture', 'set-view', `nav-link ${state.activeView === 'capture' ? 'is-active' : ''}`, 'data-view="capture"')}
-      ${button('Timeline', 'set-view', `nav-link ${state.activeView === 'feed' ? 'is-active' : ''}`, 'data-view="feed"')}
-      ${button('Published', 'set-view', `nav-link ${state.activeView === 'published' ? 'is-active' : ''}`, 'data-view="published"')}
-      ${canModerate() ? button('Moderation', 'set-view', `nav-link ${state.activeView === 'moderation' ? 'is-active' : ''}`, 'data-view="moderation"') : ''}
-    </nav>
-    <div class="header-actions">
-      <span class="connection-status"><span class="status-dot ${state.serverStatus === 'offline' ? 'is-offline' : ''}"></span> ${state.serverStatus === 'online' ? 'Live backend' : state.serverStatus === 'checking' ? 'Connecting…' : 'Backend offline'}</span>
-      ${authControls()}
-    </div>
-  </header>`;
-
-const appRail = () => `
-  <aside class="app-rail" aria-label="Workspace summary">
-    <div class="rail-kicker">Your library</div>
-    <div class="rail-stat"><strong>${state.published ? '01' : '00'}</strong><span>published<br>annotations</span></div>
-    <div class="rail-rule"></div>
-    <div class="rail-kicker">The rule</div>
-    <p class="rail-note">Every clip keeps a live link to where it came from.</p>
-    <div class="rail-source"><span class="source-glyph">${icon(state.sourceType)}</span><span>${source().host}</span></div>
-    <div class="rail-bottom">source-first notes<br>Chrome sidebar-first</div>
-  </aside>`;
-
-const browserChrome = () => `
-  <div class="browser-chrome">
-    <div class="traffic-lights"><i></i><i></i><i></i></div>
-    <div class="browser-tabs"><span class="browser-tab is-active"><span class="tab-favicon">${state.sourceType === 'video' ? '▶' : state.sourceType === 'article' ? 'V' : '◉'}</span><span class="browser-tab-host">${escapeHTML(source().host)}</span></span><span class="browser-tab muted">new tab</span></div>
-    <div class="browser-toolbar"><span>‹</span><span>›</span><span>↻</span><div class="address-bar">${escapeHTML(state.sourceUrl)}</div><span>☆</span><span>⋮</span></div>
-  </div>`;
-
-const videoCanvas = () => `
-  <div class="media-canvas video-canvas" data-source-canvas="video" ${state.sourceType === 'video' ? '' : 'hidden'}>
-    <div class="video-backdrop"><div class="video-silhouette"></div><div class="video-shelf shelf-one"></div><div class="video-shelf shelf-two"></div><div class="video-window"></div></div>
-    <div class="media-overline"><span>${icon('video')} VIDEO ESSAY</span><span>J-CAL CONVERSATIONS</span></div>
-    <div class="preview-unavailable" role="status"><span class="preview-unavailable-icon" aria-hidden="true">${icon('video')}</span><span><strong>Preview after publish</strong><small>Open the original to confirm exact timing.</small></span></div>
-    <div class="media-caption"><span>“The future is built by people who keep asking why.”</span><small>06:08</small></div>
-    <div class="media-player"><span class="player-time">${formatTime(state.clipStart)}</span><div class="player-line"><span class="player-progress" style="width: 24%"></span></div><span class="player-time">06:08</span></div>
-  </div>`;
-
-const articleCanvas = () => `
-  <div class="media-canvas article-canvas" data-source-canvas="article" ${state.sourceType === 'article' ? '' : 'hidden'}>
-    <div class="article-topline"><span>${icon('article')} THE VERGE</span><span>TECH · OPINION</span></div>
-    <h3>The internet is becoming a place you can’t search</h3>
-    <p class="article-dek">We used to browse toward a question. Now the answer arrives first, and the path disappears.</p>
-    <div class="article-meta">By David Pierce <span>·</span> 2h ago</div>
-    <div class="article-body-lines"><i></i><i></i><i class="short"></i><i></i><i></i><i class="short"></i></div>
-    <blockquote>“${escapeHTML(articleExcerpt() || sourceData.article.excerpt)}”</blockquote>
-    <div class="article-highlight">${icon('text')} Highlighted passage ready to clip</div>
-  </div>`;
-
-const podcastCanvas = () => `
-  <div class="media-canvas podcast-canvas" data-source-canvas="podcast" ${state.sourceType === 'podcast' ? '' : 'hidden'}>
-    <div class="podcast-orbit"><span></span><span></span><span></span></div>
-    <div class="podcast-copy"><div class="media-overline"><span>${icon('podcast')} DECODER RING</span><span>EPISODE 142</span></div><h3>The quiet advantage of paying attention</h3><p>A small moment from a long conversation, pulled out because it stayed with you.</p></div>
-    <div class="waveform" aria-hidden="true">${Array.from({ length: 42 }, (_, i) => `<i style="height:${18 + ((i * 17) % 54)}%"></i>`).join('')}</div>
-    <div class="media-player"><span class="player-time">${formatTime(state.clipStart)}</span><div class="player-line"><span class="player-progress" style="width: 24%"></span></div><span class="player-time">46:04</span></div>
-  </div>`;
-
-// Keep all three previews mounted. Source switching becomes a state change on
-// stable elements instead of tearing down and rebuilding the largest painted
-// region in the capture desk.
-const sourceCanvasMarkup = () => `${videoCanvas()}${articleCanvas()}${podcastCanvas()}`;
-
-const sourceCanvas = () => {
-  const canvas = sourceCanvasMarkup();
-  return `<section class="source-stage source-spine-stage">
-    <div class="stage-header"><div><span class="eyebrow">Source</span><h1>${escapeHTML(source().title)}</h1></div><button class="ghost-button" data-action="toggle-source-input">${icon('link')} Change</button></div>
-    ${state.showSourceInput ? `<div class="source-input-row"><label for="source-url">Paste a source URL</label><div class="source-input-wrap">${icon('link')}<input id="source-url" data-action="source-url" value="${escapeHTML(state.sourceUrl)}" /><button data-action="load-source" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Load'}</button></div><p>Metadata stays attached to the original link.</p>${state.sourceError ? `<p class="source-error" role="alert">${escapeHTML(state.sourceError)}</p>` : ''}</div>` : ''}
-    <div class="mobile-source-summary"><span>${icon(state.sourceType)} ${escapeHTML(source().label)} · ${escapeHTML(source().host)}</span><button data-action="toggle-mobile-source" aria-expanded="${state.showMobileSourcePreview}">${state.showMobileSourcePreview ? 'Hide preview' : 'Show preview'}</button></div>
-    <div class="browser-frame ${state.showMobileSourcePreview ? 'is-mobile-expanded' : ''}">${browserChrome()}<div class="browser-page">${canvas}</div></div>
-    <div class="source-footer source-spine-footer"><div><span class="source-pill">${icon(state.sourceType)} ${source().label}</span><span class="source-byline">${escapeHTML(source().author)} <span>·</span> ${escapeHTML(source().date)}</span></div><a href="${escapeHTML(source().url)}" target="_blank" rel="noreferrer" class="source-link">Open original ${icon('external')}</a></div>
-  </section>`;
-};
-
-const articleExcerpt = () => String(state.articleExcerpt ?? source().excerpt ?? '').trim();
-const sourceRangeMax = () => Math.max(MAX_CLIP_SECONDS, Math.ceil(Number(source().duration) || 0), Math.ceil(Number(state.clipStart) || 0), Math.ceil(Number(state.clipEnd) || 0));
-
-const timeRange = () => {
-  const excerpt = articleExcerpt();
-  const max = sourceRangeMax();
-  const length = Math.max(0, state.clipEnd - state.clipStart);
-  return `<div class="clip-editor" ${state.sourceType === 'article' ? 'hidden' : ''}>
-    <div class="clip-editor-head"><span class="clip-editor-label"><span class="clip-editor-icon">${icon(state.sourceType)}</span><span>Select a moment</span></span><strong class="duration-badge ${length > 90 ? 'is-warning' : ''}" role="status" aria-live="polite"><span>${formatTime(length)}</span><span aria-hidden="true">/</span><span>1:30 max</span></strong></div>
-    <div class="range-console">
-      <div class="range-console-meta" aria-hidden="true"><span>Source time</span><span>90 sec window</span></div>
-      <div class="range-track"><span class="range-fill" style="left:${(state.clipStart / max) * 100}%; width:${((state.clipEnd - state.clipStart) / max) * 100}%"></span><input aria-label="Clip start" aria-valuetext="${formatTime(state.clipStart)}" type="range" min="0" max="${max}" value="${state.clipStart}" data-action="clip-start" /><input aria-label="Clip end" aria-valuetext="${formatTime(state.clipEnd)}" type="range" min="0" max="${max}" value="${state.clipEnd}" data-action="clip-end" /></div>
-      <div class="range-scale" aria-hidden="true"><span>0:00</span><span>${formatTime(max / 3)}</span><span>${formatTime(max * 2 / 3)}</span><span>${formatTime(max)}</span></div>
-      <div class="time-fields"><label><span>In</span><input type="number" min="0" max="604800" inputmode="numeric" value="${state.clipStart}" data-action="clip-start-number" aria-label="Clip start seconds" /></label><span class="time-selection" aria-hidden="true"><span>Selected</span><strong data-range-duration>${formatTime(length)}</strong></span><label><span>Out</span><input type="number" min="0" max="604800" inputmode="numeric" value="${state.clipEnd}" data-action="clip-end-number" aria-label="Clip end seconds" /></label></div>
-    </div>
-  </div><div class="highlight-preview" ${state.sourceType === 'article' ? '' : 'hidden'}><div class="highlight-mark"></div><label for="article-excerpt">Selected passage</label><textarea id="article-excerpt" data-action="article-excerpt" maxlength="2000" aria-describedby="article-excerpt-hint">${escapeHTML(excerpt)}</textarea><span id="article-excerpt-hint">Highlight selected · ${excerpt.length} characters · edit before publishing</span></div>`;
-};
-
-const commentaryEditor = () => `
-  <div class="commentary-editor">
-    <div class="commentary-head"><span>Your annotation</span><div class="mode-switch" role="group" aria-label="Commentary type">${button(`${icon('text')} Text`, 'commentary-mode', state.commentaryMode === 'text' ? 'mode-button is-active' : 'mode-button', 'data-mode="text"')}${button(`${icon('mic')} Audio`, 'commentary-mode', state.commentaryMode === 'audio' ? 'mode-button is-active' : 'mode-button', 'data-mode="audio"')}</div></div>
-    ${state.commentaryMode === 'text' ? `<textarea data-action="commentary" aria-label="Your annotation" placeholder="What did you notice?">${escapeHTML(state.commentary)}</textarea><div class="editor-foot"><span>${state.commentary.length}/280</span><span>Public after publish</span></div>` : `<div class="audio-recorder ${state.isRecording ? 'is-recording' : ''} ${state.isUploadingAudio ? 'is-uploading' : ''}"><button class="record-button" data-action="toggle-record" aria-label="${state.isRecording ? 'Stop recording' : 'Start recording'}" ${state.isUploadingAudio ? 'disabled' : ''}>${icon(state.isRecording ? 'pause' : 'mic')}</button><div><strong>${state.isRecording ? 'Recording your take…' : state.isUploadingAudio ? 'Uploading your take…' : state.recordedAudio ? 'Audio note ready' : state.audioDraftId ? 'Audio note saved locally' : 'Record a 90-second take'}</strong><span>${state.isRecording ? 'Tap to stop · max 1:30' : state.isUploadingAudio ? 'The browser is sending your note' : state.recordedAudio ? 'You can replace it before publishing' : state.audioDraftId ? 'It will retry when the backend is available' : 'Say the thing you want to remember'}</span></div><span class="audio-duration">${formatTime(state.isRecording ? state.recordingSeconds : state.audioDuration)}</span>${state.audioDraftId && !state.recordedAudio && !state.isUploadingAudio ? `<button class="audio-retry" data-action="retry-audio">Retry upload</button>` : ''}</div>`}
-  </div>`;
-
-const sidebar = () => `
-  <aside class="extension-sidebar source-spine-note" aria-label="Annotated capture sidebar">
-    <div class="sidebar-heading"><div><span class="eyebrow">Your note</span><h2>Leave your context.</h2></div><div class="sidebar-heading-actions"><span class="capture-number">STEP 01</span><button class="icon-button" data-action="sidebar-help" aria-label="Sidebar help">${icon('more')}</button></div></div>
-    <div class="source-type-grid" role="group" aria-label="Source type">${sourceTypeButton('video')}${sourceTypeButton('article')}${sourceTypeButton('podcast')}</div>
-    ${timeRange()}
-    ${commentaryEditor()}
-    <button class="publish-button" data-action="publish" ${state.isPublishing ? 'disabled' : ''}>${state.isPublishing ? 'Publishing…' : state.published ? `${icon('check')} Published` : 'Publish annotation'}<span>${state.isPublishing ? '…' : state.published ? '↗' : icon('arrow')}</span></button>
-    <p class="privacy-note"><span class="status-dot"></span> ${state.published ? 'Published with a permanent source link.' : 'Nothing is published until you choose to publish.'}</p>
-  </aside>`;
-
-const captureView = () => `
-  <div class="view-head"><div><span class="eyebrow">Capture desk</span><h2>Capture a moment.</h2><p class="view-dek">Choose the source, set the moment, and leave your context.</p></div><span class="view-index">01 / 03</span></div>
-  <div class="capture-layout source-spine-layout">${sourceCanvas()}${sidebar()}</div>
-  <div class="capture-footnote"><span>Choose the exact moment. Add your context.</span><span>Max 90 seconds · source link retained</span></div>`;
-
-const feedCard = (item, index) => {
-  const sourceHref = escapeHTML(item.sourceUrl || '#');
-  const media = mediaPresentation(item);
-  const fallbackStatus = media.status === 'processing' || media.status === 'queued' ? 'Preparing clip…' : media.status === 'failed' ? 'Clip unavailable' : 'Play after publishing';
-  const videoMedia = media.kind === 'video' && media.src
-    ? `<div class="feed-media feed-video feed-video-live"><video class="feed-video-player" controls preload="metadata" src="${escapeHTML(media.src)}"></video><span class="feed-duration">${escapeHTML(item.duration)}</span></div>`
-    : `<div class="feed-media feed-video"><div class="feed-video-shade"></div><span class="feed-preview-state" aria-hidden="true">${icon('video')}</span><span class="feed-duration">${escapeHTML(item.duration)}</span><span class="feed-media-status" role="status">${escapeHTML(fallbackStatus)}</span></div>`;
-  const audioMedia = media.kind === 'audio' && media.src
-    ? `<div class="feed-media feed-audio feed-audio-live"><div class="feed-audio-art">${icon('podcast')}</div><audio class="feed-audio-player" controls preload="metadata" src="${escapeHTML(media.src)}"></audio><span class="feed-duration">${escapeHTML(item.duration)}</span></div>`
-    : `<div class="feed-media feed-audio"><div class="feed-audio-art">${icon('podcast')}</div><div class="mini-wave">${Array.from({ length: 25 }, (_, i) => `<i style="height:${16 + ((i * 23) % 50)}%"></i>`).join('')}</div><span class="feed-duration">${escapeHTML(item.duration)}</span><span class="feed-media-status">${escapeHTML(fallbackStatus)}</span></div>`;
-  return `
-  <article class="feed-card ${index === 0 ? 'featured-card' : ''}">
-    <span class="feed-spine-marker" aria-hidden="true"></span>
-    <div class="feed-card-top"><span class="source-pill">${icon(item.type.toLowerCase())} ${item.label}</span><button class="icon-button" aria-label="More options">${icon('more')}</button></div>
-    <div class="feed-source-row"><div class="feed-avatar avatar-${index}">${escapeHTML(item.initials)}</div><div>${item.authorId && item.authorHandle ? `<a class="profile-link" href="/u/${encodeURIComponent(item.authorHandle)}">${escapeHTML(item.author)}</a>` : `<strong>${escapeHTML(item.author)}</strong>`}<span>${escapeHTML(item.handle)} · ${escapeHTML(item.time)}</span></div>${item.authorId && item.authorId !== state.user?.id ? `<button class="follow-button ${state.followingIds[item.authorId] ? 'is-following' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>` : ''}</div>
-    ${item.type === 'Video' ? videoMedia : item.type === 'Article' && media.kind !== 'audio' ? `<div class="feed-media feed-quote"><span>“</span><p>${escapeHTML(item.quote)}</p><small>Highlight from ${escapeHTML(item.host)}</small></div>` : audioMedia}
-    <h3>${escapeHTML(item.title)}</h3><p class="feed-commentary">${escapeHTML(item.commentary)}</p>
-    <div class="feed-source-link"><span>${icon('link')} From ${escapeHTML(item.host)}</span><div class="feed-source-actions"><a href="${sourceHref}" ${item.sourceUrl ? 'target="_blank" rel="noreferrer"' : ''} data-action="open-original">Open source ${icon('external')}</a><button class="feed-claim-link" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug || '')}" data-claim-title="${escapeHTML(item.title || 'this annotation')}">File a claim</button></div></div>
-    <div class="feed-actions"><button data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" class="feed-action ${item.likedByMe || (state.liked && index === 0) ? 'is-liked' : ''}">${icon('heart')} <span>${item.likes + (state.liked && index === 0 && !item.likedByMe ? 1 : 0)}</span></button><button data-action="focus-comment" class="feed-action">${icon('message')} <span>${item.comments + (index === 0 && !state.feedAnnotations.length ? state.comments - 12 : 0)}</span></button><button class="feed-action share-action" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(item, window.location.origin))}" aria-label="Share annotation">${icon('link')} Share</button></div>
-    ${index === 0 ? `<form class="comment-row" data-action="comment-form"><input aria-label="Add a comment" placeholder="Add a considered comment…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" /><button aria-label="Post comment">${icon('arrow')}</button></form>` : ''}
   </article>`;
 };
 
+const skeletonPost = () => `
+  <div class="post skeleton" aria-hidden="true">
+    <div class="sk sk-avatar"></div>
+    <div class="content">
+      <div class="sk sk-line" style="width:40%"></div>
+      <div class="sk sk-line" style="width:86%"></div>
+      <div class="sk sk-card"></div>
+    </div>
+  </div>`;
+
+/* ── views ─────────────────────────────────────────────────────────── */
+
+const railView = () => {
+  const signCard = state.user
+    ? `<div class="card"><h2>Your library</h2><p>Everything you publish keeps a live link back to its source.</p><button class="btn btn-wide" data-action="set-view" data-view="library">Open your library</button></div>`
+    : `<div class="card"><h2>Build your public library</h2><p>Capture now. Sign in with X or Google when you are ready to publish, follow, or respond.</p>${enabledProviders(state.authProviders).map((provider) => `<a class="btn btn-wide" href="${escapeHTML(oauthStartUrl(provider))}">Sign in with ${providerLabel(provider)}</a>`).join('') || '<p>No sign-in provider is configured.</p>'}</div>`;
+  return `
+  <aside class="rail">
+    ${signCard}
+    <div class="card"><h2>The annotated rule</h2><p class="rulequote">&ldquo;A clip without its source is just a rumour.&rdquo;</p><p>Every public page points back to the original. Context travels with the moment.</p></div>
+    <div class="card"><h2>Sidebar-first</h2><p>Capturing from the page you are on is faster in the Chrome sidebar.</p><p><a href="/CHROMEWEBSTORE.md" data-action="extension-note">Get the extension →</a></p></div>
+  </aside>`;
+};
+
 const feedView = () => {
-  const visibleItems = state.feedAnnotations.map(annotationToFeedItem);
-  const emptyMessage = state.feedQuery ? `No annotations match “${escapeHTML(state.feedQuery)}”.` : state.feedFollowing ? 'No annotations from followed users yet.' : 'No public annotations yet.';
-  const emptyDescription = state.feedQuery ? 'Try a different source, author, or phrase.' : state.feedFollowing ? 'Follow someone whose context you want to keep up with.' : 'Publish the first source-backed moment and it will appear here.';
-  const profileName = state.user?.displayName || state.user?.handle || '';
-  const profileHandle = state.user?.handle || '';
-  const profileAction = profileHandle ? `<a class="dark-button" href="/u/${encodeURIComponent(profileHandle)}">View your profile ${icon('arrow')}</a>` : `<button class="dark-button" data-action="set-view" data-view="capture">Open capture desk ${icon('arrow')}</button>`;
-  const profileCard = state.user
-    ? `<div class="aside-card profile-card"><div class="profile-top"><div class="profile-avatar">${escapeHTML((profileName || 'A').slice(0, 2).toUpperCase())}</div><span class="profile-stamp">SIGNED IN</span></div><h3>${escapeHTML(profileName)}</h3><p>Your source-backed moments will live here.</p>${profileAction}</div>`
-    : `<div class="aside-card profile-card signed-out-card"><span class="eyebrow">Signed out</span><h3>Build your public library.</h3><p>Capture now. Sign in with X when you are ready to publish, follow, or respond.</p>${profileAction}</div>`;
+  const items = state.feedAnnotations.map(annotationToFeedItem);
+  const emptyTitle = state.feedQuery ? `No annotations match “${escapeHTML(state.feedQuery)}”.` : state.feedFollowing ? 'No annotations from people you follow yet.' : 'No public annotations yet.';
+  const emptyBody = state.feedQuery ? 'Try a different source, author, or phrase.' : state.feedFollowing ? 'Follow someone whose context you want to keep up with.' : 'Capture the first source-backed moment and it will appear here.';
+  const emptyAction = state.feedQuery
+    ? `<button class="ghost" data-action="clear-feed-search">Clear search</button>`
+    : `<button class="btn" data-action="set-view" data-view="capture">Capture a moment</button>`;
+  const list = state.feedLoading && !state.feedAnnotations.length
+    ? `${skeletonPost()}${skeletonPost()}${skeletonPost()}`
+    : items.length
+      ? items.map(feedPost).join('')
+      : `<div class="feed-empty"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h3>${emptyTitle}</h3><p>${emptyBody}</p>${emptyAction}</div>`;
   return `
-  <div class="view-head feed-head"><div><span class="eyebrow">Timeline</span><h2>What people kept.</h2><p>Moments with enough context to be worth opening.</p></div><div class="feed-controls"><button class="filter-button ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true">Following</button><button class="filter-button ${state.feedFollowing ? '' : 'is-active'}" data-action="feed-filter" data-following="false">For you</button><button class="search-button" data-action="search" aria-label="Search timeline" aria-expanded="${state.showFeedSearch}">${icon('search')}</button></div></div>
-  ${state.showFeedSearch ? `<form class="feed-search-row" data-action="feed-search-form"><label for="feed-search">Search annotations</label><div><input id="feed-search" data-action="feed-search" value="${escapeHTML(state.feedQuery)}" placeholder="Try a source, author, or idea" maxlength="80" /><button class="dark-button" type="submit">Search ${icon('arrow')}</button>${state.feedQuery ? '<button class="ghost-button" type="button" data-action="clear-feed-search">Clear</button>' : ''}</div></form>` : ''}
-  <div class="feed-layout"><main class="feed-list">${visibleItems.length ? visibleItems.map(feedCard).join('') : `<div class="feed-empty"><span class="eyebrow">Nothing found</span><h3>${emptyMessage}</h3><p>${emptyDescription}</p>${state.feedQuery ? '<button class="ghost-button" data-action="clear-feed-search">Clear search</button>' : '<button class="dark-button feed-empty-action" data-action="set-view" data-view="capture">Open capture desk ' + icon('arrow') + '</button>'}</div>`}${state.feedCursor ? '<button class="ghost-button" data-action="feed-more">Load more</button>' : ''}</main><aside class="feed-aside">${profileCard}<div class="aside-card rule-card"><span class="eyebrow">The annotated rule</span><h3>A clip without its source is just a rumour.</h3><div class="rule-line"></div><p>Every public page points back to the original. Context travels with the moment.</p></div></aside></div>`;
+  <div class="page">
+    <main class="feed">
+      <div class="feedhead">
+        <h1>Timeline</h1>
+        <div class="tabs" role="tablist" aria-label="Timeline filter">
+          <button class="tab ${state.feedFollowing ? '' : 'is-active'}" data-action="feed-filter" data-following="false" role="tab" aria-selected="${!state.feedFollowing}">Recent</button>
+          <button class="tab ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true" role="tab" aria-selected="${state.feedFollowing}">Following</button>
+        </div>
+      </div>
+      ${state.feedError ? `<div class="feed-error" role="alert">${escapeHTML(state.feedError)} <button class="ghost" data-action="feed-retry">Try again</button></div>` : ''}
+      ${state.feedQuery && !state.feedLoading ? `<div class="feed-error" role="status">Results for “${escapeHTML(state.feedQuery)}” <button class="ghost" data-action="clear-feed-search">Clear</button></div>` : ''}
+      ${list}
+      ${state.feedCursor ? '<button class="feed-more" data-action="feed-more">Load more</button>' : ''}
+    </main>
+    ${railView()}
+  </div>`;
 };
 
-const annotationHero = () => {
-  const clipUrl = state.publishedAnnotation?.clipUrl || state.clipUrl;
-  const audioUrl = state.publishedAnnotation?.audioUrl || state.audioUrl;
-  const status = state.mediaStatus === 'failed' ? 'Clip unavailable.' : state.mediaStatus === 'cancelled' ? 'Clip processing was cancelled.' : state.mediaStatus === 'processing' ? 'Preparing a 240p clip…' : 'Clip queued for processing…';
-  const mediaRecovery = state.mediaStatus === 'failed' ? `<div class="media-recovery"><span>${escapeHTML(state.mediaError || 'The source could not be prepared.')}</span><button data-action="retry-media" ${state.isRetryingMedia ? 'disabled' : ''}>${state.isRetryingMedia ? 'Retrying…' : 'Retry clip'}</button></div>` : '';
-  if (state.sourceType === 'article') return `<div class="annotation-article-text"><span class="quote-mark">“</span><p>${escapeHTML(articleExcerpt() || sourceData.article.excerpt)}</p><span>Highlighted passage</span></div>`;
-  if (state.sourceType === 'video') return clipUrl
-    ? `<video class="annotation-video-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></video>`
-    : `<div class="annotation-video-bg"><div class="video-silhouette small"></div><span class="media-status">${status}</span>${mediaRecovery}</div><span class="annotation-clip-time">${formatTime(state.clipStart)} — ${formatTime(state.clipEnd)}</span>`;
-  return `<div class="annotation-audio"><div class="podcast-orbit small"><span></span><span></span><span></span></div>${clipUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(clipUrl)}"></audio>` : audioUrl ? `<audio class="annotation-audio-player" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : icon('podcast')}<div class="mini-wave large">${Array.from({ length: 34 }, (_, i) => `<i style="height:${16 + ((i * 19) % 58)}%"></i>`).join('')}</div>${clipUrl && audioUrl ? `<audio class="commentary-audio" controls preload="metadata" src="${escapeHTML(audioUrl)}"></audio>` : !clipUrl ? `<span class="media-status">${status}</span>${mediaRecovery}` : ''}</div>`;
+const playerBlock = (annotation) => {
+  const media = mediaPresentation(annotation);
+  const item = annotationToFeedItem(annotation);
+  const clipSeconds = Math.max(0, item.clipEnd - item.clipStart);
+  const badgeText = annotation.sourceType === 'video' ? `${formatTime(clipSeconds)} · 240p` : `${formatTime(clipSeconds)} · audio`;
+  const status = state.mediaStatus === 'failed' ? 'The clip could not be prepared.'
+    : state.mediaStatus === 'cancelled' ? 'Clip processing was cancelled.'
+    : state.mediaStatus === 'processing' ? 'Preparing the 240p clip…'
+    : 'Clip queued for processing…';
+  const recovery = state.mediaStatus === 'failed' ? `<div class="media-recovery"><span>${escapeHTML(state.mediaError || 'The source could not be prepared.')}</span><button data-action="retry-media" ${state.isRetryingMedia ? 'disabled' : ''}>${state.isRetryingMedia ? 'Retrying…' : 'Retry clip'}</button></div>` : '';
+  if (annotation.sourceType === 'video') {
+    const inner = media.kind === 'video' && media.src && media.status === 'ready'
+      ? `<video controls preload="metadata" src="${escapeHTML(media.src)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(badgeText)}</span>`
+      : `<span class="cliptag">CLIP</span><div class="media-status"><span>${escapeHTML(status)}</span>${recovery}</div><span class="badge">${escapeHTML(badgeText)}</span>`;
+    return `<div class="player ${media.status === 'ready' ? 'is-live' : ''}">${inner}</div>`;
+  }
+  const audioInner = media.kind === 'audio' && media.src && media.status === 'ready'
+    ? `<span class="cliptag">CLIP</span><audio controls preload="metadata" src="${escapeHTML(media.src)}"></audio><span class="badge">${escapeHTML(badgeText)}</span>`
+    : `<span class="cliptag">CLIP</span><div class="media-status"><span>${escapeHTML(status)}</span>${recovery}</div>`;
+  return `<div class="audiobar">${audioInner}</div>`;
 };
 
-const moderationView = () => {
-  if (!canModerate()) return `<div class="feed-empty"><span class="eyebrow">Restricted</span><h3>Moderation access is required.</h3><p>Sign in with an owner, admin, or moderator account to review claims.</p></div>`;
-  const statuses = ['open', 'in_review', 'resolved', 'rejected'];
-  const claims = state.moderationClaims || [];
+const permalinkView = () => {
+  if (state.publishedLoading) {
+    return `<div class="page single"><div class="permacard">${skeletonPost()}${skeletonPost()}</div></div>`;
+  }
+  const annotation = state.publishedAnnotation;
+  if (!annotation) {
+    return `<div class="page single"><div class="perma-empty"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h2>${state.publishedSlug ? 'This annotation is unavailable.' : 'Nothing here yet.'}</h2><p>${state.publishedSlug ? 'It may have been removed, or the link is wrong.' : 'Capture a moment and it will get its own page, with the source attached.'}</p><button class="btn" data-action="set-view" data-view="capture">Capture a moment</button></div></div>`;
+  }
+  const item = annotationToFeedItem(annotation);
+  const isMedia = annotation.sourceType !== 'article';
+  const isMine = annotation.author?.id === state.user?.id;
+  const comments = annotation.comments || [];
+  const commentaryAudio = annotation.commentaryMode === 'audio' && annotation.audioUrl
+    ? `<div class="commentary-audio"><span>${icon('mic')} Their take</span><audio controls preload="metadata" src="${escapeHTML(annotation.audioUrl)}"></audio></div>`
+    : '';
+  const note = annotation.commentary
+    ? `<p class="note">${escapeHTML(annotation.commentary)}</p>`
+    : commentaryAudio ? '' : '<p class="note empty-note">An audio annotation of this moment.</p>';
+  const clip = isMedia
+    ? `<div class="clip">${playerBlock(annotation)}<div class="srcstrip"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type])}${item.host ? ` · ${escapeHTML(item.host)}` : ''}</span><a class="open" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}">${escapeHTML(openOriginalLabel(item))} ↗</a></div></div>`
+    : `<div class="clip"><div class="srcstrip"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· article${item.host ? ` · ${escapeHTML(item.host)}` : ''}</span><a class="open" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}">${escapeHTML(openOriginalLabel(item))} ↗</a></div></div>`;
+  const pull = item.quote ? `<blockquote class="pull">&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
+  const respondArea = state.user || !state.authRequired
+    ? `<form class="respform" data-action="comment-form"><input aria-label="Add a response" placeholder="Add a considered response…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" maxlength="500" /><button class="btn" aria-label="Post response">Respond</button></form>`
+    : `<div class="respprompt">${authLinks('auth-prompt-link') ? `${enabledProviders(state.authProviders).map((provider) => `<a href="${escapeHTML(oauthStartUrl(provider))}"><b>Sign in with ${providerLabel(provider)}</b></a>`).join(' · ')} to add a response.` : 'Sign-in is unavailable right now.'}</div>`;
   return `
-    <div class="view-head moderation-head"><div><span class="eyebrow">Source & rights</span><h2>Review claims.</h2><p>Keep every report attached to the annotation, record the decision, and leave an audit trail.</p></div><button class="ghost-button" data-action="refresh-moderation">${state.moderationLoading ? 'Refreshing…' : 'Refresh queue'} ${icon('arrow')}</button></div>
-    <main class="moderation-list">${claims.length ? claims.map((claim) => {
-      const annotation = claim.annotation || {};
-      const sourceUrl = annotation.sourceUrl || '#';
-      const current = claim.status || 'open';
-      return `<article class="moderation-card"><div class="moderation-card-head"><span class="claim-status status-${escapeHTML(current)}">${escapeHTML(current.replace('_', ' '))}</span><span class="moderation-date">${escapeHTML(claim.createdAt ? new Date(claim.createdAt).toLocaleString() : 'Recently')}</span></div><h3>${escapeHTML(annotation.sourceTitle || 'Untitled annotation')}</h3><p class="moderation-reason">${escapeHTML(claim.reason || 'No reason supplied.')}</p><div class="moderation-source"><span>${escapeHTML(annotation.sourceHost || 'source')}</span><a href="${escapeHTML(sourceUrl)}" target="_blank" rel="noreferrer">Open source ${icon('external')}</a></div><div class="moderation-meta">Reported by ${escapeHTML(claim.reporter?.displayName || claim.reporter?.handle || claim.reporterId || 'unknown reporter')}</div><div class="moderation-actions">${statuses.map((status) => `<button class="moderation-status ${current === status ? 'is-current' : ''}" data-action="moderate-claim" data-claim-id="${escapeHTML(claim.id)}" data-status="${status}" ${current === status ? 'disabled' : ''}>${status.replace('_', ' ')}</button>`).join('')}</div>${claim.resolutionNote ? `<p class="moderation-note">${escapeHTML(claim.resolutionNote)}</p>` : ''}</article>`;
-    }).join('') : `<div class="feed-empty"><span class="eyebrow">Queue clear</span><h3>${state.moderationLoading ? 'Loading claims…' : 'No claims need review.'}</h3><p>New rights reports will appear here with their source and reporter attached.</p></div>`}</main>`;
+  <div class="page single">
+    <article class="permacard">
+      <div class="byline">
+        <div class="avatar" aria-hidden="true">${escapeHTML(item.initials)}</div>
+        <div class="who">
+          <a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a>
+          <span class="meta">${escapeHTML(item.time)} · public</span>
+        </div>
+        ${!isMine && item.authorId ? `<button class="follow" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>` : ''}
+      </div>
+      ${note}
+      ${clip}
+      ${pull}
+      ${commentaryAudio}
+      <div class="actions">
+        ${openOriginalAction(item)}
+        <button class="act" data-action="focus-comment">${icon('respond')}Respond${comments.length ? ` <span class="n">· ${comments.length}</span>` : ''}</button>
+        <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(annotation, window.location.origin))}">${icon('share')}Share</button>
+        <button class="act claim" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug)}" data-claim-title="${escapeHTML(item.sourceTitle)}">${icon('claim')}File a claim</button>
+      </div>
+    </article>
+    <section class="responses">
+      <h2>Responses</h2>
+      ${comments.length ? comments.map((comment) => `<div class="resp"><div class="avatar" aria-hidden="true">${escapeHTML((comment.author?.handle || 'A').slice(0, 1).toUpperCase())}</div><div class="resp-body"><b>@${escapeHTML(comment.author?.handle || comment.authorId)}</b> <span class="meta">· ${escapeHTML(relTime(comment.createdAt))}</span><br>${escapeHTML(comment.body)}</div></div>`).join('') : '<div class="resp"><span class="meta">No responses yet. Add the first considered response.</span></div>'}
+      ${respondArea}
+    </section>
+  </div>`;
+};
+
+const marksRow = () => {
+  const length = Math.max(0, state.clipEnd - state.clipStart);
+  const over = length > MAX_CLIP_SECONDS;
+  return `
+    <div class="marks" data-marks-row>
+      <label class="markfield">In<input data-action="clip-in" inputmode="numeric" value="${escapeHTML(formatTime(state.clipStart))}" aria-label="Clip in point (minutes and seconds)" /></label>
+      <label class="markfield">Out<input data-action="clip-out" inputmode="numeric" value="${escapeHTML(formatTime(state.clipEnd))}" aria-label="Clip out point (minutes and seconds)" /></label>
+      <span class="chip duration ${over ? 'is-over' : ''}" data-duration-chip role="status">${escapeHTML(formatTime(length))}</span>
+    </div>
+    ${over ? `<div class="cap-block" data-over-reason>Clips are capped at ${formatTime(MAX_CLIP_SECONDS)}. Shorten the selection.</div>` : ''}`;
+};
+
+const passageRow = () => {
+  const excerpt = articleExcerpt();
+  return `
+    <div class="passage">
+      <div class="passage-head"><span class="chip">¶</span><span>Selected passage</span><button class="passage-clear" data-action="clear-passage" aria-label="Clear the selected passage">${icon('close')}</button></div>
+      <textarea data-action="article-excerpt" maxlength="2000" aria-label="Selected passage" placeholder="Paste the passage you are annotating…">${escapeHTML(excerpt)}</textarea>
+      <span class="passage-hint" data-passage-hint>${excerpt.length} characters · the landing page deep-links to this passage</span>
+    </div>`;
+};
+
+const recorderRow = () => {
+  const status = state.isRecording ? 'Recording your take…'
+    : state.isUploadingAudio ? 'Uploading your take…'
+    : state.recordedAudio ? 'Audio note ready'
+    : state.audioDraftId ? 'Audio note saved locally'
+    : 'Record a 90-second take';
+  const hint = state.isRecording ? 'Press to stop · max 1:30'
+    : state.isUploadingAudio ? 'The browser is sending your note'
+    : state.recordedAudio ? 'Re-record to replace it before publishing'
+    : state.audioDraftId ? 'It will retry when the backend is available'
+    : 'Say the thing you want to remember';
+  return `
+    <div class="recorder ${state.isRecording ? 'is-recording' : ''}">
+      <button class="rec-button ${state.isRecording ? 'is-recording' : ''}" data-action="toggle-record" aria-label="${state.isRecording ? 'Stop recording' : 'Start recording'}" ${state.isUploadingAudio ? 'disabled' : ''}>${icon(state.isRecording ? 'stop' : 'mic')}</button>
+      <div class="rec-copy"><strong role="status">${escapeHTML(status)}</strong><small>${escapeHTML(hint)}</small></div>
+      <span class="rec-wave" aria-hidden="true">${'<i></i>'.repeat(9)}</span>
+      <span class="rec-time">${escapeHTML(formatTime(state.isRecording ? state.recordingSeconds : state.audioDuration))}</span>
+      ${state.audioDraftId && !state.recordedAudio && !state.isUploadingAudio && !state.isRecording ? '<button class="rec-retry" data-action="retry-audio">Retry upload</button>' : ''}
+    </div>`;
+};
+
+// The publish gate: one reason at a time, shown under the button. Publish
+// stays disabled while a reason exists — a shipped state, not an alert.
+const publishBlocker = () => {
+  if (state.serverStatus !== 'online') return 'The backend is offline. Your draft is safe here.';
+  if (!state.customSource) return 'Resolve a source URL first.';
+  if (state.sourceType === 'article' && !articleExcerpt()) return 'Add the passage you are annotating.';
+  if (state.sourceType !== 'article' && state.clipEnd - state.clipStart < 1) return 'Set In and Out marks for the moment.';
+  if (state.sourceType !== 'article' && state.clipEnd - state.clipStart > MAX_CLIP_SECONDS) return `Clips are capped at ${formatTime(MAX_CLIP_SECONDS)}. Shorten the selection.`;
+  if (state.commentaryMode === 'text' && !state.commentary.trim()) return 'Add a note before publishing.';
+  if (state.commentaryMode === 'audio' && state.isRecording) return 'Stop the recording before publishing.';
+  if (state.commentaryMode === 'audio' && state.isUploadingAudio) return 'The audio note is still uploading.';
+  if (state.commentaryMode === 'audio' && !state.audioAssetId) return 'Record your audio note first.';
+  return '';
+};
+
+const captureView = () => {
+  const resolved = state.customSource;
+  const blocker = publishBlocker();
+  const sourceLine = resolved
+    ? `<div class="cap-source"><span class="livedot" aria-hidden="true"></span><span class="t">${escapeHTML(resolved.title)}</span><span class="type-select"><select data-action="source-type" aria-label="Source type">${['video', 'article', 'podcast'].map((type) => `<option value="${type}" ${state.sourceType === type ? 'selected' : ''}>${type}</option>`).join('')}</select></span></div>`
+    : '';
+  const selection = resolved
+    ? (state.sourceType === 'article' ? passageRow() : marksRow())
+    : '';
+  const noteArea = state.commentaryMode === 'text'
+    ? `<textarea class="cap-note" data-action="commentary" maxlength="280" aria-label="Your note" placeholder="What did you notice?">${escapeHTML(state.commentary)}</textarea>`
+    : recorderRow();
+  return `
+  <div class="page single">
+    <section class="capcard">
+      <h1>Capture</h1>
+      <p class="capdek">Paste a link, mark the moment, leave your context. The sidebar does this from the page you are on.</p>
+      <form class="cap-url" data-action="resolve-form">
+        <input data-action="source-url" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://youtube.com/watch?v=… · article · podcast" aria-label="Source URL" value="${escapeHTML(state.sourceUrl)}" />
+        <button class="btn" type="submit" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Resolve'}</button>
+      </form>
+      ${state.sourceError ? `<div class="cap-error" role="alert">${escapeHTML(state.sourceError)}</div>` : ''}
+      ${sourceLine}
+      ${selection}
+      ${noteArea}
+      <div class="cap-foot">
+        <button class="btn" data-action="publish" ${blocker || state.isPublishing ? 'disabled' : ''}>${state.isPublishing ? 'Publishing…' : 'Publish'}</button>
+        ${state.commentaryMode === 'text' ? `<span class="count" data-note-count>${state.commentary.length}/280</span>` : ''}
+        <span class="mode" role="group" aria-label="Note type">
+          <button class="${state.commentaryMode === 'text' ? 'is-on' : ''}" data-action="commentary-mode" data-mode="text" aria-pressed="${state.commentaryMode === 'text'}">Text</button>
+          <span aria-hidden="true">·</span>
+          <button class="${state.commentaryMode === 'audio' ? 'is-on' : ''}" data-action="commentary-mode" data-mode="audio" aria-pressed="${state.commentaryMode === 'audio'}">Audio</button>
+        </span>
+      </div>
+      <div class="cap-hint" data-publish-hint>${escapeHTML(blocker || 'Nothing is published until you publish. Ctrl/Cmd+Enter publishes.')}</div>
+    </section>
+  </div>`;
+};
+
+const libraryView = () => {
+  if (!state.user) {
+    return `<div class="page single"><div class="perma-empty"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h2>Your library is waiting.</h2><p>Sign in to see everything you have published, with per-annotation stats.</p>${authLinks('btn')}</div></div>`;
+  }
+  if (state.libraryLoading) return `<div class="page single">${skeletonPost()}${skeletonPost()}</div>`;
+  const profile = state.libraryData;
+  const annotations = (profile?.annotations || []).map(annotationToFeedItem);
+  const initials = escapeHTML((state.user.displayName || state.user.handle || 'A').slice(0, 1).toUpperCase());
+  const hasDraft = Boolean(state.customSource || state.commentary.trim() || articleExcerpt());
+  const draftRow = hasDraft ? `
+    <div class="lib-section">Drafts</div>
+    <div class="librows"><div class="librow"><div class="librow-main"><div class="librow-title">${escapeHTML(state.customSource?.title || state.sourceUrl || 'Draft in progress')}</div><div class="librow-note">${escapeHTML(state.commentary || articleExcerpt() || 'No note yet')}</div></div><button class="ghost" data-action="set-view" data-view="capture">Resume</button></div></div>` : '';
+  const rows = annotations.length
+    ? annotations.map((item) => `
+      <div class="librow">
+        <span class="chip">${escapeHTML(chipFor(item))}</span>
+        <div class="librow-main">
+          <div class="librow-title"><a href="/a/${encodeURIComponent(item.slug)}" data-action="open-annotation-link" data-slug="${escapeHTML(item.slug)}">${escapeHTML(item.sourceTitle)}</a></div>
+          <div class="librow-note">${escapeHTML(item.commentary || 'Audio note')}</div>
+        </div>
+        <div class="libstats"><span><strong>${item.opens}</strong> opens</span><span><strong>${item.comments}</strong> responses</span></div>
+      </div>`).join('')
+    : `<div class="librow"><div class="librow-main"><div class="librow-title">Nothing published yet.</div><div class="librow-note">Your source-backed moments will live here.</div></div><button class="ghost" data-action="set-view" data-view="capture">Capture</button></div>`;
+  const shareUrl = `${window.location.origin}/u/${encodeURIComponent(state.user.handle || '')}`;
+  return `
+  <div class="page single">
+    <div class="libhead">
+      <div class="avatar" aria-hidden="true">${initials}</div>
+      <div><h1>Library</h1><div class="lib-meta">@${escapeHTML(state.user.handle || '')} · ${escapeHTML(state.user.displayName || '')}</div></div>
+      <div class="lib-counts"><span><strong>${Number(profile?.annotationCount) || annotations.length}</strong> published</span><span><strong>${Number(profile?.followers) || 0}</strong> followers</span><span><strong>${Number(profile?.following) || 0}</strong> following</span></div>
+    </div>
+    <div class="lib-section">Published</div>
+    <div class="librows">${rows}</div>
+    ${draftRow}
+    <div class="lib-section">Share your library</div>
+    <div class="card"><p>Your public profile keeps every annotation and its source in one place.</p><button class="ghost" data-action="share" data-share-url="${escapeHTML(shareUrl)}">${icon('share')} Copy ${escapeHTML(shareUrl.replace(/^https?:\/\//, ''))}</button></div>
+  </div>`;
 };
 
 const profileView = () => {
-  if (state.profileLoading) return `<div class="profile-page"><div class="feed-empty"><span class="eyebrow">Profile</span><h3>Loading profile…</h3><p>Fetching the public annotations and follow state.</p></div></div>`;
-  if (!state.profileData) return `<div class="profile-page"><div class="feed-empty"><span class="eyebrow">Profile unavailable</span><h3>We could not load this profile.</h3><p>${escapeHTML(state.serverError || 'Check the handle and try again.')}</p><button class="ghost-button" data-action="set-view" data-view="feed">Back to discover ${icon('arrow')}</button></div></div>`;
+  if (state.profileLoading) return `<div class="page single">${skeletonPost()}${skeletonPost()}</div>`;
+  if (!state.profileData) return `<div class="page single"><div class="perma-empty"><h2>We could not load this profile.</h2><p>${escapeHTML(state.serverError || 'Check the handle and try again.')}</p><button class="ghost" data-action="set-view" data-view="feed">${icon('back')} Back to the timeline</button></div></div>`;
   const profile = state.profileData;
-  const annotations = (profile.annotations || []).map(annotationToFeedItem);
-  const initials = (profile.displayName || profile.handle || 'A').slice(0, 2).toUpperCase();
+  const items = (profile.annotations || []).map(annotationToFeedItem);
   const isCurrentUser = state.user?.id === profile.id;
   const following = Boolean(state.followingIds[profile.id] ?? profile.isFollowing);
-  return `<div class="profile-page"><div class="view-head profile-page-head"><div><span class="eyebrow">Public profile</span><h2>${escapeHTML(profile.displayName || profile.handle)}</h2><p>@${escapeHTML(profile.handle)} · ${escapeHTML(profile.bio || 'Keeping the moments worth returning to.')}</p></div><button class="ghost-button" data-action="set-view" data-view="feed">${icon('back')} Discover</button></div><section class="profile-hero"><div class="profile-avatar-large">${escapeHTML(initials)}</div><div class="profile-identity"><span class="eyebrow">Annotated member</span><h3>${escapeHTML(profile.displayName || profile.handle)}</h3><p>@${escapeHTML(profile.handle)}</p></div>${!isCurrentUser ? `<button class="follow-button profile-follow ${following ? 'is-following' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(profile.id)}">${following ? 'Following' : 'Follow'}</button>` : '<span class="profile-self">You</span>'}<div class="profile-metrics"><span><strong>${Number(profile.annotationCount) || annotations.length}</strong> annotations</span><span><strong>${Number(profile.followers) || 0}</strong> followers</span><span><strong>${Number(profile.following) || 0}</strong> following</span></div></section><div class="profile-section-head"><div><span class="eyebrow">Their annotations</span><h3>What they kept.</h3></div></div><main class="profile-annotations">${annotations.length ? annotations.map(feedCard).join('') : `<div class="feed-empty"><span class="eyebrow">No annotations yet</span><h3>This profile is just getting started.</h3><p>Published moments will appear here with their original sources attached.</p></div>`}</main></div>`;
+  return `
+  <div class="page single">
+    <div class="libhead">
+      <div class="avatar" aria-hidden="true">${escapeHTML((profile.displayName || profile.handle || 'A').slice(0, 1).toUpperCase())}</div>
+      <div><h1>${escapeHTML(profile.displayName || profile.handle)}</h1><div class="lib-meta">@${escapeHTML(profile.handle)}${profile.bio ? ` · ${escapeHTML(profile.bio)}` : ''}</div></div>
+      <div class="lib-counts"><span><strong>${Number(profile.annotationCount) || items.length}</strong> annotations</span><span><strong>${Number(profile.followers) || 0}</strong> followers</span></div>
+      ${!isCurrentUser ? `<button class="ghost ${following ? 'is-on' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(profile.id)}">${following ? 'Following' : 'Follow'}</button>` : ''}
+    </div>
+    <main class="feed" style="border:1px solid var(--border);border-radius:10px;min-height:0;overflow:hidden">
+      ${items.length ? items.map(feedPost).join('') : `<div class="feed-empty"><h3>No annotations yet.</h3><p>Published moments appear here with their sources attached.</p></div>`}
+    </main>
+  </div>`;
 };
 
-const publishedView = () => {
-  const publishedSource = source();
-  const publishedComments = state.publishedAnnotation?.comments || [];
-  const publicUrl = state.publishedAnnotation?.url || (state.publishedSlug ? `${window.location.origin}/a/${encodeURIComponent(state.publishedSlug)}` : '');
-  const publicLabel = publicUrl ? publicUrl.replace(/^https?:\/\//, '') : 'annotation link unavailable';
-  const authorHandle = state.publishedAnnotation?.author?.handle || '';
-  const authorName = state.publishedAnnotation?.author?.displayName || 'Tom Ballard';
-  const hasNote = Boolean((state.publishedAnnotation?.commentary || state.commentary).trim()) || state.recordedAudio;
+const moderationView = () => {
+  if (!canModerate()) return `<div class="page single"><div class="perma-empty"><h2>Moderation access is required.</h2><p>Sign in with an owner, admin, or moderator account to review claims.</p></div></div>`;
+  const statuses = ['open', 'in_review', 'resolved', 'rejected'];
+  const claims = state.moderationClaims || [];
   return `
-    <div class="view-head published-head"><div><span class="eyebrow">Published</span><h2>${state.published ? 'The moment, with your note.' : 'Your first annotation is waiting.'}</h2><p>${state.published ? 'A permanent link back to the source, with the context only you could add.' : 'Capture something from the page you are on, then publish it here.'}</p></div>${state.published ? `<button class="ghost-button" data-action="set-view" data-view="capture">${icon('back')} Capture another</button>` : ''}</div>
-    ${state.published ? `<div class="annotation-layout"><article class="annotation-page"><div class="annotation-page-bar"><span class="source-pill">${icon(state.sourceType)} ${publishedSource.label}</span><span>Published just now</span></div><div class="annotation-hero ${state.sourceType}">${annotationHero()}</div><div class="annotation-body"><div class="annotation-byline"><div class="feed-avatar avatar-0">TB</div><div>${authorHandle ? `<a class="profile-link" href="/u/${encodeURIComponent(authorHandle)}">${escapeHTML(authorName)}</a>` : `<strong>${escapeHTML(authorName)}</strong>`}<span>@${escapeHTML(authorHandle || 'tcballard')} · just now</span></div><button class="icon-button" aria-label="More options">${icon('more')}</button></div><h3>${escapeHTML(publishedSource.title)}</h3>${hasNote ? `<p class="annotation-copy">${state.publishedAnnotation?.commentary ? escapeHTML(state.publishedAnnotation.commentary) : state.commentary ? escapeHTML(state.commentary) : 'An audio annotation attached to this moment.'}</p>` : '<p class="annotation-copy empty-copy">No commentary added.</p>'}<div class="source-citation"><span>${icon('link')} Source</span><a href="${escapeHTML(publishedSource.url)}" target="_blank" rel="noreferrer">${escapeHTML(publishedSource.host)} ${icon('external')}</a></div></div><div class="annotation-actions"><button data-action="toggle-like" data-slug="${escapeHTML(state.publishedSlug)}" class="feed-action ${state.publishedAnnotation?.likedByMe || state.liked ? 'is-liked' : ''}">${icon('heart')} ${state.publishedAnnotation?.likedByMe || state.liked ? 'Liked' : 'Like'}</button><button class="feed-action" data-action="focus-comment">${icon('message')} ${publishedComments.length} comments</button><button class="feed-action" data-action="share">${icon('link')} Copy link</button></div><div class="annotation-comments">${publishedComments.length ? publishedComments.map((comment) => `<div class="commenter-avatar">TB</div><p><strong>@${escapeHTML(comment.author?.handle || comment.authorId)}</strong> ${escapeHTML(comment.body)}</p>`).join('') : '<p class="empty-copy">No comments yet. Add the first considered response.</p>'}</div><form class="comment-row annotation-comment-row" data-action="comment-form"><input aria-label="Add a comment" placeholder="Add a considered comment…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" /><button aria-label="Post comment">${icon('arrow')}</button></form></article><aside class="annotation-aside"><div class="claim-card"><span class="eyebrow">Source & rights</span><h3>Something wrong with this annotation?</h3><p>Every page keeps the source visible. If this clip misuses your work, file a claim and we’ll review it.</p><button class="claim-button" data-action="toggle-claim">File a claim ${icon('arrow')}</button></div><div class="share-card"><span class="eyebrow">Share this page</span><div class="share-url"><strong>${escapeHTML(publicLabel)}</strong><button data-action="copy-link" aria-label="Copy page link">${icon('link')}</button></div><p>It opens with the clip, the source, and the note.</p></div></aside></div>` : `<div class="empty-published"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h3>Nothing published yet.</h3><p>Start with the page you are already reading. The sidebar will do the rest.</p><button class="dark-button" data-action="set-view" data-view="capture">Open capture desk ${icon('arrow')}</button></div>`}
-    `;
+  <div class="page single">
+    <div class="modhead"><h1>Claims</h1><button class="ghost" data-action="refresh-moderation">${state.moderationLoading ? 'Refreshing…' : 'Refresh queue'}</button></div>
+    ${claims.length ? claims.map((claim) => {
+      const annotation = claim.annotation || {};
+      const current = claim.status || 'open';
+      return `<article class="modcard">
+        <div class="mod-meta"><span class="claim-status">${escapeHTML(current.replace('_', ' '))}</span><span>${escapeHTML(claim.createdAt ? new Date(claim.createdAt).toLocaleString() : 'Recently')}</span></div>
+        <h3>${escapeHTML(annotation.sourceTitle || 'Untitled annotation')}</h3>
+        <p class="mod-reason">${escapeHTML(claim.reason || 'No reason supplied.')}</p>
+        <div class="mod-meta"><span>Reported by ${escapeHTML(claim.reporter?.displayName || claim.reporter?.handle || claim.reporterId || 'unknown')}</span><a href="${escapeHTML(annotation.sourceUrl || '#')}" target="_blank" rel="noreferrer">Open source ${icon('open')}</a></div>
+        <div class="mod-actions">${statuses.map((status) => `<button class="${current === status ? 'is-current' : ''}" data-action="moderate-claim" data-claim-id="${escapeHTML(claim.id)}" data-status="${status}" ${current === status ? 'disabled' : ''}>${status.replace('_', ' ')}</button>`).join('')}</div>
+        ${claim.resolutionNote ? `<p class="mod-note">${escapeHTML(claim.resolutionNote)}</p>` : ''}
+      </article>`;
+    }).join('') : `<div class="perma-empty"><h2>${state.moderationLoading ? 'Loading claims…' : 'The queue is clear.'}</h2><p>New rights reports appear here with their source and reporter attached.</p></div>`}
+  </div>`;
 };
 
 const claimModal = () => `<div class="modal-backdrop" data-action="close-claim">
   <div class="claim-modal" role="dialog" aria-modal="true" aria-labelledby="claim-title" aria-describedby="claim-description" data-action="stop-modal" data-stop-click="true">
-    <button class="icon-button modal-close" data-action="close-claim" aria-label="Close claim form">${icon('close')}</button>
-    <span class="eyebrow">Source & rights</span>
+    <button class="modal-close" data-action="close-claim" aria-label="Close claim form">${icon('close')}</button>
     <h3 id="claim-title">${state.claimSubmitted ? 'Claim received' : 'File a claim'}</h3>
     ${state.claimTitle ? `<p class="claim-context">About: ${escapeHTML(state.claimTitle)}</p>` : ''}
     ${state.claimSubmitted
-      ? `<div class="claim-success" role="status"><strong>Thank you for flagging the source.</strong><p id="claim-description">The report is attached to this annotation for review.</p></div><button class="dark-button full-button" data-action="close-claim">Done ${icon('check')}</button>`
-      : `<p id="claim-description">Tell us what is wrong with this annotation. We’ll keep your report attached to the source page.</p><label>What should we review?<textarea placeholder="Describe the issue…" data-action="claim-text" aria-describedby="claim-error">${escapeHTML(state.claimReason)}</textarea></label>${state.claimError ? `<p class="claim-error" id="claim-error" role="alert">${escapeHTML(state.claimError)}</p>` : '<span id="claim-error" hidden></span>'}<button class="dark-button full-button" data-action="submit-claim">Send claim ${icon('arrow')}</button>`}
+      ? `<div class="claim-success" role="status"><strong>Thank you for flagging this.</strong><p id="claim-description">The report is attached to this annotation for review.</p></div><button class="btn full-button" data-action="close-claim">Done</button>`
+      : `<p id="claim-description">Tell us what is wrong with this annotation. The report stays attached to the source page.</p><label>What should we review?<textarea placeholder="Describe the issue…" data-action="claim-text" aria-describedby="claim-error">${escapeHTML(state.claimReason)}</textarea></label>${state.claimError ? `<p class="claim-error" id="claim-error" role="alert">${escapeHTML(state.claimError)}</p>` : '<span id="claim-error" hidden></span>'}<button class="btn full-button" data-action="submit-claim">Send claim</button>`}
   </div>
 </div>`;
 
-const toast = () => state.toast ? `<div class="toast" role="status"><span class="toast-icon">${icon('check')}</span>${escapeHTML(state.toast)}</div>` : '';
+const toast = () => state.toast
+  ? `<div class="toast" role="status">${icon('check')}<span>${escapeHTML(state.toast)}</span>${state.toastLink ? `<a href="${escapeHTML(state.toastLink.href)}" data-action="toast-link">${escapeHTML(state.toastLink.label)}</a>` : ''}</div>`
+  : '';
+
+const footerView = () => `
+  <footer>
+    <a href="/privacy.html">Privacy</a>
+    <a href="#" data-action="rights-note">Rights &amp; claims</a>
+    <span class="footer-note">annotated © 2026 · source-first notes</span>
+  </footer>`;
 
 const render = () => {
-  app.innerHTML = `${appHeader()}${authStateView()}<div class="app-body">${appRail()}<main class="main-content">${state.activeView === 'capture' ? captureView() : state.activeView === 'feed' ? feedView() : state.activeView === 'moderation' ? moderationView() : state.activeView === 'profile' ? profileView() : publishedView()}</main></div>${state.claimOpen ? claimModal() : ''}${toast()}`;
-  for (const element of app.querySelectorAll('.app-header, .auth-notice, .auth-prompt, .app-body')) {
+  const view = state.activeView === 'capture' ? captureView()
+    : state.activeView === 'published' ? permalinkView()
+    : state.activeView === 'library' ? libraryView()
+    : state.activeView === 'profile' ? profileView()
+    : state.activeView === 'moderation' ? moderationView()
+    : feedView();
+  const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
+  app.innerHTML = `${chromeBar()}${offline}${authStateView()}${view}${footerView()}${state.claimOpen ? claimModal() : ''}${toast()}`;
+  for (const element of app.querySelectorAll('.chrome, .auth-notice, .auth-prompt, .page, footer, .offline-note')) {
     element.inert = state.claimOpen;
     if (state.claimOpen) element.setAttribute('aria-hidden', 'true');
   }
+  if (pendingCommentFocus) {
+    pendingCommentFocus = false;
+    app.querySelector('[data-action="comment-draft"]')?.focus();
+  }
 };
 
-const renderCapture = () => {
-  if (state.activeView !== 'capture') {
-    render();
-    return;
+/* ── capture logic ─────────────────────────────────────────────────── */
+
+const setClipBoundary = (boundary, rawValue) => {
+  const parsed = parseTimeInput(rawValue);
+  if (parsed === null) return false;
+  if (boundary === 'start') {
+    state.clipStart = parsed;
+    if (state.clipEnd < parsed) state.clipEnd = parsed;
+  } else {
+    state.clipEnd = parsed;
+    if (state.clipStart > parsed) state.clipStart = parsed;
   }
-
-  const sourceStage = app.querySelector('.source-spine-stage');
-  const sidebar = app.querySelector('.source-spine-note');
-  if (!sourceStage || !sidebar) {
-    render();
-    return;
-  }
-
-  // Keep the shell, previews, controls, and scroll context in place. Source
-  // changes only update text, attributes, and visibility on mounted elements.
-  const sourceTitle = sourceStage.querySelector('.stage-header h1');
-  if (sourceTitle) sourceTitle.textContent = source().title;
-
-  const sourceInput = sourceStage.querySelector('.source-input-row');
-  if (!state.showSourceInput && sourceInput) sourceInput.remove();
-  if (state.showSourceInput && !sourceInput) {
-    render();
-    return;
-  }
-
-  const favicon = sourceStage.querySelector('.tab-favicon');
-  const browserTabHost = sourceStage.querySelector('.browser-tab-host');
-  const addressBar = sourceStage.querySelector('.address-bar');
-  if (favicon) favicon.textContent = state.sourceType === 'video' ? '▶' : state.sourceType === 'article' ? 'V' : '◉';
-  if (browserTabHost) browserTabHost.textContent = source().host;
-  if (addressBar) addressBar.textContent = state.sourceUrl;
-  const mobileSourceSummary = sourceStage.querySelector('.mobile-source-summary > span');
-  if (mobileSourceSummary) mobileSourceSummary.innerHTML = `${icon(state.sourceType)} ${escapeHTML(source().label)} · ${escapeHTML(source().host)}`;
-
-  sourceStage.querySelectorAll('[data-source-canvas]').forEach((canvas) => {
-    canvas.hidden = canvas.dataset.sourceCanvas !== state.sourceType;
-  });
-  const activePlayerTime = sourceStage.querySelector(`[data-source-canvas="${state.sourceType}"] .media-player .player-time`);
-  if (activePlayerTime) activePlayerTime.textContent = formatTime(state.clipStart);
-  const articleQuote = sourceStage.querySelector('[data-source-canvas="article"] blockquote');
-  if (articleQuote) articleQuote.textContent = `“${articleExcerpt() || sourceData.article.excerpt}”`;
-
-  const footer = sourceStage.querySelector('.source-spine-footer');
-  const footerPill = footer?.querySelector('.source-pill');
-  const footerByline = footer?.querySelector('.source-byline');
-  const footerLink = footer?.querySelector('.source-link');
-  if (footerPill) footerPill.innerHTML = `${icon(state.sourceType)} ${escapeHTML(source().label)}`;
-  if (footerByline) footerByline.innerHTML = `${escapeHTML(source().author)} <span>·</span> ${escapeHTML(source().date)}`;
-  if (footerLink) footerLink.href = source().url;
-
-  sidebar.querySelectorAll('.source-type').forEach((buttonElement) => {
-    const active = buttonElement.dataset.type === state.sourceType;
-    buttonElement.classList.toggle('is-active', active);
-    buttonElement.setAttribute('aria-pressed', String(active));
-  });
-  const clipEditor = sidebar.querySelector('.clip-editor');
-  const highlightPreview = sidebar.querySelector('.highlight-preview');
-  if (clipEditor) clipEditor.hidden = state.sourceType === 'article';
-  if (highlightPreview) highlightPreview.hidden = state.sourceType !== 'article';
-  const clipEditorIcon = sidebar.querySelector('.clip-editor-icon');
-  if (clipEditorIcon) clipEditorIcon.innerHTML = icon(state.sourceType);
-  const excerptField = highlightPreview?.querySelector('[data-action="article-excerpt"]');
-  const excerptHint = highlightPreview?.querySelector('#article-excerpt-hint');
-  if (excerptField) excerptField.value = articleExcerpt();
-  if (excerptHint) excerptHint.textContent = `Highlight selected · ${articleExcerpt().length} characters · edit before publishing`;
-  refreshClipControls();
-
-  const railSource = app.querySelector('.rail-source');
-  const railGlyph = railSource?.querySelector('.source-glyph');
-  const railHost = railSource?.querySelector('span:last-child');
-  if (railGlyph) railGlyph.innerHTML = icon(state.sourceType);
-  if (railHost) railHost.textContent = source().host;
+  return true;
 };
 
-const setClipBoundary = (boundary, value) => {
-  const range = moveClipBoundary(state.clipStart, state.clipEnd, boundary, value, { max: Math.max(sourceRangeMax(), Number(value) || 0) });
-  state.clipStart = range.start;
-  state.clipEnd = range.end;
-};
-
-const refreshClipControls = () => {
-  const editor = app.querySelector('.clip-editor');
-  if (!editor) return;
-  const startRange = editor.querySelector('[data-action="clip-start"]');
-  const endRange = editor.querySelector('[data-action="clip-end"]');
-  const startNumber = editor.querySelector('[data-action="clip-start-number"]');
-  const endNumber = editor.querySelector('[data-action="clip-end-number"]');
-  if (!startRange || !endRange || !startNumber || !endNumber) return;
-  startRange.value = String(state.clipStart);
-  endRange.value = String(state.clipEnd);
-  startRange.setAttribute('aria-valuetext', formatTime(state.clipStart));
-  endRange.setAttribute('aria-valuetext', formatTime(state.clipEnd));
-  startNumber.value = String(state.clipStart);
-  endNumber.value = String(state.clipEnd);
-  const fill = editor.querySelector('.range-fill');
-  const max = sourceRangeMax();
-  if (fill) {
-    fill.style.left = `${(state.clipStart / max) * 100}%`;
-    fill.style.width = `${((state.clipEnd - state.clipStart) / max) * 100}%`;
+const refreshCaptureBits = () => {
+  const chipEl = app.querySelector('[data-duration-chip]');
+  const length = Math.max(0, state.clipEnd - state.clipStart);
+  if (chipEl) {
+    chipEl.textContent = formatTime(length);
+    chipEl.classList.toggle('is-over', length > MAX_CLIP_SECONDS);
   }
-  const duration = editor.querySelector('.duration-badge > span:first-child');
-  if (duration) duration.textContent = formatTime(state.clipEnd - state.clipStart);
-  const selectedDuration = editor.querySelector('[data-range-duration]');
-  if (selectedDuration) selectedDuration.textContent = formatTime(state.clipEnd - state.clipStart);
-  const playerTime = app.querySelector(`[data-source-canvas="${state.sourceType}"] .media-player .player-time`);
-  if (playerTime) playerTime.textContent = formatTime(state.clipStart);
+  const blocker = publishBlocker();
+  const hint = app.querySelector('[data-publish-hint]');
+  if (hint) hint.textContent = blocker || 'Nothing is published until you publish. Ctrl/Cmd+Enter publishes.';
+  const publishButton = app.querySelector('[data-action="publish"]');
+  if (publishButton) publishButton.disabled = Boolean(blocker || state.isPublishing);
+  const overReason = app.querySelector('[data-over-reason]');
+  if (length <= MAX_CLIP_SECONDS && overReason) overReason.remove();
+  if (length > MAX_CLIP_SECONDS && !overReason) {
+    const marks = app.querySelector('[data-marks-row]');
+    if (marks) {
+      const reason = document.createElement('div');
+      reason.className = 'cap-block';
+      reason.dataset.overReason = 'true';
+      reason.textContent = `Clips are capped at ${formatTime(MAX_CLIP_SECONDS)}. Shorten the selection.`;
+      marks.after(reason);
+    }
+  }
 };
 
 const stopAudioRecording = () => {
@@ -826,10 +949,7 @@ const startAudioRecording = async () => {
 
 const toggleAudioRecording = () => state.isRecording ? stopAudioRecording() : startAudioRecording();
 
-const refreshFeed = async () => {
-  if (state.serverStatus !== 'online') return;
-  await loadFeed();
-};
+/* ── loaders ───────────────────────────────────────────────────────── */
 
 const loadModerationClaims = async () => {
   if (!canModerate() || state.serverStatus !== 'online') return;
@@ -860,8 +980,24 @@ const loadProfile = async () => {
   }
 };
 
+const loadLibrary = async () => {
+  if (!state.user?.handle || state.serverStatus !== 'online') return;
+  state.libraryLoading = true;
+  try {
+    const result = await api.profile(state.user.handle);
+    state.libraryData = result.profile || null;
+  } catch {
+    state.libraryData = null;
+  } finally {
+    state.libraryLoading = false;
+  }
+};
+
 const loadFeed = async ({ append = false } = {}) => {
   if (state.serverStatus !== 'online') return;
+  state.feedLoading = true;
+  state.feedError = '';
+  if (!append) render();
   try {
     const params = new URLSearchParams({ limit: '20' });
     if (state.feedFollowing) params.set('following', 'true');
@@ -870,13 +1006,17 @@ const loadFeed = async ({ append = false } = {}) => {
     const result = await api.feed(params.toString());
     state.feedAnnotations = append ? [...state.feedAnnotations, ...(result.annotations || [])] : (result.annotations || []);
     state.feedCursor = result.nextCursor || null;
+    state.feedLoaded = true;
   } catch (error) {
     if (state.feedFollowing && error?.status === 401) {
       state.feedFollowing = false;
       state.feedCursor = null;
       recoverAuthError(error, 'Sign in to see the people you follow.');
+    } else {
+      state.feedError = 'The timeline could not be loaded.';
     }
-    /* the capture flow should remain usable when feed loading fails */
+  } finally {
+    state.feedLoading = false;
   }
 };
 
@@ -896,8 +1036,8 @@ const watchMediaProcessing = () => {
 
 const loadSource = async () => {
   const url = state.sourceUrl.trim();
-  if (!url) { notify('Paste a source URL first.'); return; }
-  if (state.serverStatus !== 'online') { notify('Backend unavailable — source resolution is not connected.'); return; }
+  if (!url) { state.sourceError = 'Paste a source URL first.'; render(); return; }
+  if (state.serverStatus !== 'online') { state.sourceError = 'Backend unavailable — source resolution is not connected.'; render(); return; }
   state.sourceError = '';
   state.isResolvingSource = true;
   render();
@@ -914,35 +1054,24 @@ const loadSource = async () => {
       state.clipEnd = 0;
     } else {
       state.clipStart = 0;
-      state.clipEnd = 60;
+      state.clipEnd = Math.min(MAX_CLIP_SECONDS, Math.max(1, Math.round(Number(resolved.duration) || 60)));
     }
-    state.showSourceInput = false;
-    state.sourceError = '';
     state.isResolvingSource = false;
     persist();
-    notify(`Resolved ${state.customSource.host || 'source'} — ready to annotate.`);
+    render();
+    notify(`Resolved ${state.customSource.host || 'source'} — mark the moment.`);
   } catch (error) {
     state.isResolvingSource = false;
     state.sourceError = error.message || 'Source could not be resolved.';
     render();
-    notify(`Source could not be resolved: ${state.sourceError}`);
   }
 };
 
 const publishAnnotation = async () => {
-  if (state.published) {
-    state.activeView = 'published';
-    render();
-    return;
-  }
   if (requestSignIn('publish this annotation')) return;
-  if (state.sourceType !== 'article' && state.clipEnd - state.clipStart > 90) { notify('Keep the clip under 90 seconds.'); return; }
-  if (state.sourceType === 'article' && !articleExcerpt()) { notify('Select a passage before publishing.'); return; }
-  if (state.commentaryMode === 'text' && !state.commentary.trim()) { notify('Add a note before publishing.'); return; }
-  if (state.commentaryMode === 'audio' && !state.audioAssetId) { notify('Finish uploading the audio note before publishing.'); return; }
-  if (state.serverStatus !== 'online') { notify('Backend unavailable — this draft has not been published.'); return; }
-
-  const currentSource = source();
+  const blocker = publishBlocker();
+  if (blocker) { notify(blocker); return; }
+  const currentSource = state.customSource;
   state.isPublishing = true;
   render();
   try {
@@ -955,23 +1084,27 @@ const publishAnnotation = async () => {
       canonicalUrl: currentSource.canonicalUrl || state.sourceUrl,
       clipStart: state.clipStart,
       clipEnd: state.clipEnd,
-      commentary: state.commentary,
+      commentary: state.commentaryMode === 'text' ? state.commentary : '',
       commentaryMode: state.commentaryMode,
-      audioAssetId: state.audioAssetId || undefined,
-      audioDuration: state.audioDuration || undefined,
+      audioAssetId: state.commentaryMode === 'audio' ? state.audioAssetId : undefined,
+      audioDuration: state.commentaryMode === 'audio' ? state.audioDuration : undefined,
       mediaUrl: currentSource.mediaUrl || undefined,
       provider: currentSource.provider || undefined,
       clientRequestId: state.clientRequestId,
     });
     hydrateAnnotation(annotation);
-    state.activeView = 'published';
     state.isPublishing = false;
-    watchMediaProcessing();
-    await refreshFeed();
     if (state.audioDraftId) await deleteMediaDraft(state.audioDraftId).catch(() => {});
     state.audioDraftId = '';
     clearDraft();
-    notify('Published with a permanent source link.');
+    persist();
+    state.activeView = 'published';
+    window.history.pushState({}, '', `/a/${encodeURIComponent(annotation.slug)}`);
+    watchMediaProcessing();
+    render();
+    window.scrollTo(0, 0);
+    notify('Published', { href: annotation.url, label: 'View page' });
+    loadFeed().then(render);
   } catch (error) {
     if (recoverAuthError(error, 'Sign in to publish this annotation.')) return;
     state.isPublishing = false;
@@ -981,11 +1114,11 @@ const publishAnnotation = async () => {
 };
 
 const copyPublicLink = async (requestedLink = '') => {
-  const link = requestedLink || publicAnnotationUrl(state.publishedAnnotation, window.location.origin) || (state.publishedSlug ? `${window.location.origin}/a/${encodeURIComponent(state.publishedSlug)}` : '');
+  const link = requestedLink || publicAnnotationUrl(state.publishedAnnotation, window.location.origin);
   if (!link) { notify('Publish an annotation before copying its link.'); return; }
   try {
     await navigator.clipboard.writeText(link);
-    notify('Public annotation link copied.');
+    notify('Link copied.');
   } catch {
     notify(link);
   }
@@ -994,23 +1127,19 @@ const copyPublicLink = async (requestedLink = '') => {
 const submitComment = async () => {
   const body = state.commentDraft.trim();
   if (!body) { notify('Write something before posting.'); return; }
-  if (state.publishedSlug) {
-    if (requestSignIn('post a comment')) return;
-    if (state.serverStatus !== 'online') { notify('Backend unavailable — comment not posted.'); return; }
-    try {
-      const { annotation } = await api.addComment(state.publishedSlug, body);
-      state.publishedAnnotation = annotation;
-      state.commentDraft = '';
-      notify('Comment added to the conversation.');
-    } catch (error) {
-      if (recoverAuthError(error, 'Sign in to post a comment.')) return;
-      notify(error.message || 'Comment could not be posted.');
-    }
-    return;
+  if (!state.publishedSlug) return;
+  if (requestSignIn('post a response')) return;
+  if (state.serverStatus !== 'online') { notify('Backend unavailable — response not posted.'); return; }
+  try {
+    const { annotation } = await api.addComment(state.publishedSlug, body);
+    state.publishedAnnotation = annotation;
+    state.commentDraft = '';
+    render();
+    notify('Response added.');
+  } catch (error) {
+    if (recoverAuthError(error, 'Sign in to post a response.')) return;
+    notify(error.message || 'Response could not be posted.');
   }
-  state.comments += 1;
-  state.commentDraft = '';
-  notify('Comment added to the conversation.');
 };
 
 const submitClaim = async () => {
@@ -1055,7 +1184,7 @@ const submitClaim = async () => {
 const restoreClaimFocus = () => {
   const returnTarget = claimReturnFocus?.slug
     ? [...document.querySelectorAll('[data-action="toggle-claim"][data-claim-slug]')].find((element) => element.dataset.claimSlug === claimReturnFocus.slug)
-    : document.querySelector('.claim-button');
+    : document.querySelector('[data-action="toggle-claim"]');
   (returnTarget || document.querySelector('.nav-link.is-active'))?.focus();
   claimReturnFocus = null;
 };
@@ -1069,6 +1198,35 @@ const closeClaimDialog = () => {
   render();
   restoreClaimFocus();
 };
+
+const openAnnotation = async (slug) => {
+  if (!slug) return;
+  state.publishedSlug = slug;
+  state.publishedAnnotation = state.feedAnnotations.find((item) => item.slug === slug) || null;
+  state.published = Boolean(state.publishedAnnotation);
+  if (state.publishedAnnotation) {
+    state.clipUrl = state.publishedAnnotation.clipUrl || '';
+    state.mediaStatus = state.publishedAnnotation.mediaStatus || 'not-applicable';
+    state.mediaError = String(state.publishedAnnotation.mediaError || '').slice(0, 280);
+  }
+  navigate('published');
+  try {
+    const { annotation } = await api.getAnnotation(slug);
+    hydrateAnnotation(annotation);
+    watchMediaProcessing();
+    render();
+  } catch { /* rendered from feed data; a fetch miss keeps that view */ }
+};
+
+const openProfile = (handle) => {
+  if (!handle) return;
+  state.profileHandle = handle;
+  state.profileData = null;
+  navigate('profile');
+  loadProfile().then(render);
+};
+
+/* ── events ────────────────────────────────────────────────────────── */
 
 app.addEventListener('click', (event) => {
   const target = event.target.closest('[data-action]');
@@ -1085,21 +1243,43 @@ app.addEventListener('click', (event) => {
   }
   if (action === 'set-view') {
     if (target.dataset.view === 'moderation' && !canModerate()) { notify('Moderation access is required.'); return; }
-    state.authPrompt = '';
-    state.activeView = target.dataset.view;
-    if (state.activeView !== 'profile') {
-      state.profileHandle = '';
-      state.profileData = null;
-    }
-    if (state.activeView === 'moderation') loadModerationClaims().then(render);
-    persist();
-    render();
+    if (state.activeView !== 'profile') state.profileHandle = '';
+    navigate(target.dataset.view);
     return;
   }
-  if (action === 'source-type') { setSource(target.dataset.type); return; }
-  if (action === 'toggle-source-input') { state.showSourceInput = !state.showSourceInput; if (!state.showSourceInput) state.sourceError = ''; render(); return; }
-  if (action === 'toggle-mobile-source') { state.showMobileSourcePreview = !state.showMobileSourcePreview; render(); return; }
-  if (action === 'load-source') { loadSource(); return; }
+  if (action === 'open-annotation') {
+    if (event.target.closest('a, button:not([data-action="open-annotation"])')) return;
+    event.preventDefault();
+    openAnnotation(target.dataset.slug);
+    return;
+  }
+  if (action === 'open-annotation-link') {
+    event.preventDefault();
+    openAnnotation(target.dataset.slug);
+    return;
+  }
+  if (action === 'open-profile') {
+    event.preventDefault();
+    openProfile(target.dataset.handle);
+    return;
+  }
+  if (action === 'open-respond') {
+    pendingCommentFocus = true;
+    openAnnotation(target.dataset.slug);
+    return;
+  }
+  if (action === 'open-original') {
+    recordOpen(target.dataset.slug);
+    return; // the anchor's default navigation opens the source in a new tab
+  }
+  if (action === 'source-type') return; // handled on change
+  if (action === 'clear-passage') {
+    state.articleExcerpt = '';
+    persist();
+    render();
+    app.querySelector('[data-action="article-excerpt"]')?.focus();
+    return;
+  }
   if (action === 'commentary-mode') { if (state.isRecording) stopAudioRecording(); state.commentaryMode = target.dataset.mode; persist(); render(); return; }
   if (action === 'toggle-record') { toggleAudioRecording(); return; }
   if (action === 'retry-audio') { retryStagedAudio(); return; }
@@ -1112,9 +1292,9 @@ app.addEventListener('click', (event) => {
     loadFeed().then(render);
     return;
   }
-  if (action === 'search') { state.showFeedSearch = !state.showFeedSearch; render(); if (state.showFeedSearch) document.querySelector('#feed-search')?.focus(); return; }
-  if (action === 'clear-feed-search') { state.feedQuery = ''; state.feedCursor = null; loadFeed().then(() => { render(); document.querySelector('#feed-search')?.focus(); }); return; }
+  if (action === 'clear-feed-search') { state.feedQuery = ''; state.feedCursor = null; loadFeed().then(render); return; }
   if (action === 'feed-more') { loadFeed({ append: true }).then(render); return; }
+  if (action === 'feed-retry') { loadFeed().then(render); return; }
   if (action === 'refresh-moderation') { loadModerationClaims().then(render); return; }
   if (action === 'moderate-claim') {
     if (!canModerate() || state.serverStatus !== 'online') { notify('Moderation is unavailable while the backend is offline.'); return; }
@@ -1130,47 +1310,24 @@ app.addEventListener('click', (event) => {
     })();
     return;
   }
-  if (action === 'toggle-like') {
-    const slug = target.dataset.slug;
-    if (slug && state.serverStatus === 'online') {
-      if (requestSignIn('save a like')) return;
-      const existing = state.publishedSlug === slug ? state.publishedAnnotation : state.feedAnnotations.find((item) => item.slug === slug);
-      const liked = Boolean(existing?.likedByMe || state.liked);
-      (async () => {
-        try {
-          const result = liked ? await api.unlike(slug) : await api.like(slug);
-          if (state.publishedSlug === slug) state.publishedAnnotation = result.annotation;
-          const item = state.feedAnnotations.find((entry) => entry.slug === slug);
-          if (item) { item.likedByMe = result.annotation.likedByMe; item.likes = result.annotation.likes; }
-          state.liked = result.annotation.likedByMe;
-          render();
-        } catch (error) {
-          if (!recoverAuthError(error, 'Sign in to save a like.')) notify(error.message || 'Like could not be saved.');
-        }
-      })();
-    } else { state.liked = !state.liked; render(); }
-    return;
-  }
   if (action === 'toggle-follow') {
     const userId = target.dataset.userId;
-    if (userId && state.serverStatus === 'online') {
-      if (requestSignIn('follow this member')) return;
-      const following = Boolean(state.followingIds[userId]);
-      (async () => {
-        try {
-          const result = following ? await api.unfollow(userId) : await api.follow(userId);
-          state.followingIds[userId] = result.following;
-          state.following = result.following;
-          if (state.profileData?.id === userId) {
-            state.profileData.isFollowing = result.following;
-            state.profileData.followers = Math.max(0, Number(state.profileData.followers || 0) + (result.following ? 1 : -1));
-          }
-          render();
-        } catch (error) {
-          if (!recoverAuthError(error, 'Sign in to follow this member.')) notify(error.message || 'Follow could not be saved.');
+    if (!userId || state.serverStatus !== 'online') return;
+    if (requestSignIn('follow this member')) return;
+    const following = Boolean(state.followingIds[userId]);
+    (async () => {
+      try {
+        const result = following ? await api.unfollow(userId) : await api.follow(userId);
+        state.followingIds[userId] = result.following;
+        if (state.profileData?.id === userId) {
+          state.profileData.isFollowing = result.following;
+          state.profileData.followers = Math.max(0, Number(state.profileData.followers || 0) + (result.following ? 1 : -1));
         }
-      })();
-    } else { state.following = !state.following; render(); }
+        render();
+      } catch (error) {
+        if (!recoverAuthError(error, 'Sign in to follow this member.')) notify(error.message || 'Follow could not be saved.');
+      }
+    })();
     return;
   }
   if (action === 'retry-media') {
@@ -1183,6 +1340,7 @@ app.addEventListener('click', (event) => {
         const result = await api.retryMedia(state.publishedSlug);
         hydrateAnnotation(result.annotation);
         watchMediaProcessing();
+        render();
         notify('Clip retry queued.');
       } catch (error) {
         if (!recoverAuthError(error, 'Sign in to retry this clip.')) notify(error.message || 'Clip retry could not be queued.');
@@ -1194,53 +1352,65 @@ app.addEventListener('click', (event) => {
   }
   if (action === 'focus-comment') { document.querySelector('[data-action="comment-draft"]')?.focus(); return; }
   if (action === 'share') { copyPublicLink(target.dataset.shareUrl || ''); return; }
-  if (action === 'copy-link') { copyPublicLink(); return; }
-  if (action === 'open-original') { if (target.getAttribute('href') === '#') { event.preventDefault(); notify('Original source link preserved.'); } return; }
   if (action === 'toggle-claim') {
     claimReturnFocus = { slug: target.dataset.claimSlug || '', view: state.activeView };
-    if (target.dataset.claimSlug) {
-      state.claimSlug = target.dataset.claimSlug;
-      state.claimTitle = target.dataset.claimTitle || '';
-      state.claimOpen = true;
-    } else {
-      state.claimOpen = true;
-    }
+    state.claimSlug = target.dataset.claimSlug || '';
+    state.claimTitle = target.dataset.claimTitle || '';
+    state.claimOpen = true;
     state.claimError = '';
     state.claimSubmitted = false;
     render();
-    if (state.claimOpen) document.querySelector('[data-action="claim-text"]')?.focus();
+    document.querySelector('[data-action="claim-text"]')?.focus();
     return;
   }
   if (action === 'close-claim') { closeClaimDialog(); return; }
   if (action === 'submit-claim') { submitClaim(); return; }
-  if (action === 'logout') { api.logout().then(() => { state.user = null; notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
-  if (action === 'sidebar-help') { notify('Annotated keeps a source link on every public page.'); return; }
+  if (action === 'rights-note') { event.preventDefault(); notify('Use “File a claim” on any annotation page to report a rights issue.'); return; }
+  if (action === 'extension-note') { event.preventDefault(); notify('The extension ships with the repository — see CHROMEWEBSTORE.md.'); return; }
+  if (action === 'logout') { api.logout().then(() => { state.user = null; render(); notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
 });
 
 app.addEventListener('keydown', (event) => {
-  if (!state.claimOpen) return;
-  const dialog = app.querySelector('.claim-modal');
-  if (!dialog) return;
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    closeClaimDialog();
+  if (state.claimOpen) {
+    const dialog = app.querySelector('.claim-modal');
+    if (!dialog) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeClaimDialog();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = [...dialog.querySelectorAll('button, textarea, input, select, a[href]')]
+      .filter((element) => !element.disabled && !element.hidden && element.getClientRects().length);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    } else if (!dialog.contains(document.activeElement)) {
+      event.preventDefault();
+      first.focus();
+    }
     return;
   }
-  if (event.key !== 'Tab') return;
-  const focusable = [...dialog.querySelectorAll('button, textarea, input, select, a[href]')]
-    .filter((element) => !element.disabled && !element.hidden && element.getClientRects().length);
-  if (!focusable.length) return;
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  } else if (!dialog.contains(document.activeElement)) {
-    event.preventDefault();
-    first.focus();
+  if (state.activeView === 'capture') {
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+      event.preventDefault();
+      publishAnnotation();
+      return;
+    }
+    if (event.key === 'Escape' && !event.target.closest('input, textarea')) {
+      if (state.sourceType === 'article' ? articleExcerpt() : state.clipEnd - state.clipStart > 0) {
+        state.articleExcerpt = state.sourceType === 'article' ? '' : state.articleExcerpt;
+        if (state.sourceType !== 'article') { state.clipStart = 0; state.clipEnd = 0; }
+        persist();
+        render();
+      }
+    }
   }
 });
 
@@ -1248,29 +1418,49 @@ app.addEventListener('input', (event) => {
   const action = event.target.dataset.action;
   if (action === 'commentary') {
     state.commentary = event.target.value.slice(0, 280);
-    const count = event.target.parentElement?.querySelector('.editor-foot span');
+    const count = app.querySelector('[data-note-count]');
     if (count) count.textContent = `${state.commentary.length}/280`;
+    persist();
+    refreshCaptureBits();
   }
   if (action === 'comment-draft') state.commentDraft = event.target.value;
   if (action === 'claim-text') {
     state.claimReason = event.target.value;
     state.claimError = '';
   }
-  if (action === 'source-url') { state.sourceUrl = event.target.value; state.customSource = null; state.sourceError = ''; }
+  if (action === 'source-url') { state.sourceUrl = event.target.value; state.sourceError = ''; }
   if (action === 'article-excerpt') {
     state.articleExcerpt = event.target.value.slice(0, 2000);
-    const hint = event.target.closest('.highlight-preview')?.querySelector('#article-excerpt-hint');
-    if (hint) hint.textContent = `Highlight selected · ${state.articleExcerpt.trim().length} characters · edit before publishing`;
+    const hint = app.querySelector('[data-passage-hint]');
+    if (hint) hint.textContent = `${state.articleExcerpt.trim().length} characters · the landing page deep-links to this passage`;
     persist();
+    refreshCaptureBits();
   }
-  if (action === 'clip-start') { setClipBoundary('start', event.target.value); persist(); refreshClipControls(); }
-  if (action === 'clip-end') { setClipBoundary('end', event.target.value); persist(); refreshClipControls(); }
+  if (action === 'chrome-search') { /* applied on submit */ }
 });
 
 app.addEventListener('change', (event) => {
   const action = event.target.dataset.action;
-  if (action === 'clip-start-number') { setClipBoundary('start', event.target.value); persist(); refreshClipControls(); }
-  if (action === 'clip-end-number') { setClipBoundary('end', event.target.value); persist(); refreshClipControls(); }
+  if (action === 'clip-in' || action === 'clip-out') {
+    const applied = setClipBoundary(action === 'clip-in' ? 'start' : 'end', event.target.value);
+    if (!applied) {
+      event.target.value = formatTime(action === 'clip-in' ? state.clipStart : state.clipEnd);
+      notify('Times accept 1:02 or plain seconds.');
+      return;
+    }
+    event.target.value = formatTime(action === 'clip-in' ? state.clipStart : state.clipEnd);
+    const other = app.querySelector(`[data-action="${action === 'clip-in' ? 'clip-out' : 'clip-in'}"]`);
+    if (other) other.value = formatTime(action === 'clip-in' ? state.clipEnd : state.clipStart);
+    persist();
+    refreshCaptureBits();
+  }
+  if (action === 'source-type') {
+    state.sourceType = event.target.value;
+    if (state.sourceType === 'article') { state.clipStart = 0; state.clipEnd = 0; }
+    else if (state.clipEnd - state.clipStart < 1) { state.clipStart = 0; state.clipEnd = Math.min(MAX_CLIP_SECONDS, Math.max(1, Math.round(Number(state.customSource?.duration) || 60))); }
+    persist();
+    render();
+  }
 });
 
 app.addEventListener('submit', (event) => {
@@ -1278,12 +1468,28 @@ app.addEventListener('submit', (event) => {
     event.preventDefault();
     submitComment();
   }
-  if (event.target.dataset.action === 'feed-search-form') {
+  if (event.target.dataset.action === 'resolve-form') {
     event.preventDefault();
-    state.feedQuery = event.target.querySelector('[data-action="feed-search"]')?.value || '';
-    state.feedCursor = null;
-    loadFeed().then(() => { render(); document.querySelector('#feed-search')?.focus(); });
+    loadSource();
   }
+  if (event.target.dataset.action === 'chrome-search-form') {
+    event.preventDefault();
+    state.feedQuery = event.target.querySelector('[data-action="chrome-search"]')?.value?.trim().slice(0, 80) || '';
+    state.feedCursor = null;
+    if (state.activeView !== 'feed') navigate('feed');
+    loadFeed().then(render);
+  }
+});
+
+window.addEventListener('popstate', () => {
+  applyLocation();
+  if (state.activeView === 'published' && state.publishedSlug) {
+    openAnnotation(state.publishedSlug);
+    return;
+  }
+  if (state.activeView === 'profile' && state.profileHandle) { loadProfile().then(render); }
+  if (state.activeView === 'library') { loadLibrary().then(render); }
+  render();
 });
 
 render();

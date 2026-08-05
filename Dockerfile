@@ -6,7 +6,7 @@ ARG YTDLP_SHA256_AMD64=bf8aac79b72287a6d2043074415132558b43743a8f9461a22b0141e90
 ARG YTDLP_SHA256_ARM64=cabd246445bdfde0eda0dfe68bbe90354be83f3fdbbf077df11a2ea55f41cdbd
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl \
+  && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl fonts-dejavu-core fonts-dejavu-extra \
   && rm -rf /var/lib/apt/lists/*
 
 RUN set -eu; \

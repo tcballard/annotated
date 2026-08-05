@@ -10,7 +10,9 @@ import { normalizeAudioMimeType, serveStoredMedia, writeIncomingMedia } from './
 import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
-import { followingFeedRequiresAuth, matchesFeedQuery, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery } from './feed.js';
+import { followingFeedRequiresAuth, matchesFeedQuery, matchesFeedUrl, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey } from './feed.js';
+import { ogCardData, renderOgCardCached } from './og-card.js';
+import { injectAnnotationMeta } from './permalink-meta.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, parseCookies, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, requestId, securityHeaders } from './hardening.js';
@@ -88,6 +90,7 @@ const withComments = (annotation, store, viewerId = '') => ({
   author: publicUser((store.users || []).find((user) => user.id === annotation.authorId)) || { id: annotation.authorId, handle: annotation.authorId, displayName: annotation.authorId },
   likes: (store.likes || []).filter((like) => like.annotationId === annotation.id).length,
   likedByMe: Boolean(viewerId && (store.likes || []).some((like) => like.annotationId === annotation.id && like.userId === viewerId)),
+  opens: Number(annotation.openCount) || 0,
   comments: (store.comments || []).filter((comment) => comment.annotationId === annotation.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((comment) => ({ ...comment, author: publicUser((store.users || []).find((user) => user.id === comment.authorId)) || { id: comment.authorId, handle: comment.authorId } })),
   claims: undefined,
 });
@@ -134,9 +137,11 @@ const handleApi = async (request, response, pathname) => {
     try { return send(response, 200, await exchangeExtensionTicket(payload.ticket)); } catch (error) { return send(response, 401, { error: error.message }); }
   }
 
+  // Always 200: a signed-out visit is an expected state, not an error, so the
+  // signed-out console stays clean of 401 noise.
   if (request.method === 'GET' && pathname === '/api/me') {
     const user = await currentUser(request);
-    return user ? send(response, 200, { user, authenticated: true }) : unauthorized(response);
+    return send(response, 200, { user: user || null, authenticated: Boolean(user) });
   }
 
   if (request.method === 'POST' && pathname === '/api/sources/resolve') {
@@ -150,7 +155,13 @@ const handleApi = async (request, response, pathname) => {
     let mimeType;
     try { mimeType = normalizeAudioMimeType(request.headers['content-type']); } catch (error) { return send(response, 415, { error: error.message }); }
     if (!(await mutationAllowed(request, actor, 'audio-upload', 10))) return send(response, 429, { error: 'Too many audio uploads. Try again later.' }, { 'retry-after': '60' });
-    const media = await writeIncomingMedia(request, mimeType);
+    let media;
+    try {
+      media = await writeIncomingMedia(request, mimeType);
+    } catch (error) {
+      if (error.statusCode === 422) return send(response, 422, { error: error.message });
+      throw error;
+    }
     await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, ownerId: actor?.id || 'local-tom', createdAt: media.createdAt }] }));
     return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, url: `${publicOrigin}/media/${media.id}` } });
   }
@@ -163,11 +174,12 @@ const handleApi = async (request, response, pathname) => {
     const offset = normalizeFeedCursor(query.get('cursor'));
     const sourceType = query.get('sourceType');
     const search = normalizeFeedQuery(query.get('q'));
+    const urlKey = normalizeSourceUrlKey(query.get('url'));
     const followingRequested = query.get('following') === 'true';
     if (followingFeedRequiresAuth({ requested: followingRequested, required: authIsRequired(), viewer })) return unauthorized(response);
     const followingOnly = followingRequested && Boolean(viewer);
     const followedIds = new Set((store.follows || []).filter((follow) => follow.followerId === viewer?.id).map((follow) => follow.followingId));
-    const candidates = store.annotations.filter((item) => item.status === 'published' && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id) && matchesFeedQuery(item, store.users || [], search)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const candidates = store.annotations.filter((item) => item.status === 'published' && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id) && matchesFeedQuery(item, store.users || [], search) && matchesFeedUrl(item, urlKey)).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const page = candidates.slice(offset, offset + limit);
     return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null, query: search || null });
   }
@@ -318,6 +330,23 @@ const handleApi = async (request, response, pathname) => {
     return annotation ? send(response, 200, { annotation: withComments(annotation, result, actor?.id) }) : notFound(response);
   }
 
+  // Counts clicks on "Open original" — the traffic-back-to-source stat shown
+  // on every annotation. Public by design: signed-out readers open sources too.
+  const openMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/open$/);
+  if (openMatch && request.method === 'POST') {
+    if (!(await mutationAllowed(request, null, 'open-original', 120))) return send(response, 429, { error: 'Too many open events. Try again later.' }, { 'retry-after': '60' });
+    let found = false;
+    const result = await updateStore((store) => {
+      const annotation = store.annotations.find((item) => item.slug === openMatch[1] || item.id === openMatch[1]);
+      if (!annotation) return store;
+      found = true;
+      return { ...store, annotations: store.annotations.map((item) => item.id === annotation.id ? { ...item, openCount: (Number(item.openCount) || 0) + 1 } : item) };
+    });
+    if (!found) return notFound(response);
+    const annotation = result.annotations.find((item) => item.slug === openMatch[1] || item.id === openMatch[1]);
+    return send(response, 200, { opens: Number(annotation.openCount) || 0 });
+  }
+
   const claimsMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/claims$/);
   if (claimsMatch && request.method === 'POST') {
     const actor = await currentUser(request);
@@ -399,6 +428,39 @@ const serveMedia = async (response, id) => {
   return serveStoredMedia(response, media);
 };
 
+const publishedAnnotationBySlug = async (slug) => {
+  const store = await readStore();
+  const annotation = store.annotations.find((item) => (item.slug === slug || item.id === slug) && item.status === 'published');
+  if (!annotation) return null;
+  return { annotation, author: (store.users || []).find((user) => user.id === annotation.authorId) || null };
+};
+
+// Every published clip gets a landing page whose HTML already carries its
+// title, description, canonical link, and OG card — crawlers never run the SPA.
+const servePermalink = async (response, slug) => {
+  let html;
+  try { html = await readFile(path.join(projectRoot, 'dist/index.html'), 'utf8'); } catch { return notFound(response); }
+  const found = await publishedAnnotationBySlug(decodeURIComponent(slug)).catch(() => null);
+  const payload = found ? injectAnnotationMeta(html, found.annotation, found.author, publicOrigin) : html;
+  response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...securityHeaders() });
+  return response.end(payload);
+};
+
+const serveOgCard = async (response, slug) => {
+  const found = await publishedAnnotationBySlug(decodeURIComponent(slug)).catch(() => null);
+  if (!found) return notFound(response);
+  const { annotation, author } = found;
+  try {
+    const cacheKey = `${annotation.id}:${annotation.mediaStatus}:${annotation.openCount || 0}`;
+    const png = await renderOgCardCached(cacheKey, ogCardData(annotation, author));
+    response.writeHead(200, { 'content-type': 'image/png', 'content-length': png.length, 'cache-control': 'public, max-age=3600', ...securityHeaders({ api: true }) });
+    return response.end(png);
+  } catch (error) {
+    console.error('OG card rendering failed:', error.message);
+    return send(response, 503, { error: 'The share card is temporarily unavailable.' });
+  }
+};
+
 const serveStatic = async (request, response, pathname) => {
   const relative = pathname === '/' ? 'dist/index.html' : pathname.replace(/^\//, '');
   const candidate = path.resolve(projectRoot, relative.startsWith('dist/') ? relative : `dist/${relative}`);
@@ -432,6 +494,10 @@ const server = http.createServer(async (request, response) => {
     if (url.pathname.startsWith('/api/') && request.headers.origin && !requestCorsOrigin) return send(response, 403, { error: 'Request origin is not allowed.' });
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) return send(response, 204, '');
     if (request.method === 'GET' && url.pathname.startsWith('/media/')) return serveMedia(response, url.pathname.slice('/media/'.length));
+    const ogMatch = request.method === 'GET' ? url.pathname.match(/^\/og\/([^/]+)\.png$/) : null;
+    if (ogMatch) return serveOgCard(response, ogMatch[1]);
+    const permalinkMatch = request.method === 'GET' ? url.pathname.match(/^\/a\/([^/]+)$/) : null;
+    if (permalinkMatch) return servePermalink(response, permalinkMatch[1]);
     if (url.pathname.startsWith('/api/')) {
       const result = await handleApi(request, response, url.pathname);
       if (result !== null) return;

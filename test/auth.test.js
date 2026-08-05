@@ -62,15 +62,15 @@ test('production authentication fails fast when either required provider is abse
   assert.match(`${result.stderr}${result.stdout}`, /Production authentication requires/);
 });
 
-test('X is the current production default and Google remains an opt-in sibling provider', () => {
+test('X and Google are both enabled by default, per the brief auth requirement', () => {
   const saved = envSnapshot();
   delete process.env.OAUTH_PROVIDERS;
   process.env.X_CLIENT_ID = 'x-client';
   process.env.X_CLIENT_SECRET = 'x-secret';
-  delete process.env.GOOGLE_CLIENT_ID;
-  delete process.env.GOOGLE_CLIENT_SECRET;
+  process.env.GOOGLE_CLIENT_ID = 'google-client';
+  process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
   try {
-    assert.deepEqual(providerStatus(), { google: false, x: true });
+    assert.deepEqual(providerStatus(), { google: true, x: true });
     const result = spawnSync(process.execPath, ['-e', "import('./server/auth.js').then((auth) => auth.assertAuthConfiguration())"], {
       cwd: process.cwd(),
       env: { ...process.env, NODE_ENV: 'production', ANNOTATED_STORAGE: 'file', AUTH_REQUIRED: 'true', APP_ORIGIN: 'https://annotated.example.com' },
@@ -80,6 +80,16 @@ test('X is the current production default and Google remains an opt-in sibling p
   } finally {
     restoreEnv(saved);
   }
+});
+
+test('production fails fast when Google credentials are missing from the default provider set', () => {
+  const result = spawnSync(process.execPath, ['-e', "import('./server/auth.js').then((auth) => auth.assertAuthConfiguration())"], {
+    cwd: process.cwd(),
+    env: { ...process.env, OAUTH_PROVIDERS: '', NODE_ENV: 'production', ANNOTATED_STORAGE: 'file', AUTH_REQUIRED: 'true', APP_ORIGIN: 'https://annotated.example.com', X_CLIENT_ID: 'x-client', X_CLIENT_SECRET: 'x-secret', GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: '' },
+    encoding: 'utf8',
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stderr}${result.stdout}`, /GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET/);
 });
 
 test('enabling X requires both X credentials without changing the Google adapter', () => {

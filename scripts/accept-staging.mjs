@@ -133,7 +133,9 @@ const { body: privacy } = await request('/privacy.html');
 assert.match(privacy, /privacy policy/i);
 assert.match(privacy, /browser extension/i);
 
-await request('/api/me', 401);
+const me = await json('/api/me');
+assert.equal(me.authenticated, false, 'anonymous /api/me must report authenticated:false without a 401');
+assert.equal(me.user, null);
 await request('/api/claims', 401);
 
 console.log(JSON.stringify({

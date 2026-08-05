@@ -5,85 +5,119 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>annotated</title>
     <link rel="stylesheet" href="sidepanel.css" />
-    <link rel="stylesheet" href="extra.css" />
   </head>
   <body>
-    <header class="panel-header">
+    <header class="phead">
       <img class="mark" src="icons/icon-128.png" alt="" aria-hidden="true" />
-      <div><strong>annotated<span>.</span></strong><small>SOURCE-FIRST</small></div>
-      <span class="local" id="backendStatus" aria-live="polite"><i></i> CONNECTING</span>
-      <div class="auth-actions" id="authActions" hidden><button type="button" data-auth="google">Google</button><button type="button" data-auth="x">Sign in with X</button><button type="button" id="signOut" hidden>Sign out</button></div>
+      <strong class="logo">annotated<span class="dot">.</span></strong>
+      <span class="backend" id="backendStatus" aria-live="polite" title="Backend connection"><i aria-hidden="true"></i><span class="backend-label">connecting</span></span>
+      <div class="auth" id="authActions">
+        <button type="button" class="auth-btn" data-auth="x" hidden>Sign in with X</button>
+        <button type="button" class="auth-btn" data-auth="google" hidden>Google</button>
+        <button type="button" class="me" id="signOut" hidden aria-label="Sign out">A</button>
+      </div>
     </header>
-    <main>
-      <p class="eyebrow">Capture</p>
-      <div class="title-row"><h1>Leave your context.</h1><span aria-hidden="true">01</span></div>
-      <section class="current-source">
-        <div class="source-icon" id="sourceIcon" data-source-type="article" aria-hidden="true">
-          <svg class="source-icon-glyph" data-source-glyph="article" viewBox="0 0 24 24" focusable="false"><path d="M6 3.5h8l4 4V20.5H6zM14 3.5v4h4M9 12h6M9 16h6" /></svg>
-          <svg class="source-icon-glyph" data-source-glyph="video" viewBox="0 0 24 24" focusable="false"><path d="m9 7 8 5-8 5z" /></svg>
-          <svg class="source-icon-glyph" data-source-glyph="podcast" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="11" r="3" /><path d="M7.5 10.5a4.5 4.5 0 0 0 0 1M16.5 10.5a4.5 4.5 0 0 1 0 1M5 10a7 7 0 0 0 2 5M19 10a7 7 0 0 1-2 5M12 14v6" /></svg>
+
+    <div class="scroll">
+      <!-- capture widget: the source is the live tab -->
+      <section class="capture" aria-label="Capture from this tab">
+        <div class="cap-source">
+          <span class="livedot" aria-hidden="true"></span>
+          <span class="t" id="sourceTitle">Reading this tab…</span>
+          <label class="type-select"><span class="visually-hidden">Source type</span>
+            <select id="typeSelect" aria-label="Source type">
+              <option value="video">video</option>
+              <option value="article">article</option>
+              <option value="podcast">podcast</option>
+            </select>
+          </label>
         </div>
-        <div><strong id="sourceTitle">Current browser tab</strong><small id="sourceUrl">Reading the page you are on</small></div>
-      </section>
-      <div class="source-actions">
-        <div class="source-types" role="group" aria-label="Source type">
-          <button type="button" data-source-type="video" aria-pressed="false">Video</button>
-          <button type="button" data-source-type="article" aria-pressed="true">Article</button>
-          <button type="button" data-source-type="podcast" aria-pressed="false">Podcast</button>
+        <p class="cap-unsupported" id="capUnsupported" role="status" hidden>This tab does not expose a capturable page. Open a video, article, or podcast.</p>
+
+        <!-- temporal selection: Mark in / Mark out from the player -->
+        <div class="mediasel" id="mediaSelection">
+          <div class="marks">
+            <button class="markbtn" id="markIn" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5v14M19 12H9m4-4-4 4 4 4" /></svg>
+              <span>Mark in</span><time class="t" id="markInTime">0:00</time>
+            </button>
+            <button class="markbtn" id="markOut" type="button">
+              <span>Mark out</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 5v14M5 12h10m-4-4 4 4-4 4" /></svg>
+              <time class="t" id="markOutTime">0:00</time>
+            </button>
+            <span class="chip duration" id="durationChip" role="status" aria-label="Selected duration">0:00</span>
+          </div>
+          <p class="mark-note" id="markNote">Marks read the player. Keys: <kbd>I</kbd> in · <kbd>O</kbd> out.</p>
+          <div class="manual-marks" id="manualMarks" hidden>
+            <label class="markfield">In<input id="manualIn" inputmode="numeric" aria-label="Clip in point, minutes and seconds" /></label>
+            <label class="markfield">Out<input id="manualOut" inputmode="numeric" aria-label="Clip out point, minutes and seconds" /></label>
+          </div>
+          <p class="cap-block" id="overReason" role="alert" hidden></p>
         </div>
-        <button class="change-source" id="changeSource" type="button" aria-expanded="false">Paste source</button>
-      </div>
-      <form class="source-form" id="sourceForm" hidden>
-        <label for="sourceInput">Source URL</label>
-        <div><input id="sourceInput" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://…" required><button id="loadSource" type="submit">Load source</button></div>
-        <p id="sourceStatus" role="status" aria-live="polite"></p>
-      </form>
-      <section class="selection-card" id="selectionCard" hidden>
-        <label class="selection-label" for="selectionText">Selected passage</label>
-        <textarea id="selectionText" maxlength="2000" aria-describedby="selectionHint"></textarea>
-        <p id="selectionHint">Select text on the page or edit the resolved excerpt before publishing.</p>
-      </section>
-      <section class="clip-card" id="clipCard">
-        <div class="card-heading"><span>Select a moment</span><b><span id="clipLength">0:48</span> / 1:30 max</b></div>
-        <div class="range-console">
-          <div class="range-console-meta" aria-hidden="true"><span>Source time</span><span>90 sec window</span></div>
-          <div class="track"><span id="trackFill"></span><input id="start" type="range" min="0" max="90" value="14" aria-label="Clip start" aria-valuetext="0:14" /><input id="end" type="range" min="0" max="90" value="62" aria-label="Clip end" aria-valuetext="1:02" /></div>
-          <div class="range-scale" id="rangeScale" aria-hidden="true"><span>0:00</span><span>0:30</span><span>1:00</span><span>1:30</span></div>
-          <div class="time-fields"><label><span>In</span><input id="startNumber" type="number" min="0" max="90" inputmode="numeric" value="14" aria-label="Clip start seconds" /></label><span class="time-selection" aria-hidden="true"><span>Selected</span><strong id="selectedDuration">0:48</strong></span><label><span>Out</span><input id="endNumber" type="number" min="0" max="90" inputmode="numeric" value="62" aria-label="Clip end seconds" /></label></div>
-        </div>
-      </section>
-      <section class="note-card">
-        <div class="card-heading"><span>Your annotation</span><div class="modes" role="group" aria-label="Annotation type">
-          <button class="mode active" data-mode="text" type="button" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 6h14M12 6v13M8 19h8" /></svg><span>Text</span></button>
-          <button class="mode" data-mode="audio" type="button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v10M8 9v5a4 4 0 0 0 8 0V9M6 13a6 6 0 0 0 12 0M12 19v2M9 21h6" /></svg><span>Audio</span></button>
-        </div></div>
-        <textarea id="note" aria-label="Your annotation" maxlength="280" placeholder="What did you notice?"></textarea>
-        <div class="audio-composer" id="audioComposer" hidden>
-          <button class="audio-record" id="audioRecord" type="button" aria-label="Start recording">
-            <svg class="record-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4" /></svg>
-            <svg class="stop-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" hidden><rect x="8" y="8" width="8" height="8" rx="1" /></svg>
+
+        <!-- article selection: highlight on the page -->
+        <div class="textsel" id="textSelection" hidden>
+          <button class="grabber" id="grabSelection" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h10M4 17h7" /></svg>
+            Highlight a passage on the page, then capture it
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
           </button>
-          <div><strong id="audioStatus" role="status" aria-live="polite">Record a 90-second take</strong><small id="audioHint">Audio is staged locally before upload.</small></div>
-          <span class="audio-duration" id="audioDuration">0:00</span>
-          <button class="audio-retry" id="audioRetry" type="button" hidden>Retry upload</button>
+          <div class="passage" id="passageCard" hidden>
+            <div class="passage-head"><span class="chip" id="passageChip">¶</span><span>Selected passage</span>
+              <button class="passage-clear" id="passageClear" type="button" aria-label="Clear the selected passage">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" /></svg>
+              </button>
+            </div>
+            <blockquote id="passageText"></blockquote>
+          </div>
         </div>
-        <div class="note-foot"><span id="noteCount">0/280</span><span>Public when published</span></div>
+
+        <!-- the note -->
+        <textarea class="cap-note" id="note" maxlength="280" aria-label="Your note" placeholder="What did you notice?"></textarea>
+        <div class="recorder" id="audioComposer" hidden>
+          <button class="rec-button" id="audioRecord" type="button" aria-label="Start recording">
+            <svg class="record-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" /></svg>
+            <svg class="stop-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" hidden><rect x="7" y="7" width="10" height="10" rx="1.5" /></svg>
+          </button>
+          <div class="rec-copy"><strong id="audioStatus" role="status" aria-live="polite">Record a 90-second take</strong><small id="audioHint">Audio is staged locally before upload.</small></div>
+          <span class="rec-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          <span class="rec-time" id="audioDuration">0:00</span>
+          <button class="rec-retry" id="audioRetry" type="button" hidden>Retry upload</button>
+        </div>
+
+        <div class="cap-foot">
+          <button class="publish" id="publish" type="button" disabled>Publish</button>
+          <span class="count" id="noteCount">0/280</span>
+          <span class="mode" role="group" aria-label="Note type">
+            <button class="is-on" id="modeText" data-mode="text" type="button" aria-pressed="true">Text</button>
+            <span aria-hidden="true">·</span>
+            <button data-mode="audio" id="modeAudio" type="button" aria-pressed="false">Audio</button>
+          </span>
+        </div>
+        <p class="cap-hint" id="publishHint">Marks follow the player. Nothing is published until you publish.</p>
+        <p class="panel-error" id="error" role="alert" hidden></p>
+        <div class="queue-status" id="queueStatus" role="status" aria-live="polite" hidden>
+          <span class="queue-dot" aria-hidden="true"></span>
+          <div><strong id="queueStatusTitle">Capture waiting to retry</strong><small id="queueStatusDetail"></small></div>
+          <button id="queueRetry" type="button">Retry now</button>
+        </div>
       </section>
-      <button class="publish" id="publish" type="button"><span>Publish annotation</span><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 12h15M13 6l6 6-6 6" /></svg></button>
-      <p class="privacy"><i aria-hidden="true"></i> Nothing is published until you choose to publish.</p>
-      <nav class="product-links" aria-label="Annotated product">
-        <button type="button" data-open-view="feed">Timeline</button>
-        <button type="button" data-open-view="published">Published</button>
-        <button type="button" data-open-view="capture">Open web app</button>
-      </nav>
-      <div class="queue-status" id="queueStatus" role="status" aria-live="polite" hidden>
-        <span class="queue-dot" aria-hidden="true"></span>
-        <div><strong id="queueStatusTitle">Capture waiting to retry</strong><small id="queueStatusDetail"></small></div>
-        <button id="queueRetry" type="button">Retry now</button>
+
+      <!-- timeline -->
+      <div class="thead">
+        <h1>Timeline</h1>
+        <div class="tabs" role="tablist" aria-label="Timeline filter">
+          <button class="tab is-active" data-feed-tab="recent" role="tab" aria-selected="true">Recent</button>
+          <button class="tab" data-feed-tab="following" role="tab" aria-selected="false">Following</button>
+          <button class="tab" data-feed-tab="page" role="tab" aria-selected="false">This page</button>
+        </div>
       </div>
-      <p class="panel-error" id="error" role="alert" hidden></p>
-      <div class="success" id="success" role="status" aria-live="polite" hidden><span class="success-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="m6 12 4 4 8-9" /></svg></span><div><strong>Ready to share.</strong><small>Saved to the annotated backend.</small><a id="successLink" target="_blank" rel="noreferrer" hidden>Open public page <span aria-hidden="true">→</span></a></div></div>
-    </main>
+      <div class="timeline" id="timeline" aria-live="polite"></div>
+    </div>
+
+    <div class="toast" id="toast" role="status" hidden><span id="toastText"></span><a id="toastLink" target="_blank" rel="noreferrer" hidden></a></div>
+
     <script type="module" src="sidepanel.js"></script>
   </body>
 </html>

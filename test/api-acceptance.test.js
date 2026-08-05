@@ -222,6 +222,40 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.equal(searchedFeed.payload.annotations.length, 1);
   assert.equal(searchedFeed.payload.annotations[0].id, published.payload.annotation.id);
 
+  // "This page" filter: the panel narrows the feed to the current URL.
+  const pageFeed = await request(baseUrl, `/api/feed?url=${encodeURIComponent('https://example.com/acceptance-source#fragment')}`);
+  assert.equal(pageFeed.response.status, 200);
+  assert.equal(pageFeed.payload.annotations.length, 1);
+  assert.equal(pageFeed.payload.annotations[0].id, published.payload.annotation.id);
+  const otherPageFeed = await request(baseUrl, `/api/feed?url=${encodeURIComponent('https://example.com/other-page')}`);
+  assert.equal(otherPageFeed.payload.annotations.length, 0);
+
+  // opens counter: the traffic-back-to-source stat, public by design
+  const firstOpen = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}/open`, { method: 'POST' });
+  assert.equal(firstOpen.response.status, 200);
+  assert.equal(firstOpen.payload.opens, 1);
+  const secondOpen = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}/open`, { method: 'POST' });
+  assert.equal(secondOpen.payload.opens, 2);
+  const missingOpen = await request(baseUrl, '/api/annotations/not-a-real-slug/open', { method: 'POST' });
+  assert.equal(missingOpen.response.status, 404);
+  const openedDetail = await request(baseUrl, `/api/annotations/${published.payload.annotation.slug}`);
+  assert.equal(openedDetail.payload.annotation.opens, 2);
+
+  // the permalink HTML carries injected, escaped OG meta for crawlers
+  // (requires a built dist/, which CI produces before the test step)
+  const distBuilt = await readFile(path.join(repoRoot, 'dist/index.html'), 'utf8').then(() => true).catch(() => false);
+  if (distBuilt) {
+    const permalinkResponse = await fetch(`${baseUrl}/a/${published.payload.annotation.slug}`);
+    const permalinkHtml = await permalinkResponse.text();
+    assert.equal(permalinkResponse.status, 200);
+    assert.match(permalinkHtml, /<meta property="og:title" content="[^"]*on annotated" \/>/);
+    assert.match(permalinkHtml, new RegExp(`<meta property="og:image" content="[^"]*/og/${published.payload.annotation.slug}\\.png" />`));
+    assert.match(permalinkHtml, /<meta name="twitter:card" content="summary_large_image" \/>/);
+    const missingPermalink = await fetch(`${baseUrl}/a/not-a-real-slug`);
+    assert.equal(missingPermalink.status, 200);
+    assert.doesNotMatch(await missingPermalink.text(), /og:image/);
+  }
+
   const profile = await request(baseUrl, '/api/profiles/tcballard');
   assert.equal(profile.response.status, 200);
   assert.equal(profile.payload.profile.handle, 'tcballard');

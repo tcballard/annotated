@@ -1,4 +1,4 @@
-const providerLabels = Object.freeze({ google: 'Google', x: 'X' });
+const providerLabels = Object.freeze({ x: 'X', google: 'Google' });
 const providerNames = Object.freeze(Object.keys(providerLabels));
 
 export const enabledProviders = (providers = {}) => providerNames.filter((name) => providers[name] === true);

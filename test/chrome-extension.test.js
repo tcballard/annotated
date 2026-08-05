@@ -58,45 +58,75 @@ test('extension runtime source avoids remote-code and service-worker timer patte
   assert.match(await read('options.html'), /<link rel="stylesheet" href="options\.css">/);
 });
 
-test('side panel keeps hidden states hidden and uses a coherent icon language', async () => {
+test('side panel implements the v5 surface: live source strip, marks, note, timeline', async () => {
   const html = await read('sidepanel.html');
-  const styles = `${await read('sidepanel.css')}\n${await read('extra.css')}`;
+  const styles = await read('sidepanel.css');
   const runtime = await read('sidepanel.js');
+  // hidden means hidden; states are shipped, not implied
   assert.match(styles, /\*\[hidden\]\s*\{\s*display:\s*none\s*!important/);
-  assert.match(html, /class="source-icon"[^>]*data-source-type/);
-  assert.match(html, /class="source-icon-glyph"/);
-  assert.match(html, /data-mode="text"[^>]*>\s*<svg/);
-  assert.match(html, /data-mode="audio"[^>]*>\s*<svg/);
+  // capture widget: live source strip with terracotta dot + type override
+  assert.match(html, /class="livedot"/);
+  assert.match(html, /id="typeSelect"/);
+  // Mark in/out buttons replace native range scrubbers entirely
+  assert.match(html, /id="markIn"/);
+  assert.match(html, /id="markOut"/);
+  assert.match(html, /id="durationChip"/);
+  assert.doesNotMatch(html, /type="range"/);
+  assert.match(runtime, /captureMark\('in'\)/);
+  assert.match(runtime, /readPlayerTime/);
+  // article flow: highlight capture with text-quote anchors and the ¶ chip
+  assert.match(html, /id="grabSelection"/);
+  assert.match(html, /id="passageChip"/);
+  assert.match(runtime, /anchorParagraph/);
+  assert.match(runtime, /anchorPrefix/);
+  // note + audio recorder with 90-second cap
+  assert.match(html, /maxlength="280"/);
+  assert.match(html, /class="record-icon"/);
+  assert.match(html, /class="stop-icon"/);
+  assert.match(html, /id="audioStatus"[^>]*role="status"/);
+  assert.match(runtime, /MAX_AUDIO_SECONDS/);
+  assert.match(runtime, /recordIcon\.hidden\s*=\s*isRecording/);
+  assert.match(runtime, /stopIcon\.hidden\s*=\s*!isRecording/);
+  // Text · Audio toggle keeps pressed state accessible
   assert.match(html, /data-mode="text"[^>]*aria-pressed="true"/);
   assert.match(html, /data-mode="audio"[^>]*aria-pressed="false"/);
-  assert.match(html, /id="audioStatus"[^>]*role="status"/);
+  assert.match(runtime, /button\.setAttribute\('aria-pressed', String\(active\)\)/);
+  // publish is disabled-with-reason, and the 90s block is inline
+  assert.match(runtime, /publishBlocker/);
+  assert.match(runtime, /Clips are capped at/);
+  assert.match(runtime, /Mark an in and an out point\./);
+  // in-panel timeline: Recent · Following · This page, with the empty state copy
+  assert.match(html, /data-feed-tab="recent"/);
+  assert.match(html, /data-feed-tab="following"/);
+  assert.match(html, /data-feed-tab="page"/);
+  assert.match(runtime, /No annotations on this page yet\./);
+  assert.match(runtime, /Yours would be the first\./);
+  // per-tab drafts in session storage, re-bound on tab change
+  assert.match(runtime, /saveTabDraft/);
+  assert.match(runtime, /getTabDraft/);
+  assert.match(runtime, /chrome\.tabs\?\.onActivated/);
+  // keyboard path: I/O marks, Ctrl/Cmd+Enter publish, Escape clears
+  assert.match(runtime, /event\.key === 'i' \|\| event\.key === 'I'/);
+  assert.match(runtime, /event\.key === 'o' \|\| event\.key === 'O'/);
+  assert.match(runtime, /event\.metaKey \|\| event\.ctrlKey/);
+  assert.match(runtime, /event\.key === 'Escape'/);
+  // resilience plumbing stays wired
   assert.match(html, /id="queueStatus"[^>]*role="status"/);
   assert.match(runtime, /RETRY_PENDING/);
   assert.match(runtime, /authRequired/);
-  assert.match(html, /class="record-icon"/);
-  assert.match(html, /class="stop-icon"/);
-  assert.match(html, /class="range-console"/);
-  assert.match(html, /class="range-console-meta"/);
-  assert.match(html, /class="range-scale"/);
-  assert.match(html, /id="selectedDuration"/);
-  assert.match(html, /id="publish"[^>]*>\s*<span>Publish annotation<\/span>\s*<svg/);
-  assert.doesNotMatch(html, />\s*[▶◉●■✓]\s*</);
-  assert.match(styles, /prefers-reduced-motion/);
-  assert.match(styles, /\.mode[^}]*min-height:\s*(?:3[6-9]|4[0-9])px/);
-  assert.match(styles, /\.audio-record[^}]*width:\s*44px[^}]*height:\s*44px/);
-  assert.match(styles, /\.range-console \.track/);
-  assert.match(styles, /--range-selection:\s*rgba\(193, 90, 69, \.20\)/);
-  assert.match(runtime, /sourceIcon[\s\S]*dataset\.sourceType/);
-  assert.match(runtime, /selectedDuration\.textContent\s*=\s*format\(to - from\)/);
-  assert.match(runtime, /recordIcon\.hidden\s*=\s*isRecording/);
-  assert.match(runtime, /stopIcon\.hidden\s*=\s*!isRecording/);
-  assert.match(runtime, /button\.setAttribute\('aria-pressed', String\(active\)\)/);
-  assert.match(runtime, /currentTab\.sourceType === 'article' && !selectedText\.trim\(\)/);
   assert.match(runtime, /\/api\/sources\/resolve/);
   assert.match(runtime, /signOut/);
-  assert.match(html, /id="sourceForm"/);
-  assert.match(html, /data-open-view="feed"/);
+  // no raw glyph characters as icons; svg only
+  assert.doesNotMatch(html, />\s*[▶◉●■✓⇤⇥]\s*</);
+  // preferences + target sizes
+  assert.match(styles, /prefers-reduced-motion/);
   assert.match(styles, /prefers-color-scheme:\s*dark/);
+  assert.match(styles, /\.markbtn[^}]*min-height:\s*40px/);
+  assert.match(styles, /\.rec-button[^}]*width:\s*44px[^}]*height:\s*44px/);
+  // identity: mono tabular chips, serif source voice, terracotta accent
+  assert.match(styles, /--accent:\s*#B0674D/);
+  assert.match(styles, /font-variant-numeric:\s*tabular-nums/);
+  assert.match(styles, /--serif:\s*Georgia/);
 });
 
 test('extension settings surface explains the API boundary and recovery states', async () => {
