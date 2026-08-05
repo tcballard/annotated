@@ -795,6 +795,9 @@ const annotationToItem = (annotation) => ({
   quote: annotation.sourceExcerpt || '',
   commentary: annotation.commentary || '',
   commentaryMode: annotation.commentaryMode || 'text',
+  clipUrl: annotation.clipUrl || '',
+  mediaStatus: annotation.mediaStatus || 'not-applicable',
+  screenshotUrl: annotation.screenshotUrl || '',
   anchorParagraph: annotation.anchorParagraph || 0,
   anchorPrefix: annotation.anchorPrefix || '',
   anchorSuffix: annotation.anchorSuffix || '',
@@ -877,6 +880,20 @@ publishButton.addEventListener('click', async () => {
 
 /* ── timeline ──────────────────────────────────────────────────────── */
 
+const timelineMedia = (item) => {
+  const clipSeconds = Math.max(0, item.clipEnd - item.clipStart);
+  if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'video') {
+    return `<div class="srcmedia"><video controls preload="metadata" src="${escapeHTML(item.clipUrl)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(format(clipSeconds))} · 240p</span></div>`;
+  }
+  if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'podcast') {
+    return `<div class="srcmedia srcmedia-audio"><span class="cliptag">CLIP</span><audio controls preload="none" src="${escapeHTML(item.clipUrl)}"></audio></div>`;
+  }
+  if (item.screenshotUrl) {
+    return `<div class="srcmedia"><img loading="lazy" src="${escapeHTML(item.screenshotUrl)}" alt="Screenshot of ${escapeHTML(item.sourceTitle)}" /></div>`;
+  }
+  return '';
+};
+
 const timelinePost = (item) => {
   const noteLine = item.commentary
     ? `<p class="note">${escapeHTML(item.commentary)}</p>`
@@ -893,6 +910,7 @@ const timelinePost = (item) => {
       ${noteLine}
       <div class="srccard">
         <div class="srchead"><span class="chip">${escapeHTML(chip)}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(item.type)}</span></div>
+        ${timelineMedia(item)}
         ${quote}
       </div>
       <div class="actions">

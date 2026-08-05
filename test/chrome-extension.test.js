@@ -114,6 +114,10 @@ test('side panel implements the v5 surface: live source strip, marks, note, time
   assert.match(runtime, /setPanelMode\('capture'\); note\.focus\(\)/);
   assert.match(runtime, /No annotations on this page yet\./);
   assert.match(runtime, /Yours would be the first\./);
+  // ready media renders inline in the panel timeline too
+  assert.match(runtime, /const timelineMedia = /);
+  assert.match(runtime, /mediaStatus === 'ready'/);
+  assert.match(styles, /\.srcmedia video/);
   // per-tab drafts in session storage, re-bound on tab change
   assert.match(runtime, /saveTabDraft/);
   assert.match(runtime, /getTabDraft/);

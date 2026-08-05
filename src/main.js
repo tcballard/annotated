@@ -353,6 +353,8 @@ const annotationToFeedItem = (annotation) => ({
   commentary: annotation.commentary || '',
   commentaryMode: annotation.commentaryMode || 'text',
   audioUrl: annotation.audioUrl || '',
+  clipUrl: annotation.clipUrl || '',
+  mediaStatus: annotation.mediaStatus || 'not-applicable',
   opens: Number(annotation.opens) || 0,
   comments: Array.isArray(annotation.comments) ? annotation.comments.length : 0,
   authorId: annotation.author?.id || annotation.authorId || '',
@@ -451,6 +453,23 @@ const openOriginalAction = (item, { withLabel = true } = {}) => {
 
 const hubLink = (host) => host ? `<a href="/s/${encodeURIComponent(host)}" data-action="open-hub" data-host="${escapeHTML(host)}" title="See everything annotated from ${escapeHTML(host)}">${escapeHTML(host)}</a>` : '';
 
+// The media slot renders only what is actually ready — a playable hosted
+// clip or a screenshot. Processing states stay on the permalink; the feed
+// never shows a dead frame.
+const srcCardMedia = (item) => {
+  const clipSeconds = Math.max(0, item.clipEnd - item.clipStart);
+  if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'video') {
+    return `<div class="srcmedia"><video controls preload="metadata" src="${escapeHTML(item.clipUrl)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(formatTime(clipSeconds))} · 240p</span></div>`;
+  }
+  if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'podcast') {
+    return `<div class="srcmedia srcmedia-audio"><span class="cliptag">CLIP</span><audio controls preload="none" src="${escapeHTML(item.clipUrl)}"></audio><span class="badge">${escapeHTML(formatTime(clipSeconds))} · audio</span></div>`;
+  }
+  if (item.screenshotUrl) {
+    return `<div class="srcmedia"><img loading="lazy" src="${escapeHTML(item.screenshotUrl)}" alt="Screenshot of ${escapeHTML(item.sourceTitle)}" /></div>`;
+  }
+  return '';
+};
+
 const srcCard = (item) => {
   const quote = item.quote ? `<blockquote>&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
   const audioNote = item.commentaryMode === 'audio' && item.audioUrl
@@ -459,6 +478,7 @@ const srcCard = (item) => {
   return `
   <div class="srccard">
     <div class="srchead"><span class="chip">${escapeHTML(chipFor(item))}</span><span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ` · ` : ''}</span>${hubLink(item.host)}</div>
+    ${srcCardMedia(item)}
     ${quote}
     ${audioNote}
   </div>`;
@@ -1355,7 +1375,9 @@ app.addEventListener('click', (event) => {
     return;
   }
   if (action === 'open-annotation') {
-    if (event.target.closest('a, button:not([data-action="open-annotation"])')) return;
+    // Inline media is directly playable; interacting with it must not
+    // navigate away from the feed.
+    if (event.target.closest('a, button:not([data-action="open-annotation"]), video, audio, .srcmedia')) return;
     event.preventDefault();
     openAnnotation(target.dataset.slug);
     return;

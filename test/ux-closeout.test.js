@@ -49,6 +49,19 @@ test('interactive targets keep at least 40px and focus stays visible everywhere'
   assert.match(styles, /prefers-reduced-motion/u);
 });
 
+test('feed posts embed ready media like a social feed, never a dead frame', () => {
+  const media = mainSource.match(/const srcCardMedia = [\s\S]*?\n\};/u)?.[0] || '';
+  // only ready clips and screenshots render; processing stays on the permalink
+  assert.match(media, /item\.mediaStatus === 'ready' && item\.type === 'video'/u);
+  assert.match(media, /item\.mediaStatus === 'ready' && item\.type === 'podcast'/u);
+  assert.match(media, /item\.screenshotUrl/u);
+  assert.match(media, /class="srcmedia"/u);
+  assert.match(media, /CLIP/u);
+  assert.match(media, /240p/u);
+  // playing inline media must not navigate to the permalink
+  assert.match(mainSource, /closest\('a, button:not\(\[data-action="open-annotation"\]\), video, audio, \.srcmedia'\)/u);
+});
+
 test('every fetch surface ships loading, empty, and error states', () => {
   assert.match(mainSource, /skeletonPost/u);
   assert.match(mainSource, /feed-empty/u);
