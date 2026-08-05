@@ -81,6 +81,7 @@ Judging against the brief? Each requirement maps to a place you can click:
 | Public feed, follow, comment | `/` timeline (Recent/Following), responses on every permalink |
 | Text and recorded audio commentary | The Text · Audio toggle in the panel and `/capture` |
 | Landing page per clip | `curl -s <permalink> \| grep og:` — injected and escaped; the share card lives at `/og/:slug.png` |
+| Works from a phone | Installable PWA; Android share sheet lands on `/capture?url=…` pre-resolved; iOS uses the Paste link button |
 
 To seed a fresh deployment with demo content: `ANNOTATED_ORIGIN=<origin> npm run seed:demo`
 (see [`scripts/seed-demo.json`](scripts/seed-demo.json) for the operator slots). To make

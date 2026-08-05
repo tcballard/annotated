@@ -68,13 +68,20 @@ const png = new Resvg(svg, { fitTo: { mode: 'width', value: 1200 } }).render().a
 await writeFile(path.join(brandDir, 'og-default.png'), png);
 console.log(`og-default.png: ${png.length} bytes`);
 
-// Apple touch icon: the favicon mark composed onto a full-bleed ground so
-// iOS never fills transparent corners with black.
+// Apple touch icon + PWA icons: the favicon mark composed onto a full-bleed
+// ground so no platform fills transparent corners with black. The maskable
+// variant scales the mark into the central 80% safe zone.
 const favicon = await readFile(path.join(brandDir, 'favicon.svg'), 'utf8');
 const inner = favicon.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
-const touch = new Resvg(
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><rect width="1000" height="1000" fill="#F3F1ED"/>${inner}</svg>`,
-  { fitTo: { mode: 'width', value: 180 } },
-).render().asPng();
-await writeFile(path.join(brandDir, 'apple-touch-icon.png'), touch);
-console.log(`apple-touch-icon.png: ${touch.length} bytes`);
+const fullBleed = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><rect width="1000" height="1000" fill="#F3F1ED"/>${inner}</svg>`;
+const maskable = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><rect width="1000" height="1000" fill="#F3F1ED"/><g transform="translate(100 100) scale(0.8)">${inner}</g></svg>`;
+for (const [file, svgSource, size] of [
+  ['apple-touch-icon.png', fullBleed, 180],
+  ['pwa-192.png', fullBleed, 192],
+  ['pwa-512.png', fullBleed, 512],
+  ['pwa-maskable-512.png', maskable, 512],
+]) {
+  const png = new Resvg(svgSource, { fitTo: { mode: 'width', value: size } }).render().asPng();
+  await writeFile(path.join(brandDir, file), png);
+  console.log(`${file}: ${png.length} bytes`);
+}

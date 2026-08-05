@@ -6,6 +6,7 @@ import { publicAnnotationUrl } from './share-links.js';
 import { authNoticeFromSearch, enabledProviders, oauthStartUrl, providerLabel } from './auth-ui.js';
 import { MAX_CLIP_SECONDS } from './clip-range.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
+import { sharedUrlFromParams } from './share-capture.js';
 import { isTopic, TOPICS, topicLabel } from './topics.js';
 
 const app = document.querySelector('#app');
@@ -454,6 +455,17 @@ const bootstrap = async () => {
     if (state.activeView === 'library') await loadLibrary();
     if (state.activeView === 'hub' && state.hubHost) await loadHub();
     if (state.activeView === 'transparency') await loadTransparency();
+    // A Web Share Target launch (or any shared link) lands on
+    // /capture?url=…&text=…&title=… — pick out the URL, clean the address
+    // bar, and resolve immediately so the share is one publish away.
+    if (state.activeView === 'capture') {
+      const sharedUrl = sharedUrlFromParams(new URLSearchParams(window.location.search));
+      if (sharedUrl) {
+        state.sourceUrl = sharedUrl;
+        window.history.replaceState({}, '', '/capture');
+        await loadSource();
+      }
+    }
     await loadFeed();
     await loadCurators();
   } catch (error) {
@@ -462,6 +474,9 @@ const bootstrap = async () => {
   }
   await resumeStagedAudio();
   render();
+  // Installable PWA: the service worker also makes the app share-target
+  // eligible on Android. Absent in dev (vite serves no /sw.js) — harmless.
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => { /* dev or unsupported */ });
 };
 
 /* ── shared markup ─────────────────────────────────────────────────── */
@@ -819,6 +834,7 @@ const captureView = () => {
       <form class="cap-url" data-action="resolve-form">
         <input data-action="source-url" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://youtube.com/watch?v=… · article · podcast" aria-label="Source URL" value="${escapeHTML(state.sourceUrl)}" />
         <button class="btn" type="submit" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Resolve'}</button>
+        ${navigator.clipboard?.readText && !state.customSource ? `<button class="ghost" type="button" data-action="paste-link" title="Read a copied link from the clipboard">Paste link</button>` : ''}
       </form>
       ${state.sourceError ? `<div class="cap-error" role="alert">${escapeHTML(state.sourceError)}</div>` : ''}
       ${sourceLine}
@@ -992,6 +1008,9 @@ const aboutView = () => docPage('What this is', 'source-first notes', `
   </div>
   <div class="card"><h2>Visibility</h2>
     <p><strong>Public</strong> annotations appear in the timeline, hubs, and profiles. <strong>Unlisted</strong> pages unfurl for anyone with the link but ask crawlers not to index. <strong>Private</strong> is you-only. Authors can edit the note for 30 minutes, change visibility anytime, and delete outright.</p>
+  </div>
+  <div class="card"><h2>On your phone</h2>
+    <p>annotated installs from the browser (Add to Home Screen). On Android it joins the share sheet — share any page or video straight into capture. On iOS, copy a link and tap <em>Paste link</em> on the capture page. The sidebar stays the primary surface; your phone is for the moment that will not wait.</p>
   </div>
   <p class="doc-footnote">Questions or issues: the <a href="https://github.com/tcballard/annotated/issues" target="_blank" rel="noreferrer">public tracker</a>. Rights holders: <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>.</p>
 `);
@@ -1844,6 +1863,18 @@ app.addEventListener('click', (event) => {
     return;
   }
   if (action === 'close-claim') { closeClaimDialog(); return; }
+  if (action === 'paste-link') {
+    (async () => {
+      try {
+        const text = (await navigator.clipboard.readText()).trim();
+        const url = sharedUrlFromParams(new URLSearchParams([['text', text]]));
+        if (!url) { notify('No link found on the clipboard.'); return; }
+        state.sourceUrl = url;
+        await loadSource();
+      } catch { notify('Clipboard access was blocked — paste into the field instead.'); }
+    })();
+    return;
+  }
   if (action === 'wave-seek') {
     const audio = target.closest('.srcaudio-main, .srcmedia-audio-main')?.querySelector('audio');
     if (!audio || !Number.isFinite(audio.duration) || !audio.duration) { audio?.play?.(); return; }

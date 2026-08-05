@@ -255,6 +255,16 @@ test('local API serves the acceptance-critical health, identity, publish, social
     assert.match(permalinkHtml, /<meta property="og:title" content="[^"]*on annotated" \/>/);
     assert.match(permalinkHtml, new RegExp(`<meta property="og:image" content="[^"]*/og/${published.payload.annotation.slug}\\.png" />`));
     assert.match(permalinkHtml, /<meta name="twitter:card" content="summary_large_image" \/>/);
+    // the PWA surface: manifest with the share target, worker served as JS
+    const manifestResponse = await fetch(`${baseUrl}/manifest.webmanifest`);
+    assert.equal(manifestResponse.status, 200);
+    assert.match(manifestResponse.headers.get('content-type') || '', /application\/manifest\+json/);
+    const manifestBody = await manifestResponse.json();
+    assert.equal(manifestBody.share_target.action, '/capture');
+    const workerResponse = await fetch(`${baseUrl}/sw.js`);
+    assert.equal(workerResponse.status, 200);
+    assert.match(workerResponse.headers.get('content-type') || '', /javascript/);
+
     // A missing permalink serves the plain shell: the default brand card,
     // never a leaked annotation card.
     const missingPermalink = await fetch(`${baseUrl}/a/not-a-real-slug`);
