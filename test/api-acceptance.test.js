@@ -374,6 +374,51 @@ test('local API serves the acceptance-critical health, identity, publish, social
   const tombstonedComment = await request(baseUrl, `/api/annotations/${doomed.payload.annotation.slug}/comments`, { method: 'POST', body: { body: 'too late' } });
   assert.equal(tombstonedComment.response.status, 404);
 
+  // ── the public transparency record ──
+  const transparency = await request(baseUrl, '/api/transparency');
+  assert.equal(transparency.response.status, 200);
+  assert.ok(transparency.payload.claims.total >= 1);
+  assert.ok(transparency.payload.claims.resolved >= 1);
+  assert.equal(transparency.payload.takedowns.some((item) => item.slug === doomed.payload.annotation.slug), true);
+  const transparencyRaw = JSON.stringify(transparency.payload);
+  assert.doesNotMatch(transparencyRaw, /reporter/i, 'transparency never names reporters');
+  assert.doesNotMatch(transparencyRaw, /sourceTitle/, 'transparency stays as minimal as the tombstone');
+
+  // ── the no-JS claim form: form-encoded, honeypotted, audit-backed ──
+  // (a fresh annotation, so the dev identity's earlier claims cannot dedupe
+  // this flow away)
+  const formTargetAnnotation = await request(baseUrl, '/api/annotations', {
+    method: 'POST',
+    body: { sourceUrl: 'https://example.com/contested-form', sourceType: 'article', sourceTitle: 'Contested form source', sourceExcerpt: 'A passage someone objects to.', commentaryMode: 'text', commentary: 'Filed against via the form.', clientRequestId: 'acceptance-claim-form' },
+  });
+  assert.equal(formTargetAnnotation.response.status, 201);
+  const claimFormTarget = formTargetAnnotation.payload.annotation.slug;
+  const claimFormPage = await fetch(`${baseUrl}/a/${claimFormTarget}/claim`);
+  assert.equal(claimFormPage.status, 200);
+  const claimFormHtml = await claimFormPage.text();
+  assert.match(claimFormHtml, /<form method="POST">/);
+  assert.match(claimFormHtml, /name="contact"/);
+  assert.match(claimFormHtml, /name="reason"/);
+  const postForm = (body) => fetch(`${baseUrl}/a/${claimFormTarget}/claim`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body).toString() });
+  const badContact = await postForm({ contact: 'not-an-email', reason: 'This uses my footage without permission.' });
+  assert.equal(badContact.status, 422);
+  const honeypotted = await postForm({ contact: 'bot@spam.example', reason: 'spam', website: 'https://spam.example' });
+  assert.equal(honeypotted.status, 200, 'the honeypot gets a polite success');
+  const formClaim = await postForm({ contact: 'rights@studio.example', reason: 'This clip is from our catalogue and exceeds fair use.' });
+  assert.equal(formClaim.status, 200);
+  assert.match(await formClaim.text(), /Claim received/);
+  const duplicateFormClaim = await postForm({ contact: 'rights@studio.example', reason: 'Filing again by mistake.' });
+  assert.equal(duplicateFormClaim.status, 200);
+  const moderationQueue = await request(baseUrl, '/api/moderation/claims');
+  const formClaims = moderationQueue.payload.claims.filter((item) => item.reporterContact === 'rights@studio.example');
+  assert.equal(formClaims.length, 1, 'repeat form posts do not double-file');
+  assert.equal(formClaims[0].via, 'form');
+  assert.equal(moderationQueue.payload.claims.some((item) => item.reporterContact === 'bot@spam.example'), false, 'honeypotted posts leave no record');
+  const goneForm = await fetch(`${baseUrl}/a/${doomed.payload.annotation.slug}/claim`);
+  assert.equal(goneForm.status, 200);
+  assert.match(await goneForm.text(), /Already taken down/);
+
+
   for (let attempt = 0; attempt < 57; attempt += 1) {
     const nextStatus = attempt % 2 === 0 ? 'in_review' : 'open';
     const repeated = await request(baseUrl, `/api/moderation/claims/${claim.payload.claim.id}`, { method: 'POST', body: { status: nextStatus, note: 'Repeated moderation attempt.' } });
@@ -496,6 +541,10 @@ test('local API serves the acceptance-critical health, identity, publish, social
     const shotCardBytes = Buffer.from(await shotCard.arrayBuffer());
     assert.deepEqual([...shotCardBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
     assert.ok(shotCardBytes.length > 10_000, 'the embedded-shot card should be a real render');
+    // the same card downloads as a named file
+    const cardDownload = await fetch(`${baseUrl}/og/${shotAnnotation.payload.annotation.slug}.png?download=1`);
+    assert.equal(cardDownload.status, 200);
+    assert.match(cardDownload.headers.get('content-disposition') || '', /^attachment; filename="annotated-/);
   }
 
   // ── discovery: source hubs and people, public record only ──

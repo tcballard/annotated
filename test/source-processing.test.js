@@ -4,7 +4,7 @@ import { classifySource, parseSourceUrl, resolveSource } from '../server/source-
 import { resolveInput, validatePlayableInput } from '../server/media-worker.js';
 import { followingFeedRequiresAuth, matchesFeedQuery, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery } from '../server/feed.js';
 import { findIdempotentAnnotation } from '../server/idempotency.js';
-import { findActiveClaim, validateClaimTransition } from '../server/moderation.js';
+import { findActiveClaim, findActiveClaimByContact, validateClaimTransition } from '../server/moderation.js';
 
 const publicLookup = async () => [{ address: '93.184.216.34', family: 4 }];
 
@@ -236,4 +236,15 @@ test('moderation claims deduplicate active reports and restrict terminal reopeni
   assert.equal(findActiveClaim(claims, 'a1', 'u2'), null);
   assert.equal(validateClaimTransition('open', 'in_review'), null);
   assert.equal(validateClaimTransition('resolved', 'rejected')?.includes('cannot move'), true);
+});
+
+test('anonymous form claims deduplicate by contact while active', () => {
+  const claims = [
+    { id: 'c1', annotationId: 'a1', reporterId: null, reporterContact: 'rights@studio.example', status: 'open' },
+    { id: 'c2', annotationId: 'a1', reporterId: null, reporterContact: 'done@studio.example', status: 'resolved' },
+  ];
+  assert.equal(findActiveClaimByContact(claims, 'a1', 'rights@studio.example')?.id, 'c1');
+  assert.equal(findActiveClaimByContact(claims, 'a1', 'done@studio.example'), null, 'resolved claims do not block a new report');
+  assert.equal(findActiveClaimByContact(claims, 'a2', 'rights@studio.example'), null);
+  assert.equal(findActiveClaimByContact(claims, 'a1', ''), null);
 });

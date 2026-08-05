@@ -12,7 +12,7 @@ import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs, r
 import { resolveSource } from './source-resolver.js';
 import { followingFeedRequiresAuth, matchesFeedQuery, matchesFeedUrl, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey } from './feed.js';
 import { ogCardData, renderOgCardCached } from './og-card.js';
-import { injectAnnotationMeta } from './permalink-meta.js';
+import { escapeHtml, injectAnnotationMeta } from './permalink-meta.js';
 import { allowsIndexing, canViewAnnotation, isPubliclyListed, VISIBILITIES } from './visibility.js';
 import { matchesPersonQuery, normalizeHost, publicAnnotationsForHost, rankAnnotators } from './discovery.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
@@ -22,7 +22,7 @@ import { closeRateLimitStore, rateLimitAsync } from './rate-limit.js';
 import { canUseAudioAsset, canUseImageAsset } from './media-access.js';
 import { metricsSnapshot, recordRequest } from './observability.js';
 import { findIdempotentAnnotation } from './idempotency.js';
-import { findActiveClaim, validateClaimTransition } from './moderation.js';
+import { findActiveClaim, findActiveClaimByContact, validateClaimTransition } from './moderation.js';
 import { annotationAssetIds, canEditCommentary, removalTombstone, validateModerationAction } from './annotation-lifecycle.js';
 import { resolveCorsOrigin } from './cors.js';
 
@@ -74,6 +74,16 @@ const readJson = async (request) => {
     if (body.length > 1_000_000) throw new Error('Request body is too large.');
   }
   try { return body ? JSON.parse(body) : {}; } catch { throw new Error('Request body must be valid JSON.'); }
+};
+
+// For the no-JS claim form: application/x-www-form-urlencoded, tightly capped.
+const readForm = async (request) => {
+  let body = '';
+  for await (const chunk of request) {
+    body += chunk;
+    if (body.length > 16_384) throw new Error('Request body is too large.');
+  }
+  return Object.fromEntries(new URLSearchParams(body));
 };
 
 const slugify = (value) => String(value).toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'annotation';
@@ -527,6 +537,29 @@ const handleApi = async (request, response, pathname) => {
     return send(response, created ? 201 : 200, { status: created ? 'received' : 'already-received', claim: { id: claim.id, status: claim.status } });
   }
 
+  // Public transparency: aggregate claim counts and the takedown log. Only
+  // already-public data — no reporter identities, no open-claim details, and
+  // no titles of removed work (consistent with the tombstone's minimalism).
+  if (request.method === 'GET' && pathname === '/api/transparency') {
+    const store = await readStore();
+    const counts = { total: 0, open: 0, in_review: 0, resolved: 0, rejected: 0 };
+    for (const claim of store.claims || []) {
+      counts.total += 1;
+      if (counts[claim.status] !== undefined) counts[claim.status] += 1;
+    }
+    const takedowns = (store.annotations || [])
+      .filter((item) => item.status === 'removed')
+      .sort((a, b) => String(b.removedAt || '').localeCompare(String(a.removedAt || '')))
+      .map((item) => ({
+        slug: item.slug,
+        sourceHost: item.sourceHost || '',
+        sourceType: item.sourceType || 'article',
+        removedAt: item.removedAt || null,
+        reason: item.removedReason || 'rights-claim',
+      }));
+    return send(response, 200, { claims: counts, takedowns });
+  }
+
   if (request.method === 'GET' && pathname === '/api/claims') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
@@ -632,7 +665,110 @@ const servePermalink = async (response, slug) => {
   return response.end(payload);
 };
 
-const serveOgCard = async (response, slug) => {
+// ── the no-JS claim form ─────────────────────────────────────────────
+// Rights holders should never need an account or a working script to file a
+// claim. GET renders a plain HTML form; POST accepts it form-encoded through
+// the same validation, dedupe, and audit path as the in-app dialog. The
+// accent stays confined to the wordmark's full stop — a claim form has no
+// "moment".
+
+const claimFormHtml = ({ annotation, mode = 'form', error = '', values = {} }) => {
+  const title = mode === 'received' ? 'Claim received' : mode === 'gone' ? 'Already taken down' : mode === 'missing' ? 'Annotation not found' : 'File a claim';
+  const context = annotation
+    ? `<p class="ctx">About: <strong>${escapeHtml(annotation.sourceTitle || 'an annotation')}</strong>${annotation.sourceHost ? ` · ${escapeHtml(annotation.sourceHost)}` : ''}</p>`
+    : '';
+  const body = mode === 'received'
+    ? `<p><strong>Thank you for flagging this.</strong> The report is attached to the annotation and will be reviewed. If it is upheld, the annotation is taken down and listed on the public <a href="/transparency">transparency report</a>.</p>${annotation ? `<p><a href="/a/${encodeURIComponent(annotation.slug)}">Back to the annotation</a></p>` : ''}`
+    : mode === 'gone'
+      ? `<p>This annotation has already been taken down after a rights claim. The public record is on the <a href="/transparency">transparency report</a>.</p>`
+      : mode === 'missing'
+        ? `<p>No annotation lives at this address — it may have been deleted by its author. Nothing further is needed.</p>`
+        : `
+    <p>Use this if the annotation misuses your work or breaches fair use. No account or JavaScript is required; the report goes into the same review queue either way.</p>
+    ${error ? `<p class="err" role="alert">${escapeHtml(error)}</p>` : ''}
+    <form method="POST">
+      <label>How can we reach you?<br /><input type="email" name="contact" required maxlength="200" placeholder="you@example.com" value="${escapeHtml(values.contact || '')}" /></label>
+      <label>What should we review?<br /><textarea name="reason" required maxlength="2000" rows="6" placeholder="Tell us what is wrong with this annotation…">${escapeHtml(values.reason || '')}</textarea></label>
+      <div class="hp"><label>Leave this field empty<input type="text" name="website" tabindex="-1" autocomplete="off" value="" /></label></div>
+      <button type="submit">Send claim</button>
+    </form>
+    <p class="fine">Reviews are logged with an audit trail. Read <a href="/rights">Rights &amp; claims</a> for how takedowns work.</p>`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>${escapeHtml(title)} · annotated</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #F5F4F0; color: #26292F; font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .bar { background: #33383F; color: #fff; font-weight: 700; font-size: 17px; padding: 12px 18px; }
+  .bar .dot { color: #E0A48E; }
+  main { max-width: 560px; margin: 28px auto; padding: 0 16px; }
+  .card { background: #fff; border: 1px solid #DDDEE2; border-radius: 10px; padding: 20px; }
+  h1 { font-size: 20px; margin-bottom: 10px; }
+  .ctx { color: #666C74; font-size: 13.5px; margin-bottom: 12px; }
+  p { margin-bottom: 10px; }
+  label { display: block; font-weight: 600; font-size: 13.5px; margin: 14px 0 4px; }
+  input, textarea { width: 100%; font: inherit; padding: 9px 11px; border: 1px solid #DDDEE2; border-radius: 8px; background: #fff; color: inherit; }
+  textarea { resize: vertical; }
+  button { font: inherit; font-weight: 600; margin-top: 16px; padding: 11px 22px; min-height: 44px; border: 0; border-radius: 8px; background: #33383F; color: #fff; cursor: pointer; }
+  button:hover { background: #26292F; }
+  .err { color: #8C2F1F; font-weight: 600; }
+  .fine { color: #666C74; font-size: 12.5px; margin-top: 14px; }
+  .hp { position: absolute; left: -9999px; height: 0; overflow: hidden; }
+  a { color: #26292F; }
+</style>
+</head>
+<body>
+<div class="bar">annotated<span class="dot">.</span></div>
+<main><div class="card"><h1>${escapeHtml(title)}</h1>${context}${body}</div></main>
+</body>
+</html>`;
+};
+
+const sendClaimPage = (response, status, payload) => {
+  response.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...securityHeaders() });
+  return response.end(claimFormHtml(payload));
+};
+
+const serveClaimForm = async (request, response, slug) => {
+  const store = await readStore();
+  const annotation = store.annotations.find((item) => (item.slug === slug || item.id === slug));
+  if (!annotation || annotation.visibility === 'private') return sendClaimPage(response, 404, { mode: 'missing' });
+  if (annotation.status === 'removed') return sendClaimPage(response, 200, { annotation: null, mode: 'gone' });
+  if (request.method === 'GET') return sendClaimPage(response, 200, { annotation });
+
+  const actor = await currentUser(request);
+  let form;
+  try { form = await readForm(request); } catch { return sendClaimPage(response, 413, { annotation, mode: 'form', error: 'The submission was too large. Please shorten it.' }); }
+  // A filled honeypot gets a polite success and no record.
+  if (String(form.website || '').trim()) return sendClaimPage(response, 200, { annotation, mode: 'received' });
+  const contact = String(form.contact || '').trim().slice(0, 200);
+  const validation = validateClaim(form);
+  if (!/.+@.+\..+/.test(contact)) return sendClaimPage(response, 422, { annotation, mode: 'form', error: 'Enter a contact email address so the review can reach you.', values: form });
+  if (validation.error) return sendClaimPage(response, 422, { annotation, mode: 'form', error: validation.error, values: form });
+  if (!(await mutationAllowed(request, actor, 'claim', 10))) return sendClaimPage(response, 429, { annotation, mode: 'form', error: 'Too many claims from this connection. Try again in a minute.', values: form });
+  const reporterId = actor?.id || null;
+  await updateStore((current) => {
+    const target = current.annotations.find((item) => item.id === annotation.id);
+    if (!target || target.status !== 'published') return current;
+    const existing = reporterId
+      ? findActiveClaim(current.claims, target.id, reporterId)
+      : findActiveClaimByContact(current.claims, target.id, contact);
+    if (existing) return current;
+    const claim = { id: randomUUID(), annotationId: target.id, reason: validation.reason, status: 'open', reporterId, reporterContact: contact, via: 'form', createdAt: new Date().toISOString() };
+    return {
+      ...current,
+      claims: [...(current.claims || []), claim],
+      moderationAudit: [...(current.moderationAudit || []), { id: randomUUID(), claimId: claim.id, actorId: reporterId || `form:${contact}`, from: null, to: 'open', note: '', createdAt: new Date().toISOString() }],
+    };
+  });
+  return sendClaimPage(response, 200, { annotation, mode: 'received' });
+};
+
+const serveOgCard = async (response, slug, { download = false } = {}) => {
   const found = await publishedAnnotationBySlug(decodeURIComponent(slug)).catch(() => null);
   if (!found) return notFound(response);
   const { annotation, author } = found;
@@ -657,7 +793,11 @@ const serveOgCard = async (response, slug) => {
       }
       return data;
     });
-    response.writeHead(200, { 'content-type': 'image/png', 'content-length': png.length, 'cache-control': 'public, max-age=3600', ...securityHeaders({ api: true }) });
+    response.writeHead(200, {
+      'content-type': 'image/png', 'content-length': png.length, 'cache-control': 'public, max-age=3600',
+      ...(download ? { 'content-disposition': `attachment; filename="annotated-${annotation.slug}.png"` } : {}),
+      ...securityHeaders({ api: true }),
+    });
     return response.end(png);
   } catch (error) {
     console.error('OG card rendering failed:', error.message);
@@ -713,7 +853,9 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) return send(response, 204, '');
     if (request.method === 'GET' && url.pathname.startsWith('/media/')) return serveMedia(response, url.pathname.slice('/media/'.length));
     const ogMatch = request.method === 'GET' ? url.pathname.match(/^\/og\/([^/]+)\.png$/) : null;
-    if (ogMatch) return serveOgCard(response, ogMatch[1]);
+    if (ogMatch) return serveOgCard(response, ogMatch[1], { download: url.searchParams.has('download') });
+    const claimFormMatch = ['GET', 'POST'].includes(request.method || '') ? url.pathname.match(/^\/a\/([^/]+)\/claim$/) : null;
+    if (claimFormMatch) return serveClaimForm(request, response, decodeURIComponent(claimFormMatch[1]));
     const permalinkMatch = request.method === 'GET' ? url.pathname.match(/^\/a\/([^/]+)$/) : null;
     if (permalinkMatch) return servePermalink(response, permalinkMatch[1]);
     // Hub and profile routes can contain dots (hosts, handles), which the

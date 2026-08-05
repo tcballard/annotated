@@ -142,6 +142,8 @@ const initialState = {
   feedQuery: '',
   moderationClaims: [],
   moderationLoading: false,
+  transparencyData: null,
+  transparencyLoading: false,
   user: null,
   authProviders: {},
   authRequired: false,
@@ -286,7 +288,8 @@ const recoverAuthError = (error, message = 'Your session has expired. Sign in ag
 
 /* ── routing ───────────────────────────────────────────────────────── */
 
-const DOC_VIEWS = { about: '/about', extension: '/extension', audit: '/audit', rights: '/rights', terms: '/terms' };
+// transparency is routed like a doc page but loads live data via navigate().
+const DOC_VIEWS = { about: '/about', extension: '/extension', audit: '/audit', rights: '/rights', terms: '/terms', transparency: '/transparency' };
 
 const routeFor = (view) => view === 'feed' ? '/'
   : view === 'capture' ? '/capture'
@@ -305,6 +308,7 @@ const navigate = (view, { push = true } = {}) => {
   if (view === 'moderation') loadModerationClaims().then(render);
   if (view === 'library') loadLibrary().then(render);
   if (view === 'hub') loadHub().then(render);
+  if (view === 'transparency') loadTransparency().then(render);
   render();
   window.scrollTo(0, 0);
 };
@@ -437,6 +441,7 @@ const bootstrap = async () => {
     if (state.profileHandle) await loadProfile();
     if (state.activeView === 'library') await loadLibrary();
     if (state.activeView === 'hub' && state.hubHost) await loadHub();
+    if (state.activeView === 'transparency') await loadTransparency();
     await loadFeed();
     await loadCurators();
   } catch (error) {
@@ -685,6 +690,7 @@ const permalinkView = () => {
         ${openOriginalAction(item)}
         <button class="act" data-action="focus-comment">${icon('respond')}Respond${comments.length ? ` <span class="n">· ${comments.length}</span>` : ''}</button>
         <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(annotation, window.location.origin))}">${icon('share')}Share</button>
+        ${item.visibility !== 'private' ? `<a class="act" href="/og/${encodeURIComponent(item.slug)}.png?download=1" download="annotated-${escapeHTML(item.slug)}.png" title="Download this annotation's share card as an image">Save card</a>` : ''}
         ${isMine && annotation.commentaryMode === 'text' && withinEditWindow(annotation) && !state.editingNote ? `<button class="act" data-action="edit-note">Edit note</button>` : ''}
         ${isMine ? `<button class="act" data-action="delete-annotation" data-slug="${escapeHTML(item.slug)}">Delete</button>` : ''}
         <button class="act claim" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug)}" data-claim-title="${escapeHTML(item.sourceTitle)}">${icon('claim')}File a claim</button>
@@ -892,7 +898,7 @@ const moderationView = () => {
         <div class="mod-meta"><span class="claim-status">${escapeHTML(current.replace('_', ' '))}</span><span>${escapeHTML(claim.createdAt ? new Date(claim.createdAt).toLocaleString() : 'Recently')}</span></div>
         <h3>${escapeHTML(annotation.sourceTitle || 'Untitled annotation')}</h3>
         <p class="mod-reason">${escapeHTML(claim.reason || 'No reason supplied.')}</p>
-        <div class="mod-meta"><span>Reported by ${escapeHTML(claim.reporter?.displayName || claim.reporter?.handle || claim.reporterId || 'unknown')}</span><a href="${escapeHTML(annotation.sourceUrl || '#')}" target="_blank" rel="noreferrer">Open source ${icon('open')}</a></div>
+        <div class="mod-meta"><span>Reported by ${escapeHTML(claim.reporter?.displayName || claim.reporter?.handle || claim.reporterContact || claim.reporterId || 'unknown')}${claim.via === 'form' ? ' · via form' : ''}</span><a href="${escapeHTML(annotation.sourceUrl || '#')}" target="_blank" rel="noreferrer">Open source ${icon('open')}</a></div>
         <div class="mod-actions">${statuses.map((status) => `<button class="${current === status ? 'is-current' : ''}" data-action="moderate-claim" data-claim-id="${escapeHTML(claim.id)}" data-status="${status}" ${current === status ? 'disabled' : ''}>${status.replace('_', ' ')}</button>`).join('')}${annotation.id && annotation.status !== 'removed' && current !== 'resolved' ? `<button class="is-takedown" data-action="moderate-claim" data-claim-id="${escapeHTML(claim.id)}" data-status="resolved" data-takedown="true">Resolve &amp; take down</button>` : ''}${annotation.status === 'removed' ? '<span class="vis-tag">taken down</span>' : ''}</div>
         ${claim.resolutionNote ? `<p class="mod-note">${escapeHTML(claim.resolutionNote)}</p>` : ''}
       </article>`;
@@ -1016,13 +1022,48 @@ const rightsView = () => docPage('Rights &amp; claims', 'for source owners', `
     <p>Every annotation page has a <strong>File a claim</strong> action above the fold. A claim is persisted, attached to the annotation, deduplicated while active, and lands in a moderation queue with the source and reporter attached.</p>
   </div>
   <div class="card"><h2>What a takedown looks like</h2>
-    <p>A claim resolved with a takedown removes the annotation for real: the hosted media is deleted and the page becomes a public tombstone stating that the source owner asked for it to come down. The claim trail is retained for accountability — takedowns are visible, not silent.</p>
+    <p>A claim resolved with a takedown removes the annotation for real: the hosted media is deleted and the page becomes a public tombstone stating that the source owner asked for it to come down. The claim trail is retained for accountability — takedowns are visible, not silent, and every one is listed on the public <a href="/transparency" data-action="set-view" data-view="transparency">transparency report</a>.</p>
   </div>
   <div class="card"><h2>Author removals</h2>
     <p>Authors can delete their own annotations at any time; those pages return a plain not-found. Only rights takedowns leave a tombstone.</p>
   </div>
   <p class="doc-footnote">To reach a person about a rights issue, use the <a href="https://github.com/tcballard/annotated/issues" target="_blank" rel="noreferrer">public tracker</a> without posting personal data. The publisher is Tom Ballard.</p>
 `);
+
+// The public record of enforcement: claim counts and every takedown, each
+// linking to its tombstone. What was removed stays minimal — host and type,
+// never the title — matching what the tombstone itself discloses.
+const transparencyView = () => {
+  const data = state.transparencyData;
+  const counts = data?.claims || { total: 0, open: 0, in_review: 0, resolved: 0, rejected: 0 };
+  const takedowns = data?.takedowns || [];
+  const countsRow = `
+    <div class="card"><h2>Claims received</h2>
+      <div class="trans-counts">
+        <span><strong>${Number(counts.total) || 0}</strong> total</span>
+        <span><strong>${Number(counts.open) || 0}</strong> open</span>
+        <span><strong>${Number(counts.in_review) || 0}</strong> in review</span>
+        <span><strong>${Number(counts.resolved) || 0}</strong> resolved</span>
+        <span><strong>${Number(counts.rejected) || 0}</strong> rejected</span>
+      </div>
+      <p>Every claim is filed from an annotation page, deduplicated while active, and reviewed in a moderation queue with an audit trail.</p>
+    </div>`;
+  const takedownRows = takedowns.length
+    ? `<table class="doc-table audit-table"><tbody>${takedowns.map((item) => `<tr>
+        <td class="audit-req">${escapeHTML(item.removedAt ? new Date(item.removedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : 'date unknown')}</td>
+        <td>${item.sourceType === 'article' ? 'An' : 'A'} ${escapeHTML(item.sourceType)} annotation${item.sourceHost ? ` of <strong>${escapeHTML(item.sourceHost)}</strong>` : ''} was taken down (${escapeHTML(String(item.reason).replace(/-/g, ' '))}). <a href="/a/${encodeURIComponent(item.slug)}" data-action="open-annotation" data-slug="${escapeHTML(item.slug)}">View the tombstone</a></td>
+      </tr>`).join('')}</tbody></table>`
+    : `<div class="card"><h2>Takedowns</h2><p>${state.transparencyLoading ? 'Loading the public record…' : 'No annotations have been taken down. When one is, it will be listed here permanently with a link to its tombstone.'}</p></div>`;
+  return docPage('Transparency', 'the public record of enforcement', `
+    ${countsRow}
+    ${takedowns.length ? '<div class="lib-section">Takedown log</div>' : ''}
+    ${takedownRows}
+    <div class="card"><h2>How removal works here</h2>
+      <p>A claim upheld by moderation removes the annotation for real: hosted media is deleted and the page becomes a permanent public tombstone — takedowns are visible, never silent. Authors can also delete their own work at any time; those pages simply cease to exist and are not listed here.</p>
+    </div>
+    <p class="doc-footnote">To report a rights issue, use <strong>File a claim</strong> on the annotation page — see <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>.</p>
+  `);
+};
 
 const termsView = () => docPage('Terms', 'short and honest', `
   <div class="card"><h2>The service</h2>
@@ -1046,6 +1087,7 @@ const footerView = () => `
     <a href="/extension" data-action="set-view" data-view="extension">Extension</a>
     <a href="/audit" data-action="set-view" data-view="audit">Brief audit</a>
     <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>
+    <a href="/transparency" data-action="set-view" data-view="transparency">Transparency</a>
     <a href="/terms" data-action="set-view" data-view="terms">Terms</a>
     <a href="/privacy.html">Privacy</a>
     <span class="footer-note">annotated © 2026 · source-first notes</span>
@@ -1063,6 +1105,7 @@ const render = () => {
     : state.activeView === 'audit' ? auditView()
     : state.activeView === 'rights' ? rightsView()
     : state.activeView === 'terms' ? termsView()
+    : state.activeView === 'transparency' ? transparencyView()
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
   app.innerHTML = `${chromeBar()}${offline}${authStateView()}${view}${footerView()}${state.claimOpen ? claimModal() : ''}${lightboxView()}${toast()}`;
@@ -1254,6 +1297,18 @@ const loadHub = async ({ append = false } = {}) => {
     if (!append) state.hubData = null;
   } finally {
     state.hubLoading = false;
+  }
+};
+
+const loadTransparency = async () => {
+  if (state.serverStatus !== 'online') return;
+  state.transparencyLoading = true;
+  try {
+    state.transparencyData = await api.transparency();
+  } catch {
+    state.transparencyData = null;
+  } finally {
+    state.transparencyLoading = false;
   }
 };
 
@@ -1897,6 +1952,7 @@ window.addEventListener('popstate', () => {
   if (state.activeView === 'profile' && state.profileHandle) { loadProfile().then(render); }
   if (state.activeView === 'library') { loadLibrary().then(render); }
   if (state.activeView === 'hub' && state.hubHost) { loadHub().then(render); }
+  if (state.activeView === 'transparency') { loadTransparency().then(render); }
   render();
 });
 

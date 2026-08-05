@@ -991,6 +991,8 @@ footer .footer-note { margin-left: auto; }
 .audit-table td { padding: 11px 14px; }
 .audit-req { font-weight: 700; width: 38%; color: var(--ink); }
 .doc-footnote { font-size: 12.5px; color: var(--meta); padding: 2px 4px 10px; }
+.trans-counts { display: flex; gap: 18px; flex-wrap: wrap; margin: 4px 0 10px; font-size: 13px; color: var(--meta); }
+.trans-counts strong { font-size: 17px; color: var(--ink); font-variant-numeric: tabular-nums; margin-right: 4px; }
 .docbody code { font-family: var(--mono); font-size: 12.5px; }
 
 /* ── offline banner ─────────────────────────────────────────────────── */

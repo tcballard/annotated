@@ -39,6 +39,7 @@ export const api = {
   profile: (handle) => apiRequest(`/api/profiles/${encodeURIComponent(handle)}`),
   sourceHub: (host, cursor) => apiRequest(`/api/sources/${encodeURIComponent(host)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
   people: (q = '') => apiRequest(`/api/people${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+  transparency: () => apiRequest('/api/transparency'),
   fileClaim: (slug, reason) => apiRequest(`/api/annotations/${encodeURIComponent(slug)}/claims`, { method: 'POST', body: JSON.stringify({ reason }) }),
   claims: () => apiRequest('/api/claims'),
   moderationClaims: () => apiRequest('/api/moderation/claims'),
