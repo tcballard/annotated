@@ -11,6 +11,21 @@ import { isTopic, TOPICS, topicLabel } from './topics.js';
 
 const app = document.querySelector('#app');
 
+// Shell mode: the native app loads every surface with ?shell=1 — navigation
+// chrome and the footer belong to its own tab bar, so the page renders
+// content only. The flag sticks in sessionStorage so in-page reloads (auth
+// returns, pull-to-refresh) stay chromeless after routing cleans the URL.
+const SHELL_MODE = (() => {
+  const requested = new URLSearchParams(window.location.search).get('shell') === '1';
+  try {
+    if (requested) sessionStorage.setItem('annotated-shell', '1');
+    return requested || sessionStorage.getItem('annotated-shell') === '1';
+  } catch {
+    return requested;
+  }
+})();
+if (SHELL_MODE) document.documentElement.classList.add('shell-mode');
+
 const icons = {
   open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg>',
   respond: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H4l3-3a8 8 0 1 1 14-5z"/></svg>',
@@ -887,6 +902,7 @@ const libraryView = () => {
       <div class="avatar" aria-hidden="true">${initials}</div>
       <div><h1>Library</h1><div class="lib-meta">@${escapeHTML(state.user.handle || '')} · ${escapeHTML(state.user.displayName || '')}</div></div>
       <div class="lib-counts"><span><strong>${Number(profile?.annotationCount) || annotations.length}</strong> published</span><span><strong>${Number(profile?.followers) || 0}</strong> followers</span><span><strong>${Number(profile?.following) || 0}</strong> following</span></div>
+      ${SHELL_MODE ? `<button class="ghost" data-action="logout">Sign out</button>` : ''}
     </div>
     <div class="lib-section">Published</div>
     <div class="librows">${rows}</div>
@@ -1165,7 +1181,7 @@ const render = () => {
     : state.activeView === 'transparency' ? transparencyView()
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
-  app.innerHTML = `${chromeBar()}${offline}${authStateView()}${view}${footerView()}${state.claimOpen ? claimModal() : ''}${lightboxView()}${toast()}`;
+  app.innerHTML = `${SHELL_MODE ? '' : chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${state.claimOpen ? claimModal() : ''}${lightboxView()}${toast()}`;
   const overlayOpen = state.claimOpen || Boolean(state.lightbox);
   for (const element of app.querySelectorAll('.chrome, .auth-notice, .auth-prompt, .page, footer, .offline-note')) {
     element.inert = overlayOpen;

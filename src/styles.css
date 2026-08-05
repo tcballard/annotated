@@ -1065,6 +1065,25 @@ footer .footer-note { margin-left: auto; }
   .feed:has(.feedhead) { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
 }
 
+/* ── shell mode (native app) ────────────────────────────────────────── */
+
+/* Inside the native app the page is content only: no chrome bar above, no
+   footer below, and the bottom of the screen belongs to the app's own tab
+   bar — so the feed switcher returns to the top, iOS segmented-control
+   style, while swipes keep flicking panes. */
+html.shell-mode .feedhead {
+  position: sticky;
+  top: 0;
+  bottom: auto;
+  left: auto;
+  right: auto;
+  background: var(--paper);
+  padding: 10px 0;
+  pointer-events: auto;
+}
+html.shell-mode .feedhead .tabs { box-shadow: var(--shadow); }
+html.shell-mode .feed:has(.feedhead) { padding-bottom: 24px; }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }

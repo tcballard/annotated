@@ -893,13 +893,18 @@ const server = http.createServer(async (request, response) => {
     const ogMatch = request.method === 'GET' ? url.pathname.match(/^\/og\/([^/]+)\.png$/) : null;
     if (ogMatch) return serveOgCard(response, ogMatch[1], { download: url.searchParams.has('download') });
     // The mobile shell finishes sign-in here: its one-time ticket becomes the
-    // same cookie session the web app uses, then the WebView reloads home.
+    // same cookie session the web app uses, then the WebView returns to the
+    // surface it came from. `next` is honoured only as a local path — a
+    // scheme or protocol-relative value falls back to home.
     if (request.method === 'GET' && url.pathname === '/auth/mobile/session') {
+      const requestedNext = url.searchParams.get('next') || '';
+      const next = /^\/(?!\/)/.test(requestedNext) ? requestedNext : '/';
+      const landing = (notice) => `${next}${next.includes('?') ? '&' : '?'}auth=${notice}`;
       try {
         const { sessionCookie } = await mobileTicketSession(url.searchParams.get('ticket') || '');
-        response.writeHead(302, { location: '/?auth=success', 'set-cookie': sessionCookie, ...securityHeaders() });
+        response.writeHead(302, { location: landing('success'), 'set-cookie': sessionCookie, ...securityHeaders() });
       } catch {
-        response.writeHead(302, { location: '/?auth=error', ...securityHeaders() });
+        response.writeHead(302, { location: landing('error'), ...securityHeaders() });
       }
       return response.end();
     }

@@ -2,10 +2,17 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const app = await readFile(new URL('../mobile/App.tsx', import.meta.url), 'utf8');
+const layout = await readFile(new URL('../mobile/app/_layout.tsx', import.meta.url), 'utf8');
+const timelineTab = await readFile(new URL('../mobile/app/index.tsx', import.meta.url), 'utf8');
+const captureTab = await readFile(new URL('../mobile/app/capture.tsx', import.meta.url), 'utf8');
+const libraryTab = await readFile(new URL('../mobile/app/library.tsx', import.meta.url), 'utf8');
+const webScreen = await readFile(new URL('../mobile/components/WebScreen.tsx', import.meta.url), 'utf8');
 const shellHelpers = await readFile(new URL('../mobile/lib/shell.ts', import.meta.url), 'utf8');
+const tokensModule = await readFile(new URL('../mobile/lib/tokens.ts', import.meta.url), 'utf8');
 const appConfig = JSON.parse(await readFile(new URL('../mobile/app.json', import.meta.url), 'utf8'));
 const packageJson = JSON.parse(await readFile(new URL('../mobile/package.json', import.meta.url), 'utf8'));
+const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+const webCss = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
 const authServer = await readFile(new URL('../server/auth.js', import.meta.url), 'utf8');
 const server = await readFile(new URL('../server/index.js', import.meta.url), 'utf8');
 
@@ -19,22 +26,79 @@ test('the shell is configured for the share sheet on both platforms', () => {
   assert.ok(packageJson.dependencies['react-native-webview']);
 });
 
-test('shares land on the same capture contract the PWA share target uses', () => {
-  assert.match(shellHelpers, /\/capture\?text=\$\{encodeURIComponent\(payload\)\}/);
-  assert.match(app, /useShareIntent/);
-  assert.match(app, /captureUrlFromShare\(ORIGIN/);
+test('navigation chrome is native: expo-router bottom tabs with haptic feedback', () => {
+  assert.equal(packageJson.main, 'expo-router/entry');
+  assert.ok(appConfig.expo.plugins.includes('expo-router'), 'expo-router config plugin must be registered');
+  assert.ok(packageJson.dependencies['expo-router']);
+  assert.ok(packageJson.dependencies['expo-haptics']);
+  for (const name of ['index', 'capture', 'library']) {
+    assert.match(layout, new RegExp(`name="${name}"`), `the ${name} tab must exist`);
+  }
+  assert.match(layout, /tabPress: \(\) => \{ void Haptics\.selectionAsync\(\); \}/, 'tab switches give haptic feedback');
+  assert.match(webScreen, /SafeAreaView edges=\{\['top'\]\}/, 'surfaces respect the status-bar safe area; the tab bar owns the bottom');
 });
 
-test('sign-in hops to the system browser and returns as a cookie session', () => {
+test('each tab hosts its web surface in shell mode', () => {
+  assert.match(shellHelpers, /searchParams\.set\('shell', '1'\)/);
+  assert.match(timelineTab, /shellUrl\(ORIGIN, '\/'\)/);
+  assert.match(captureTab, /shellUrl\(ORIGIN, '\/capture'\)/);
+  assert.match(libraryTab, /shellUrl\(ORIGIN, '\/library'\)/);
+});
+
+test('shares land on the Capture tab via the same contract the PWA share target uses', () => {
+  assert.match(layout, /useShareIntent/);
+  assert.match(layout, /pathname: '\/capture', params: \{ shared: payload/, 'a share routes to the Capture tab');
+  assert.match(captureTab, /captureUrlFromShare\(ORIGIN, \{ text: shared \}\)/);
+  assert.match(shellHelpers, /new URL\('\/capture', origin\)/);
+  assert.match(shellHelpers, /searchParams\.set\('text', payload\)/);
+});
+
+test('sign-in hops to the system browser and returns to the surface it left', () => {
   assert.match(shellHelpers, /return_to', 'annotated:\/\/auth'/);
-  assert.match(shellHelpers, /\/auth\/mobile\/session\?ticket=/);
-  assert.match(app, /openAuthSessionAsync\(withMobileReturn\(startUrl\), 'annotated:\/\/auth'\)/);
+  assert.match(shellHelpers, /new URL\('\/auth\/mobile\/session', origin\)/);
+  assert.match(shellHelpers, /searchParams\.set\('next', next\)/);
+  assert.match(webScreen, /openAuthSessionAsync\(withMobileReturn\(startUrl\), 'annotated:\/\/auth'\)/);
+  assert.match(webScreen, /sessionExchangeUrl\(ORIGIN, ticket, `\$\{home\.pathname\}\$\{home\.search\}`\)/);
   assert.match(authServer, /url\.protocol === 'annotated:' && url\.hostname === 'auth'/);
   assert.match(authServer, /export const mobileTicketSession/);
-  assert.match(server, /\/auth\/mobile\/session/);
+  assert.ok(server.includes("url.pathname === '/auth/mobile/session'"));
+  assert.ok(server.includes("test(requestedNext) ? requestedNext : '/'"), 'next is honoured only as a local path');
+});
+
+test('one sign-in serves every tab: other mounted surfaces reload on the session epoch', () => {
+  assert.match(webScreen, /SessionEpochContext/);
+  assert.match(webScreen, /if \(!focusedRef\.current\) webViewRef\.current\?\.reload\(\)/);
+  assert.match(layout, /SessionEpochContext\.Provider/);
+  assert.match(layout, /bump: \(\) => setEpoch/);
 });
 
 test('external navigation opens out; annotated stays in the shell', () => {
-  assert.match(app, /isInternalNavigation\(request\.url, ORIGIN\)/);
-  assert.match(app, /openBrowserAsync\(request\.url\)/);
+  assert.match(webScreen, /isInternalNavigation\(request\.url, ORIGIN\)/);
+  assert.match(webScreen, /openBrowserAsync\(request\.url\)/);
+});
+
+test('native styling derives from the web stylesheet — one source of truth', () => {
+  const rootBlock = webCss.match(/:root\s*\{([\s\S]*?)\}/);
+  assert.ok(rootBlock, 'the web stylesheet must declare :root tokens');
+  const entries = [...rootBlock[1].matchAll(/--([a-z-]+):\s*([^;]+);/g)];
+  assert.ok(entries.length >= 10, 'expected a real token set');
+  for (const [, name, value] of entries) {
+    assert.ok(
+      tokensModule.includes(`${JSON.stringify(name)}: ${JSON.stringify(value.trim())},`),
+      `token --${name} is stale in mobile/lib/tokens.ts — run node scripts/generate-mobile-tokens.mjs`,
+    );
+  }
+  assert.match(webScreen, /from '\.\.\/lib\/tokens'/);
+  assert.match(layout, /from '\.\.\/lib\/tokens'/);
+});
+
+test('shell mode strips web chrome and returns the feed switcher to the top', () => {
+  assert.match(main, /get\('shell'\) === '1'/);
+  assert.match(main, /sessionStorage\.setItem\('annotated-shell', '1'\)/, 'shell mode survives in-page reloads');
+  assert.match(main, /classList\.add\('shell-mode'\)/);
+  assert.match(main, /\$\{SHELL_MODE \? '' : chromeBar\(\)\}/, 'no web nav inside the native app');
+  assert.match(main, /\$\{SHELL_MODE \? '' : footerView\(\)\}/, 'no web footer inside the native app');
+  assert.match(main, /SHELL_MODE \? `<button class="ghost" data-action="logout">Sign out<\/button>` : ''/, 'sign-out lives on the Library surface when the chrome bar is gone');
+  assert.match(webCss, /html\.shell-mode \.feedhead \{\s*position: sticky;\s*top: 0;/, 'the switcher docks top — the bottom belongs to the native tab bar');
+  assert.match(webCss, /html\.shell-mode \.feed:has\(\.feedhead\)/, 'the dock padding is released in shell mode');
 });
