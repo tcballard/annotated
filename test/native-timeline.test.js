@@ -1,0 +1,47 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+
+const timeline = await readFile(new URL('../mobile/components/Timeline.tsx', import.meta.url), 'utf8');
+const nativeAuth = await readFile(new URL('../mobile/lib/native-auth.ts', import.meta.url), 'utf8');
+const nativeApi = await readFile(new URL('../mobile/lib/api.ts', import.meta.url), 'utf8');
+
+test('the native timeline renders through the shared core, not a private model', () => {
+  assert.match(timeline, /from '\.\.\/lib\/core\/feed-item'/);
+  assert.match(timeline, /annotationToFeedItem/);
+  assert.match(timeline, /from '\.\.\/lib\/core\/deep-link'/);
+  assert.match(timeline, /publicAnnotationUrl/);
+  assert.match(nativeApi, /createApiClient\(\{ origin: ORIGIN \}\)/, 'the native client is the shared one, aimed at the deployment');
+});
+
+test('the reading surface has native physics: list, pull-to-refresh, cursor paging', () => {
+  assert.match(timeline, /<FlatList/);
+  assert.match(timeline, /RefreshControl refreshing=\{refreshing\} onRefresh=\{refresh\}/);
+  assert.match(timeline, /onEndReached=\{loadMore\}/);
+  assert.match(timeline, /result\.nextCursor \|\| null/);
+  assert.match(timeline, /params\.set\('cursor', cursor\)/);
+  assert.match(timeline, /Haptics\.selectionAsync/, 'pane switches tick');
+});
+
+test('the pane and topic contract matches the web feed exactly', () => {
+  assert.match(timeline, /params\.set\('sort', 'trending'\)/);
+  assert.match(timeline, /params\.set\('topic', topic\)/);
+  assert.match(timeline, /params\.set\('following', 'true'\)/);
+  assert.match(timeline, /'No public annotations yet\.'/, 'empty copy matches the web');
+  assert.match(timeline, /'Nothing is trending yet\.'/);
+  assert.match(timeline, /'No annotations from people you follow yet\.'/);
+});
+
+test('originals open OUT and opens are counted, same as every other surface', () => {
+  assert.match(timeline, /WebBrowser\.openBrowserAsync\(openOriginalHref\(item\)\)/);
+  assert.match(timeline, /api\.recordOpen\(item\.slug\)/);
+  assert.match(timeline, /router\.push\(`\/web\/a\/\$\{encodeURIComponent\(item\.slug\)\}`\)/, 'annotation pages push as web surfaces');
+});
+
+test('native sign-in is the same ticket exchange, driven without a WebView', () => {
+  assert.match(nativeAuth, /openAuthSessionAsync\(withMobileReturn\(startUrl\), 'annotated:\/\/auth'\)/);
+  assert.match(nativeAuth, /sessionExchangeUrl\(ORIGIN, ticket, '\/'\)/);
+  assert.match(nativeAuth, /enabledProviders/);
+  assert.match(timeline, /await signInNatively\(\)/, 'a 401 on follow offers sign-in');
+  assert.match(timeline, /\[epoch\]/, 'the timeline refreshes when a sign-in lands elsewhere in the app');
+});

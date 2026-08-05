@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const layout = await readFile(new URL('../mobile/app/_layout.tsx', import.meta.url), 'utf8');
-const timelineTab = await readFile(new URL('../mobile/app/index.tsx', import.meta.url), 'utf8');
-const captureTab = await readFile(new URL('../mobile/app/capture.tsx', import.meta.url), 'utf8');
-const libraryTab = await readFile(new URL('../mobile/app/library.tsx', import.meta.url), 'utf8');
+const rootLayout = await readFile(new URL('../mobile/app/_layout.tsx', import.meta.url), 'utf8');
+const tabsLayout = await readFile(new URL('../mobile/app/(tabs)/_layout.tsx', import.meta.url), 'utf8');
+const timelineTab = await readFile(new URL('../mobile/app/(tabs)/index.tsx', import.meta.url), 'utf8');
+const captureTab = await readFile(new URL('../mobile/app/(tabs)/capture.tsx', import.meta.url), 'utf8');
+const libraryTab = await readFile(new URL('../mobile/app/(tabs)/library.tsx', import.meta.url), 'utf8');
+const webPage = await readFile(new URL('../mobile/app/web/[...path].tsx', import.meta.url), 'utf8');
 const webScreen = await readFile(new URL('../mobile/components/WebScreen.tsx', import.meta.url), 'utf8');
 const shellHelpers = await readFile(new URL('../mobile/lib/shell.ts', import.meta.url), 'utf8');
 const tokensModule = await readFile(new URL('../mobile/lib/tokens.ts', import.meta.url), 'utf8');
@@ -26,28 +28,34 @@ test('the shell is configured for the share sheet on both platforms', () => {
   assert.ok(packageJson.dependencies['react-native-webview']);
 });
 
-test('navigation chrome is native: expo-router bottom tabs with haptic feedback', () => {
+test('navigation chrome is native: a stack over expo-router tabs, with haptic feedback', () => {
   assert.equal(packageJson.main, 'expo-router/entry');
   assert.ok(appConfig.expo.plugins.includes('expo-router'), 'expo-router config plugin must be registered');
   assert.ok(packageJson.dependencies['expo-router']);
   assert.ok(packageJson.dependencies['expo-haptics']);
+  assert.match(rootLayout, /<Stack/);
+  assert.match(rootLayout, /name="\(tabs\)"/);
+  assert.match(rootLayout, /name="web\/\[\.\.\.path\]"/, 'internal pages push over the tabs');
   for (const name of ['index', 'capture', 'library']) {
-    assert.match(layout, new RegExp(`name="${name}"`), `the ${name} tab must exist`);
+    assert.match(tabsLayout, new RegExp(`name="${name}"`), `the ${name} tab must exist`);
   }
-  assert.match(layout, /tabPress: \(\) => \{ void Haptics\.selectionAsync\(\); \}/, 'tab switches give haptic feedback');
-  assert.match(webScreen, /SafeAreaView edges=\{\['top'\]\}/, 'surfaces respect the status-bar safe area; the tab bar owns the bottom');
+  assert.match(tabsLayout, /tabPress: \(\) => \{ void Haptics\.selectionAsync\(\); \}/, 'tab switches give haptic feedback');
+  assert.match(webScreen, /SafeAreaView edges=\{padTop \? \['top'\] : \[\]\}/, 'pushed screens under a native header do not double-pad the inset');
 });
 
-test('each tab hosts its web surface in shell mode', () => {
+test('the timeline is native; capture and library host web surfaces in shell mode', () => {
+  assert.match(timelineTab, /<Timeline \/>/);
+  assert.doesNotMatch(timelineTab, /WebScreen/, 'the reading surface is not a WebView');
   assert.match(shellHelpers, /searchParams\.set\('shell', '1'\)/);
-  assert.match(timelineTab, /shellUrl\(ORIGIN, '\/'\)/);
   assert.match(captureTab, /shellUrl\(ORIGIN, '\/capture'\)/);
   assert.match(libraryTab, /shellUrl\(ORIGIN, '\/library'\)/);
+  assert.match(webPage, /shellUrl\(ORIGIN, target\)/, 'pushed permalinks/profiles/hubs stay shell-mode web');
+  assert.match(webPage, /padTop=\{false\}/);
 });
 
 test('shares land on the Capture tab via the same contract the PWA share target uses', () => {
-  assert.match(layout, /useShareIntent/);
-  assert.match(layout, /pathname: '\/capture', params: \{ shared: payload/, 'a share routes to the Capture tab');
+  assert.match(rootLayout, /useShareIntent/);
+  assert.match(rootLayout, /pathname: '\/capture', params: \{ shared: payload/, 'a share routes to the Capture tab');
   assert.match(captureTab, /captureUrlFromShare\(ORIGIN, \{ text: shared \}\)/);
   assert.match(shellHelpers, /new URL\('\/capture', origin\)/);
   assert.match(shellHelpers, /searchParams\.set\('text', payload\)/);
@@ -65,11 +73,11 @@ test('sign-in hops to the system browser and returns to the surface it left', ()
   assert.ok(server.includes("test(requestedNext) ? requestedNext : '/'"), 'next is honoured only as a local path');
 });
 
-test('one sign-in serves every tab: other mounted surfaces reload on the session epoch', () => {
+test('one sign-in serves every surface: the session epoch fans it out', () => {
   assert.match(webScreen, /SessionEpochContext/);
   assert.match(webScreen, /if \(!focusedRef\.current\) webViewRef\.current\?\.reload\(\)/);
-  assert.match(layout, /SessionEpochContext\.Provider/);
-  assert.match(layout, /bump: \(\) => setEpoch/);
+  assert.match(rootLayout, /SessionEpochContext\.Provider/);
+  assert.match(rootLayout, /bump: \(\) => setEpoch/);
 });
 
 test('external navigation opens out; annotated stays in the shell', () => {
@@ -88,8 +96,8 @@ test('native styling derives from the web stylesheet — one source of truth', (
       `token --${name} is stale in mobile/lib/tokens.ts — run node scripts/generate-mobile-tokens.mjs`,
     );
   }
+  assert.match(tabsLayout, /from '\.\.\/\.\.\/lib\/tokens'/);
   assert.match(webScreen, /from '\.\.\/lib\/tokens'/);
-  assert.match(layout, /from '\.\.\/lib\/tokens'/);
 });
 
 test('shell mode strips web chrome and returns the feed switcher to the top', () => {

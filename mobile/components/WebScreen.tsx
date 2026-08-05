@@ -1,12 +1,12 @@
-// One web surface inside the native chrome. Each tab hosts the deployed
-// app in shell mode (content only — the native tab bar is the navigation)
-// and keeps the jobs the web cannot do alone on a phone: OAuth through the
-// system browser (WebViews are refused by Google), returning via
-// annotated://auth with a one-time ticket, and opening originals OUT.
+// One web surface inside the native chrome. Each host screen loads the
+// deployed app in shell mode (content only — native chrome does the
+// navigation) and keeps the jobs the web cannot do alone on a phone:
+// OAuth through the system browser (WebViews are refused by Google),
+// returning via annotated://auth with a one-time ticket, and opening
+// originals OUT.
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Platform, StyleSheet, View } from 'react-native';
-import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,19 +18,21 @@ import {
   ticketFromCallback,
   withMobileReturn,
 } from '../lib/shell';
+import { ORIGIN } from '../lib/origin';
 import { ink, paper } from '../lib/tokens';
 
-export const ORIGIN = (Constants.expoConfig?.extra?.origin as string | undefined)
-  ?? 'https://annotated-staging.up.railway.app';
+export { ORIGIN };
 
-// Sign-in happens inside one tab, but the cookie session belongs to all of
+// Sign-in happens on one surface, but the cookie session belongs to all of
 // them: a bump tells every other mounted surface to reload as that user.
 export const SessionEpochContext = createContext<{ epoch: number; bump: () => void }>({
   epoch: 0,
   bump: () => {},
 });
 
-export default function WebScreen({ uri }: { uri: string }) {
+// padTop is off for screens pushed under a native header, which already
+// covers the status-bar inset.
+export default function WebScreen({ uri, padTop = true }: { uri: string; padTop?: boolean }) {
   const webViewRef = useRef<WebView>(null);
   const [source, setSource] = useState({ uri });
   useEffect(() => setSource({ uri }), [uri]);
@@ -39,8 +41,8 @@ export default function WebScreen({ uri }: { uri: string }) {
   const focusedRef = useRef(false);
   const canGoBackRef = useRef(false);
 
-  // Android hardware back walks this tab's history before leaving the app;
-  // only the focused tab listens.
+  // Android hardware back walks this surface's history before leaving;
+  // only the focused screen listens.
   useFocusEffect(useCallback(() => {
     focusedRef.current = true;
     const subscription = Platform.OS === 'android'
@@ -56,8 +58,8 @@ export default function WebScreen({ uri }: { uri: string }) {
     };
   }, []));
 
-  // The tab that ran the ticket exchange is already navigating to the
-  // session URL; every other mounted tab reloads to pick up the cookie.
+  // The surface that ran the ticket exchange is already navigating to the
+  // session URL; every other mounted one reloads to pick up the cookie.
   const seenEpoch = useRef(epoch);
   useEffect(() => {
     if (epoch === seenEpoch.current) return;
@@ -88,7 +90,7 @@ export default function WebScreen({ uri }: { uri: string }) {
   }, [signInThroughSystemBrowser]);
 
   return (
-    <SafeAreaView edges={['top']} style={styles.frame}>
+    <SafeAreaView edges={padTop ? ['top'] : []} style={styles.frame}>
       <WebView
         ref={webViewRef}
         source={source}

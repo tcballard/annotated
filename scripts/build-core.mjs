@@ -53,7 +53,9 @@ export const transpileCoreModule = (name, source) => {
   return generatedHeader(name) + outputText;
 };
 
-export const mobileCopy = (name, source) => generatedHeader(name) + source;
+// Metro resolves extensionless relative imports; the .js specifiers the
+// browser/node builds need would miss the sibling .ts files there.
+export const mobileCopy = (name, source) => generatedHeader(name) + source.replace(/(from\s+'\.\/[a-z-]+)\.js(')/g, '$1$2');
 
 const main = async () => {
   await mkdir(path.join(repoRoot, MOBILE_CORE_DIR), { recursive: true });

@@ -1,17 +1,17 @@
-// Native chrome, web surfaces. The tab bar, haptics, safe areas, and
-// share-sheet routing are native (expo-router); each tab hosts one deployed
-// web surface in shell mode, so navigation is never drawn twice.
+// Root navigation: a stack whose floor is the tab bar and whose pushed
+// screens are web surfaces (permalinks, profiles, hubs) under a native
+// header. Share-sheet arrivals and the cross-surface session epoch live
+// here because they concern the whole app.
 
 import { useEffect, useMemo, useState } from 'react';
-import { Tabs, useRouter } from 'expo-router';
+import { Platform } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import * as Haptics from 'expo-haptics';
-import Feather from '@expo/vector-icons/Feather';
 import { useShareIntent } from 'expo-share-intent';
 import { SessionEpochContext } from '../components/WebScreen';
-import { card, ink, meta, paper, tokens } from '../lib/tokens';
+import { card, ink, paper } from '../lib/tokens';
 
-export default function Layout() {
+export default function RootLayout() {
   const router = useRouter();
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent({ debug: false, resetOnBackground: true });
 
@@ -31,31 +31,25 @@ export default function Layout() {
   return (
     <SessionEpochContext.Provider value={session}>
       <StatusBar style="dark" />
-      <Tabs
+      <Stack
         screenOptions={{
           headerShown: false,
-          sceneStyle: { backgroundColor: paper },
-          tabBarActiveTintColor: ink,
-          tabBarInactiveTintColor: meta,
-          tabBarStyle: { backgroundColor: card, borderTopColor: tokens.hair },
-        }}
-        screenListeners={{
-          tabPress: () => { void Haptics.selectionAsync(); },
+          contentStyle: { backgroundColor: paper },
         }}
       >
-        <Tabs.Screen
-          name="index"
-          options={{ title: 'Timeline', tabBarIcon: ({ color, size }) => <Feather name="list" color={color} size={size} /> }}
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="web/[...path]"
+          options={{
+            headerShown: true,
+            headerTintColor: ink,
+            headerStyle: { backgroundColor: card },
+            headerTitleStyle: { color: ink, fontWeight: '600' },
+            headerBackButtonDisplayMode: 'minimal',
+            animation: Platform.OS === 'ios' ? 'default' : 'slide_from_right',
+          }}
         />
-        <Tabs.Screen
-          name="capture"
-          options={{ title: 'Capture', tabBarIcon: ({ color, size }) => <Feather name="plus-square" color={color} size={size} /> }}
-        />
-        <Tabs.Screen
-          name="library"
-          options={{ title: 'Library', tabBarIcon: ({ color, size }) => <Feather name="bookmark" color={color} size={size} /> }}
-        />
-      </Tabs>
+      </Stack>
     </SessionEpochContext.Provider>
   );
 }

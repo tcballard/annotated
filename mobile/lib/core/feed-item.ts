@@ -7,7 +7,7 @@
 // (verbs, chips, times) that keeps web, extension, and native describing
 // the same thing the same way.
 
-import { isTopic } from './topics.js';
+import { isTopic } from './topics';
 
 export const VISIBILITIES: readonly string[] = ['public', 'unlisted', 'private'];
 

@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
-import WebScreen, { ORIGIN } from '../components/WebScreen';
-import { captureUrlFromShare, shellUrl } from '../lib/shell';
+import WebScreen from '../../components/WebScreen';
+import { ORIGIN } from '../../lib/origin';
+import { captureUrlFromShare, shellUrl } from '../../lib/shell';
 
 export default function CaptureTab() {
   // A share-sheet launch arrives as params from the layout; the nonce rides
