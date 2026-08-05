@@ -48,6 +48,7 @@ const queueStatusTitle = $('#queueStatusTitle');
 const queueStatusDetail = $('#queueStatusDetail');
 const queueRetry = $('#queueRetry');
 const timeline = $('#timeline');
+const captureSection = $('#captureSection');
 const toast = $('#toast');
 const toastText = $('#toastText');
 const toastLink = $('#toastLink');
@@ -75,7 +76,10 @@ let clientRequestId = crypto.randomUUID();
 let draftReady = false;
 let draftSaveTimer;
 let toastTimer;
-let feedTab = 'recent';
+// The panel is modal: you are either writing the margin (capture) or reading
+// it (a timeline). Capture is the default so the sidebar stays the primary
+// capture surface; each mode gets the full panel height.
+let panelMode = 'capture';
 const feedCache = { recent: null, following: null, page: null };
 
 const format = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
@@ -464,6 +468,7 @@ const loadCurrentTab = async () => {
     resetCaptureState();
     currentTabId = tab.id ?? null;
     feedCache.page = null;
+    if (panelMode === 'page') renderTimeline();
   }
   const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
   currentTab = { url, title: tab.title || host || 'This tab', host, sourceType: currentTab.sourceType || 'article', duration: 0 };
@@ -489,7 +494,7 @@ const loadCurrentTab = async () => {
       syncSource();
     } catch { /* the page's own details are enough to capture */ }
   }
-  if (feedTab === 'page') await loadTimeline('page');
+  if (panelMode === 'page') await loadTimeline('page');
 };
 
 chrome.tabs?.onActivated?.addListener(() => { void loadCurrentTab(); });
@@ -500,6 +505,7 @@ chrome.tabs?.onUpdated?.addListener((_tabId, changeInfo) => {
 /* ── marks ─────────────────────────────────────────────────────────── */
 
 const captureMark = async (boundary) => {
+  if (panelMode !== 'capture') setPanelMode('capture');
   const player = await readPlayerTime();
   if (!player) {
     manualMarks.hidden = false;
@@ -769,12 +775,13 @@ publishButton.addEventListener('click', async () => {
     syncSource();
     syncNote();
     syncComposer();
-    // optimistic insert at the top of the timeline
+    // optimistic insert, then land on This page so the note is seen in place
     const item = annotationToItem(annotation);
     for (const key of ['recent', 'page']) {
       if (feedCache[key]?.items) feedCache[key].items.unshift(item);
     }
-    renderTimeline();
+    if (!feedCache.page) feedCache.page = { items: [item] };
+    setPanelMode('page');
     showToast('Published', { href: annotation.url, label: 'View page' });
   } catch (publishError) {
     if (publishError.authRequired) {
@@ -841,13 +848,20 @@ const skeletonPost = () => `
     </div>
   </div>`;
 
-const renderTimeline = () => {
-  const cache = feedCache[feedTab];
+const syncTabs = () => {
   document.querySelectorAll('[data-feed-tab]').forEach((tabButton) => {
-    const active = tabButton.dataset.feedTab === feedTab;
+    const active = tabButton.dataset.feedTab === panelMode;
     tabButton.classList.toggle('is-active', active);
     tabButton.setAttribute('aria-selected', String(active));
   });
+  captureSection.hidden = panelMode !== 'capture';
+  timeline.hidden = panelMode === 'capture';
+};
+
+const renderTimeline = () => {
+  syncTabs();
+  if (panelMode === 'capture') return;
+  const cache = feedCache[panelMode];
   if (!cache) {
     timeline.innerHTML = `${skeletonPost()}${skeletonPost()}`;
     return;
@@ -862,23 +876,30 @@ const renderTimeline = () => {
   }
   if (!cache.items.length) {
     const mark = '<img class="mark" src="icons/icon-128.png" alt="" aria-hidden="true" />';
-    timeline.innerHTML = feedTab === 'page'
+    timeline.innerHTML = panelMode === 'page'
       ? `<div class="empty">${mark}<h2>No annotations on this page yet.</h2><p>Yours would be the first.</p><button type="button" data-focus-note>Write the first note</button></div>`
-      : `<div class="empty">${mark}<h2>${feedTab === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${feedTab === 'following' ? 'Follow someone from their page.' : 'Capture the first source-backed moment above.'}</p></div>`;
+      : `<div class="empty">${mark}<h2>${panelMode === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${panelMode === 'following' ? 'Follow someone from their page.' : 'Capture the first source-backed moment.'}</p></div>`;
     return;
   }
   timeline.innerHTML = cache.items.map(timelinePost).join('');
 };
 
-const loadTimeline = async (tab = feedTab) => {
+const setPanelMode = (mode) => {
+  panelMode = mode;
+  renderTimeline();
+  if (mode !== 'capture' && !feedCache[mode]) void loadTimeline(mode);
+};
+
+const loadTimeline = async (tab) => {
+  if (tab === 'capture') return;
   if (!backendOnline) {
     feedCache[tab] = { items: [], error: 'offline' };
-    if (tab === feedTab) renderTimeline();
+    if (tab === panelMode) renderTimeline();
     return;
   }
   if (!feedCache[tab]) {
     feedCache[tab] = null;
-    if (tab === feedTab) renderTimeline();
+    if (tab === panelMode) renderTimeline();
   }
   try {
     const params = new URLSearchParams({ limit: '20' });
@@ -886,7 +907,7 @@ const loadTimeline = async (tab = feedTab) => {
     if (tab === 'page') {
       if (!/^https?:/.test(currentTab.url || '')) {
         feedCache.page = { items: [] };
-        if (tab === feedTab) renderTimeline();
+        if (tab === panelMode) renderTimeline();
         return;
       }
       params.set('url', currentTab.url);
@@ -896,14 +917,11 @@ const loadTimeline = async (tab = feedTab) => {
   } catch (feedError) {
     feedCache[tab] = { items: [], error: feedError.authRequired ? 'auth' : 'load' };
   }
-  if (tab === feedTab) renderTimeline();
+  if (tab === panelMode) renderTimeline();
 };
 
-document.querySelectorAll('[data-feed-tab]').forEach((tabButton) => tabButton.addEventListener('click', async () => {
-  feedTab = tabButton.dataset.feedTab;
-  renderTimeline();
-  if (!feedCache[feedTab]) await loadTimeline(feedTab);
-  else renderTimeline();
+document.querySelectorAll('[data-feed-tab]').forEach((tabButton) => tabButton.addEventListener('click', () => {
+  setPanelMode(tabButton.dataset.feedTab);
 }));
 
 timeline.addEventListener('click', async (event) => {
@@ -919,8 +937,8 @@ timeline.addEventListener('click', async (event) => {
   }
   const open = event.target.closest('[data-open-slug]');
   if (open) { void recordOpen(open.dataset.openSlug); return; }
-  if (event.target.closest('[data-feed-retry]')) { feedCache[feedTab] = null; renderTimeline(); await loadTimeline(feedTab); return; }
-  if (event.target.closest('[data-focus-note]')) { note.focus(); }
+  if (event.target.closest('[data-feed-retry]')) { feedCache[panelMode] = null; renderTimeline(); await loadTimeline(panelMode); return; }
+  if (event.target.closest('[data-focus-note]')) { setPanelMode('capture'); note.focus(); }
 });
 
 /* ── queue status ──────────────────────────────────────────────────── */
@@ -977,7 +995,7 @@ authActions.querySelectorAll('[data-auth]').forEach((button) => button.addEventL
     await chrome.runtime.sendMessage({ type: 'RETRY_PENDING' }).catch(() => {});
     await refreshQueueStatus();
     feedCache.following = null;
-    if (feedTab === 'following') await loadTimeline('following');
+    if (panelMode === 'following') await loadTimeline('following');
   } catch (authError) {
     showError(authError.message || 'Sign-in failed.');
   }
@@ -989,7 +1007,7 @@ signOutButton.addEventListener('click', async () => {
     setAuthState(false);
     feedCache.following = null;
     clearError();
-    if (feedTab === 'following') await loadTimeline('following');
+    if (panelMode === 'following') await loadTimeline('following');
   } catch (signOutError) { showError(signOutError.message || 'Sign out failed.'); }
 });
 

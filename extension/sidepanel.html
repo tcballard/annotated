@@ -20,8 +20,18 @@
     </header>
 
     <div class="scroll">
-      <!-- capture widget: the source is the live tab -->
-      <section class="capture" aria-label="Capture from this tab">
+      <!-- panel modes: writing the margin or reading it, each at full height -->
+      <div class="thead">
+        <div class="tabs" role="tablist" aria-label="Panel mode">
+          <button class="tab is-active" data-feed-tab="capture" role="tab" aria-selected="true">Capture</button>
+          <button class="tab" data-feed-tab="recent" role="tab" aria-selected="false">Recent</button>
+          <button class="tab" data-feed-tab="following" role="tab" aria-selected="false">Following</button>
+          <button class="tab" data-feed-tab="page" role="tab" aria-selected="false">This page</button>
+        </div>
+      </div>
+
+      <!-- capture: the source is the live tab -->
+      <section class="capture" id="captureSection" aria-label="Capture from this tab">
         <div class="cap-source">
           <span class="livedot" aria-hidden="true"></span>
           <span class="t" id="sourceTitle">Reading this tab…</span>
@@ -106,15 +116,7 @@
       </section>
 
       <!-- timeline -->
-      <div class="thead">
-        <h1>Timeline</h1>
-        <div class="tabs" role="tablist" aria-label="Timeline filter">
-          <button class="tab is-active" data-feed-tab="recent" role="tab" aria-selected="true">Recent</button>
-          <button class="tab" data-feed-tab="following" role="tab" aria-selected="false">Following</button>
-          <button class="tab" data-feed-tab="page" role="tab" aria-selected="false">This page</button>
-        </div>
-      </div>
-      <div class="timeline" id="timeline" aria-live="polite"></div>
+      <div class="timeline" id="timeline" aria-live="polite" hidden></div>
     </div>
 
     <div class="toast" id="toast" role="status" hidden><span id="toastText"></span><a id="toastLink" target="_blank" rel="noreferrer" hidden></a></div>

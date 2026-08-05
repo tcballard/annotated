@@ -56,9 +56,10 @@ laws, not suggestions; `test/terracotta-audit.test.js` enforces the first one.
 
 ## Surfaces
 
-- **Chrome side panel** (`extension/`) is the primary surface: ink header,
-  pinned capture widget (live source strip → marks or passage → note →
-  publish), then the in-panel timeline with Recent · Following · This page.
+- **Chrome side panel** (`extension/`) is the primary surface, with four
+  full-height modes on one tab row: **Capture** (default — live source strip →
+  marks or passage → note → publish) · Recent · Following · This page.
+  Publishing lands on This page; its empty state hands back to Capture.
 - **Web timeline** (`/`): 600px feed + 300px rail; annotation-first posts with
   the embedded source card (quote-tweet grammar); bylines carry the verb
   ("annotated a video").

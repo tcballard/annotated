@@ -95,10 +95,17 @@ test('side panel implements the v5 surface: live source strip, marks, note, time
   assert.match(runtime, /publishBlocker/);
   assert.match(runtime, /Clips are capped at/);
   assert.match(runtime, /Mark an in and an out point\./);
-  // in-panel timeline: Recent · Following · This page, with the empty state copy
+  // four full-height modes: Capture · Recent · Following · This page.
+  // Capture is the default so the sidebar stays the primary capture surface.
+  assert.match(html, /data-feed-tab="capture"/);
   assert.match(html, /data-feed-tab="recent"/);
   assert.match(html, /data-feed-tab="following"/);
   assert.match(html, /data-feed-tab="page"/);
+  assert.match(runtime, /let panelMode = 'capture'/);
+  assert.match(runtime, /const setPanelMode = /);
+  // publishing lands on This page; the empty state hands back to Capture
+  assert.match(runtime, /setPanelMode\('page'\)/);
+  assert.match(runtime, /setPanelMode\('capture'\); note\.focus\(\)/);
   assert.match(runtime, /No annotations on this page yet\./);
   assert.match(runtime, /Yours would be the first\./);
   // per-tab drafts in session storage, re-bound on tab change

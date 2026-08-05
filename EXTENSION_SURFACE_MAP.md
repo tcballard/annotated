@@ -36,9 +36,11 @@ part of the capture flow.
 
 The panel follows the handoff v2 identity (see `UX_DIRECTION.md`): ink chrome header, paper
 ground, white capture card, and terracotta reserved for the moment — the live source dot,
-the marks once set, the duration chip, the active timeline tab, and the primary Open action.
-The capture widget is pinned first; the timeline scrolls beneath a sticky sub-header with
-Recent · Following · This page tabs. Marks read the page's player (`I`/`O` when the panel is
+the marks once set, the duration chip, the active mode tab, and the primary Open action.
+The panel is modal: Capture · Recent · Following · This page share one sticky tab row and
+each mode owns the full panel height. Capture is the default on open; publishing lands on
+This page so the new note is seen in place, and the This page empty state hands back to
+Capture. Marks read the page's player (`I`/`O` when the panel is
 focused); pages with no reachable player fall back to typed mono time fields. Article capture
 grabs the on-page highlight along with its paragraph number and text-quote context so the
 landing page can deep-link with `#:~:text=`. Unsaved marks and notes persist per tab in
