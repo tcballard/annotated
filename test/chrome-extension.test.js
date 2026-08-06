@@ -27,6 +27,10 @@ test('Manifest V3 extension has a reachable side-panel trigger and local files',
   assert.ok(manifest.permissions.includes('storage'));
   assert.ok(manifest.permissions.includes('identity'));
   assert.ok(manifest.permissions.includes('alarms'));
+  // captureVisibleTab accepts only the literal <all_urls> pattern (or a
+  // per-invocation activeTab grant, which dies on tab switch) — plain
+  // http/https host patterns satisfy scripting but NOT screenshots.
+  assert.deepEqual(manifest.host_permissions, ['<all_urls>']);
   assert.equal(manifest.action.default_popup, undefined);
   await access(path.join(extensionRoot, manifest.background.service_worker));
   await access(path.join(extensionRoot, manifest.side_panel.default_path));
@@ -144,6 +148,36 @@ test('side panel implements the v5 surface: live source strip, marks, note, time
   assert.match(styles, /--accent:\s*#B0674D/);
   assert.match(styles, /font-variant-numeric:\s*tabular-nums/);
   assert.match(styles, /--serif:\s*Georgia/);
+});
+
+test('sign-in is one door: a single trigger, both providers behind a modal', async () => {
+  const html = await read('sidepanel.html');
+  const runtime = await read('sidepanel.js');
+  assert.match(html, /id="signInOpen"[^>]*hidden>Sign in</, 'the header holds a single Sign in button');
+  assert.doesNotMatch(html, /Sign in with X<\/button>/, 'no per-provider buttons in the header');
+  assert.match(html, /role="dialog" aria-modal="true" aria-labelledby="signinTitle"/);
+  assert.match(html, /data-auth="x"[^>]*hidden>.*Continue with X</);
+  assert.match(html, /data-auth="google"[^>]*hidden>.*Continue with Google</);
+  assert.match(runtime, /const openSignin = /);
+  assert.match(runtime, /signinVeil\.querySelector\('\[data-auth\]:not\(\[hidden\]\)'\)\?\.focus\(\)/, 'focus lands on the first provider');
+  assert.match(runtime, /if \(event\.target === signinVeil\) closeSignin\(\)/, 'the veil dismisses');
+  assert.match(runtime, /if \(!signinVeil\.hidden\) \{ closeSignin\(\); return; \}/, 'Escape closes the modal first');
+  assert.match(runtime, /data-open-signin/, 'the Following empty state opens the same door');
+  assert.match(runtime, /if \(signedIn\) closeSignin\(\)/, 'success closes it everywhere');
+});
+
+test('the screenshot is a snip: draw the region on the page, crop in the panel', async () => {
+  const html = await read('sidepanel.html');
+  const runtime = await read('sidepanel.js');
+  assert.match(html, /Snip part of the page/);
+  assert.match(runtime, /function snipRegionInPage\(\)/);
+  assert.match(runtime, /annotated-snip-veil/);
+  assert.match(runtime, /requestAnimationFrame\(\(\) => requestAnimationFrame\(/, 'the page repaints before the capture — the tool never photographs itself');
+  assert.match(runtime, /finish\(null\)/, 'Escape cancels');
+  assert.match(runtime, /vw: window\.innerWidth, vh: window\.innerHeight/, 'the region carries its viewport for zoom/DPR-proof scaling');
+  assert.match(runtime, /image\.naturalWidth \/ region\.vw/, 'crop scales bitmap-to-viewport');
+  assert.match(runtime, /if \(snipOffered && !region\) return;/, 'a cancelled snip uploads nothing');
+  assert.match(runtime, /catch \{ \/\* injection refused — full-tab fallback below \*\/ \}/, 'chrome:\/\/ and PDF pages still get the full-tab path');
 });
 
 test('extension settings surface explains the API boundary and recovery states', async () => {

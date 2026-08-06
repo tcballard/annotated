@@ -44,6 +44,9 @@ const publishHint = $('#publishHint');
 const error = $('#error');
 const backendStatus = $('#backendStatus');
 const authActions = $('#authActions');
+const signInOpen = $('#signInOpen');
+const signinVeil = $('#signinVeil');
+const signinCancel = $('#signinCancel');
 const signOutButton = $('#signOut');
 const queueStatus = $('#queueStatus');
 const queueStatusTitle = $('#queueStatusTitle');
@@ -401,12 +404,113 @@ const syncScreenshot = () => {
   syncPublishGate();
 };
 
+// Injected into the page: the snip overlay. Drag a marquee over the part
+// that matters; mouseup confirms, Escape cancels. Resolves the chosen rect
+// in viewport CSS pixels (with the viewport size, so the panel can scale to
+// the captured bitmap under any zoom/DPR) — and only AFTER the overlay is
+// gone and the page has repainted, so the capture never photographs the
+// tool itself. Self-contained: it runs in the page, not the panel.
+function snipRegionInPage() {
+  return new Promise((resolve) => {
+    document.getElementById('annotated-snip-veil')?.remove();
+    const veil = document.createElement('div');
+    veil.id = 'annotated-snip-veil';
+    veil.style.cssText = 'position:fixed;inset:0;z-index:2147483647;cursor:crosshair;user-select:none;-webkit-user-select:none;background:rgba(38,41,47,.28);';
+    const marquee = document.createElement('div');
+    marquee.style.cssText = 'position:fixed;display:none;border:1.5px solid #B0674D;box-shadow:0 0 0 200000px rgba(38,41,47,.28);pointer-events:none;';
+    const hint = document.createElement('div');
+    hint.textContent = 'Drag over the part that matters — Esc cancels';
+    hint.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);background:rgba(38,41,47,.92);color:#F5F4F0;font:12px/1.4 system-ui,sans-serif;padding:6px 12px;border-radius:99px;pointer-events:none;';
+    veil.append(marquee, hint);
+    document.documentElement.append(veil);
+    let startX = 0;
+    let startY = 0;
+    let dragging = false;
+    const rectFrom = (event) => ({
+      x: Math.min(startX, event.clientX),
+      y: Math.min(startY, event.clientY),
+      w: Math.abs(event.clientX - startX),
+      h: Math.abs(event.clientY - startY),
+    });
+    const finish = (result) => {
+      document.removeEventListener('keydown', onKey, true);
+      veil.remove();
+      // two frames so the page repaints clean before the panel captures
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve(result)));
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); finish(null); }
+    };
+    veil.addEventListener('mousedown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      dragging = true;
+      startX = event.clientX;
+      startY = event.clientY;
+      veil.style.background = 'transparent'; // the marquee's shadow takes over the dimming
+      hint.style.display = 'none';
+    });
+    veil.addEventListener('mousemove', (event) => {
+      if (!dragging) return;
+      const r = rectFrom(event);
+      marquee.style.display = 'block';
+      marquee.style.left = `${r.x}px`;
+      marquee.style.top = `${r.y}px`;
+      marquee.style.width = `${r.w}px`;
+      marquee.style.height = `${r.h}px`;
+    });
+    veil.addEventListener('mouseup', (event) => {
+      if (!dragging) return;
+      const r = rectFrom(event);
+      finish(r.w >= 4 && r.h >= 4 ? { ...r, vw: window.innerWidth, vh: window.innerHeight } : null);
+    });
+    document.addEventListener('keydown', onKey, true);
+  });
+}
+
+// The captured bitmap is device pixels for the whole viewport; the region
+// arrived in CSS pixels with the viewport it was measured in. Scaling by
+// bitmap/viewport handles DPR and page zoom in one step.
+const cropCapture = async (dataUrl, region) => {
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error('Screenshot decode failed.'));
+    image.src = dataUrl;
+  });
+  const scaleX = image.naturalWidth / region.vw;
+  const scaleY = image.naturalHeight / region.vh;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(region.w * scaleX));
+  canvas.height = Math.max(1, Math.round(region.h * scaleY));
+  canvas.getContext('2d').drawImage(
+    image,
+    region.x * scaleX, region.y * scaleY, region.w * scaleX, region.h * scaleY,
+    0, 0, canvas.width, canvas.height,
+  );
+  return canvas.toDataURL('image/png');
+};
+
 const captureScreenshot = async () => {
   if (!chrome.tabs?.captureVisibleTab) { showError('Screenshot capture is unavailable in this browser.'); return; }
   if (!backendOnline) { showError('Screenshots upload immediately — reconnect the backend first.'); return; }
   shotButton.disabled = true;
   try {
-    const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' });
+    // Snip, not grab: draw the region on the page itself. Pages that refuse
+    // injection (chrome://, the Web Store, PDF viewers) fall back to the
+    // full visible tab.
+    let region = null;
+    let snipOffered = false;
+    if (Number.isInteger(currentTabId)) {
+      try {
+        const injected = await chrome.scripting.executeScript({ target: { tabId: currentTabId }, func: snipRegionInPage });
+        snipOffered = true;
+        region = injected?.[0]?.result || null;
+      } catch { /* injection refused — full-tab fallback below */ }
+    }
+    if (snipOffered && !region) return; // Escape or a stray click: cancelled on purpose
+    const captured = await chrome.tabs.captureVisibleTab({ format: 'png' });
+    const dataUrl = region ? await cropCapture(captured, region) : captured;
     const blob = await (await fetch(dataUrl)).blob();
     const response = await fetch(`${await apiOrigin()}/api/media/screenshot`, { method: 'POST', credentials: 'omit', headers: { 'content-type': 'image/png', ...(await authHeaders()) }, body: blob });
     const body = await response.json().catch(() => ({}));
@@ -1139,7 +1243,7 @@ const renderTimeline = () => {
     return;
   }
   if (cache.error === 'auth') {
-    timeline.innerHTML = `<div class="empty"><h2>Sign in to see the people you follow.</h2><p>Use the sign-in buttons in the header above.</p></div>`;
+    timeline.innerHTML = `<div class="empty"><h2>Sign in to see the people you follow.</h2><p>One account across the extension, the web, and the app.</p><button type="button" data-open-signin>Sign in</button></div>`;
     return;
   }
   if (cache.error) {
@@ -1197,6 +1301,7 @@ document.querySelectorAll('[data-feed-tab]').forEach((tabButton) => tabButton.ad
 }));
 
 timeline.addEventListener('click', async (event) => {
+  if (event.target.closest('[data-open-signin]')) { openSignin(); return; }
   const share = event.target.closest('[data-share-url]');
   if (share) {
     try {
@@ -1243,8 +1348,8 @@ queueRetry.addEventListener('click', async () => {
   const captures = await extensionStorage.getPendingCaptures().catch(() => []);
   const needsAuth = captures.some((capture) => capture.status === 'needs-auth');
   if (needsAuth && !(await extensionStorage.getAuthToken().catch(() => null))) {
-    showError('Your session expired. Sign in again before retrying this capture.');
     setAuthState(false);
+    openSignin();
     return;
   }
   for (const capture of captures) await extensionStorage.retryPendingCapture(capture.id);
@@ -1258,14 +1363,40 @@ chrome.storage?.onChanged?.addListener((changes, areaName) => {
 
 /* ── auth ──────────────────────────────────────────────────────────── */
 
+// One door: the header holds a single Sign in button; the providers wait
+// behind it in a modal.
+const anyProviderAvailable = () => Object.keys(availableProviders).some((provider) => availableProviders[provider]);
+
 const setAuthState = (signedIn, user = panelUser) => {
   panelUser = signedIn ? user : null;
   signOutButton.hidden = !signedIn;
   if (signedIn) signOutButton.textContent = String(user?.handle || user?.displayName || 'A').slice(0, 1).toUpperCase();
-  authActions.querySelectorAll('[data-auth]').forEach((button) => { button.hidden = signedIn || !availableProviders[button.dataset.auth]; });
+  signInOpen.hidden = signedIn || !anyProviderAvailable();
+  signinVeil.querySelectorAll('[data-auth]').forEach((button) => { button.hidden = !availableProviders[button.dataset.auth]; });
+  if (signedIn) closeSignin();
 };
 
-authActions.querySelectorAll('[data-auth]').forEach((button) => button.addEventListener('click', async () => {
+let signinReturnFocus = null;
+const openSignin = () => {
+  if (!anyProviderAvailable()) { showError('Sign-in is not configured on this backend.'); return; }
+  signinReturnFocus = document.activeElement;
+  signinVeil.hidden = false;
+  signinVeil.querySelector('[data-auth]:not([hidden])')?.focus();
+};
+
+const closeSignin = () => {
+  if (signinVeil.hidden) return;
+  signinVeil.hidden = true;
+  if (signinReturnFocus?.isConnected && !signinReturnFocus.hidden) signinReturnFocus.focus();
+  signinReturnFocus = null;
+};
+
+signInOpen.addEventListener('click', openSignin);
+signinCancel.addEventListener('click', closeSignin);
+signinVeil.addEventListener('click', (event) => { if (event.target === signinVeil) closeSignin(); });
+
+signinVeil.querySelectorAll('[data-auth]').forEach((button) => button.addEventListener('click', async () => {
+  closeSignin(); // the system auth window takes the stage
   try {
     const user = await signIn(button.dataset.auth);
     setAuthState(true, user);
@@ -1347,6 +1478,7 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   if (event.key === 'Escape') {
+    if (!signinVeil.hidden) { closeSignin(); return; }
     if (currentTab.sourceType === 'article' && selection.text) {
       selection = { text: '', paragraph: 0, prefix: '', suffix: '' };
       syncSelectionCard();

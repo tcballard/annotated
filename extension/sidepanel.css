@@ -115,6 +115,77 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .me:hover { background: #565D68; }
 
+/* ── sign-in: one door, both providers behind it ────────────────────── */
+
+.signin-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+  animation: pub-fade .18s ease;
+}
+
+.signin-modal {
+  width: min(320px, 100%);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.signin-modal h2 { font-size: 16px; color: var(--ink); }
+.signin-modal h2::after { content: "."; color: var(--accent); }
+
+.signin-sub { color: var(--meta); font-size: 12px; margin-bottom: 4px; }
+
+.continue {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  transition: background .12s ease;
+}
+
+.continue:hover { background: var(--hover-row); }
+
+.pmark {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--soft);
+  font-family: var(--serif);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.signin-cancel {
+  align-self: center;
+  color: var(--meta);
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+.signin-cancel:hover { color: var(--ink-soft); }
+
 .scroll { overflow-y: auto; flex: 1; }
 
 /* ── capture widget ─────────────────────────────────────────────────── */

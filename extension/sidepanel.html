@@ -13,8 +13,7 @@
     <header class="phead">
       <span class="backend" id="backendStatus" aria-live="polite" title="Backend connection"><i aria-hidden="true"></i><span class="backend-label">connecting</span></span>
       <div class="auth" id="authActions">
-        <button type="button" class="auth-btn" data-auth="x" hidden>Sign in with X</button>
-        <button type="button" class="auth-btn" data-auth="google" hidden>Google</button>
+        <button type="button" class="auth-btn" id="signInOpen" hidden>Sign in</button>
         <button type="button" class="me" id="signOut" hidden aria-label="Sign out">A</button>
       </div>
     </header>
@@ -84,11 +83,11 @@
           </div>
         </div>
 
-        <!-- screenshot: a page image that still carries its source link -->
+        <!-- screenshot: snip the part of the page that matters -->
         <div id="shotRow">
           <button class="grabber shot" id="shotButton" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 8h3.2l1.8-2.5h6L16.8 8H20a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" /><circle cx="12" cy="13" r="3.4" /></svg>
-            Screenshot the visible page
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" /></svg>
+            Snip part of the page
           </button>
           <div class="passage" id="shotCard" hidden>
             <div class="passage-head"><span class="chip">SHOT</span><span>Screenshot attached</span>
@@ -139,6 +138,17 @@
 
       <!-- timeline -->
       <div class="timeline" id="timeline" aria-live="polite" hidden></div>
+    </div>
+
+    <!-- sign-in: one door, both providers behind it -->
+    <div class="signin-veil" id="signinVeil" hidden>
+      <div class="signin-modal" role="dialog" aria-modal="true" aria-labelledby="signinTitle">
+        <h2 id="signinTitle">Add your name to the margin</h2>
+        <p class="signin-sub">One account across the extension, the web, and the app.</p>
+        <button type="button" class="continue" data-auth="x" hidden><span class="pmark" aria-hidden="true">X</span>Continue with X</button>
+        <button type="button" class="continue" data-auth="google" hidden><span class="pmark" aria-hidden="true">G</span>Continue with Google</button>
+        <button type="button" class="signin-cancel" id="signinCancel">Not now</button>
+      </div>
     </div>
 
     <div class="toast" id="toast" role="status" hidden><span id="toastText"></span><a id="toastLink" target="_blank" rel="noreferrer" hidden></a></div>
