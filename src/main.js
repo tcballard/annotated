@@ -588,8 +588,9 @@ const feedPost = (item) => {
       <div class="actions">
         ${openOriginalAction(item)}
         <button class="act" data-action="open-respond" data-slug="${escapeHTML(item.slug || '')}">${icon('respond')}<span class="n">${item.comments || 'Respond'}</span></button>
+        <button class="act ${item.likedByMe ? 'is-liked' : ''}" data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">${icon('heart')}${item.likes ? `<span class="n">${item.likes}</span>` : ''}</button>
         ${followAct}
-        <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(item, window.location.origin))}" aria-label="Share annotation">${icon('share')}</button>
+        <button class="act share" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(item, window.location.origin))}" aria-label="Share annotation">${icon('share')}</button>
       </div>
     </div>
   </article>`;
@@ -744,6 +745,7 @@ const permalinkView = () => {
       <div class="actions">
         ${openOriginalAction(item)}
         <button class="act" data-action="focus-comment">${icon('respond')}Respond${comments.length ? ` <span class="n">· ${comments.length}</span>` : ''}</button>
+        <button class="act ${item.likedByMe ? 'is-liked' : ''}" data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">${icon('heart')}${item.likes ? `<span class="n">${item.likes}</span>` : 'Like'}</button>
         <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(annotation, window.location.origin))}">${icon('share')}Share</button>
         ${item.visibility !== 'private' ? `<a class="act" href="/og/${encodeURIComponent(item.slug)}.png?download=1" download="annotated-${escapeHTML(item.slug)}.png" title="Download this annotation's share card as an image">Save card</a>` : ''}
         ${isMine && annotation.commentaryMode === 'text' && withinEditWindow(annotation) && !state.editingNote ? `<button class="act" data-action="edit-note">Edit note</button>` : ''}
@@ -1864,6 +1866,37 @@ app.addEventListener('click', (event) => {
         render();
         notify(takedown ? 'Claim resolved — annotation taken down.' : `Claim marked ${status.replace('_', ' ')}.`);
       } catch (error) { notify(error.message || 'Claim status could not be saved.'); }
+    })();
+    return;
+  }
+  if (action === 'toggle-like') {
+    const slug = target.dataset.slug;
+    if (!slug || state.serverStatus !== 'online') return;
+    if (requestSignIn('like this annotation')) return;
+    const records = [
+      ...(state.feedAnnotations || []),
+      ...(state.hubData?.annotations || []),
+      ...(state.profileData?.annotations || []),
+      ...(state.publishedAnnotation ? [state.publishedAnnotation] : []),
+    ].filter((record) => record.slug === slug);
+    if (!records.length) return;
+    const liked = Boolean(records[0].likedByMe);
+    for (const record of records) {
+      record.likedByMe = !liked;
+      record.likes = Math.max(0, Number(record.likes || 0) + (liked ? -1 : 1));
+    }
+    render();
+    (async () => {
+      try {
+        if (liked) await api.unlike(slug); else await api.like(slug);
+      } catch (error) {
+        for (const record of records) {
+          record.likedByMe = liked;
+          record.likes = Math.max(0, Number(record.likes || 0) + (liked ? 1 : -1));
+        }
+        render();
+        if (!recoverAuthError(error, 'Sign in to like this annotation.')) notify(error.message || 'Like could not be saved.');
+      }
     })();
     return;
   }

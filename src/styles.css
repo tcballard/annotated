@@ -436,6 +436,11 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .byline { font-size: 14px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .byline .posttime { margin-left: auto; flex-shrink: 0; }
 
+/* the social row: share holds the card's bottom-right corner; a given
+   like fills its heart in ink (the accent stays reserved for the moment) */
+.actions .share { margin-left: auto; }
+.act.is-liked .icon svg { fill: var(--ink); stroke: var(--ink); }
+
 .byline .name { font-weight: 700; color: var(--ink); }
 .byline a.name:hover { color: var(--ink); }
 

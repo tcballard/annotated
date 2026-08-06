@@ -963,6 +963,8 @@ const annotationToItem = (annotation) => ({
   anchorSuffix: annotation.anchorSuffix || '',
   opens: Number(annotation.opens) || 0,
   comments: Array.isArray(annotation.comments) ? annotation.comments.length : 0,
+  likes: Number(annotation.likes) || 0,
+  likedByMe: Boolean(annotation.likedByMe),
   editedAt: annotation.editedAt || '',
 });
 
@@ -1208,11 +1210,15 @@ const timelinePost = (item) => {
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 12a8 8 0 0 1-8 8H4l3-3a8 8 0 1 1 14-5z"/></svg>
           ${item.comments ? `<span class="n">${item.comments}</span>` : 'Respond'}
         </a>
+        <button class="act${item.likedByMe ? ' is-liked' : ''}" type="button" data-like-slug="${escapeHTML(item.slug)}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+          ${item.likes ? `<span class="n">${item.likes}</span>` : ''}
+        </button>
         ${item.type === 'article' && item.quote && (panelMode === 'page' || matchesCurrentTab(item)) ? `<button class="act" type="button" data-highlight-slug="${escapeHTML(item.slug)}" title="Highlight this passage on the page">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
           On page
         </button>` : ''}
-        <button class="act" type="button" data-share-url="${escapeHTML(item.url)}" title="Copy the page link">
+        <button class="act share" type="button" data-share-url="${escapeHTML(item.url)}" title="Copy the page link">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12M8 7l4-4 4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg>
         </button>
       </div>
@@ -1320,6 +1326,24 @@ timeline.addEventListener('click', async (event) => {
   }
   const open = event.target.closest('[data-open-slug]');
   if (open) { void recordOpen(open.dataset.openSlug); return; }
+  const like = event.target.closest('[data-like-slug]');
+  if (like) {
+    if (!(await extensionStorage.getAuthToken().catch(() => null))) { openSignin(); return; }
+    const slug = like.dataset.likeSlug;
+    const entries = Object.values(feedCache).flatMap((cache) => cache?.items || []).filter((entry) => entry.slug === slug);
+    if (!entries.length) return;
+    const liked = Boolean(entries[0].likedByMe);
+    for (const entry of entries) { entry.likedByMe = !liked; entry.likes = Math.max(0, (entry.likes || 0) + (liked ? -1 : 1)); }
+    renderTimeline();
+    try {
+      await apiRequest(`/api/annotations/${encodeURIComponent(slug)}/${liked ? 'unlike' : 'like'}`, { method: 'POST' });
+    } catch (likeError) {
+      for (const entry of entries) { entry.likedByMe = liked; entry.likes = Math.max(0, (entry.likes || 0) + (liked ? 1 : -1)); }
+      renderTimeline();
+      if (likeError.authRequired) { setAuthState(false); openSignin(); } else showToast('Like could not be saved.');
+    }
+    return;
+  }
   const highlight = event.target.closest('[data-highlight-slug]');
   if (highlight) {
     const item = (feedCache[panelMode]?.items || []).find((entry) => entry.slug === highlight.dataset.highlightSlug);

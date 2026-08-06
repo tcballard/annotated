@@ -595,6 +595,9 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .act.primary:hover { background: var(--accent-soft); color: var(--accent); }
 .act svg { width: 13px; height: 13px; }
 .act .n { font-variant-numeric: tabular-nums; }
+/* share holds the row's right corner; a given like fills its heart in ink */
+.actions .share { margin-left: auto; }
+.act.is-liked svg { fill: var(--ink); stroke: var(--ink); }
 
 .timeline .empty { padding: 26px 16px; text-align: center; background: var(--card); }
 .timeline .empty .mark { width: 36px; height: 36px; border-radius: 8px; margin-bottom: 10px; opacity: .9; }

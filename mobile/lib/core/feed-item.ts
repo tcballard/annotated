@@ -80,6 +80,8 @@ export type FeedItem = {
   mediaStatus: string;
   opens: number;
   comments: number;
+  likes: number;
+  likedByMe: boolean;
   authorId: string;
   visibility: string;
   topic: string | null;
@@ -118,6 +120,8 @@ export const annotationToFeedItem = (annotation: AnnotationRecord): FeedItem => 
   mediaStatus: annotation.mediaStatus || 'not-applicable',
   opens: Number(annotation.opens) || 0,
   comments: Array.isArray(annotation.comments) ? annotation.comments.length : 0,
+  likes: Number(annotation.likes) || 0,
+  likedByMe: Boolean(annotation.likedByMe),
   authorId: annotation.author?.id || annotation.authorId || '',
   visibility: VISIBILITIES.includes(annotation.visibility) ? annotation.visibility : 'public',
   topic: isTopic(annotation.topic) ? annotation.topic : null,
