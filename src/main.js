@@ -492,7 +492,7 @@ const chromeBar = () => {
     ...(canModerate() ? [['moderation', 'Moderation']] : []),
   ];
   return `
-  <header class="chrome">
+  <header class="chrome${state.activeView === 'feed' ? ' has-rail' : ''}">
     <button class="logo" data-action="set-view" data-view="feed" aria-label="annotated home">annotated<span class="dot">.</span></button>
     <nav aria-label="Primary">
       ${links.map(([view, label]) => `<button class="nav-link ${state.activeView === view ? 'is-active' : ''}" data-action="set-view" data-view="${view}">${label}</button>`).join('')}
@@ -610,7 +610,7 @@ const skeletonPost = () => `
 const railView = () => {
   const signCard = state.user
     ? `<div class="card"><h2>Your library</h2><p>Everything you publish keeps a live link back to its source.</p><button class="btn btn-wide" data-action="set-view" data-view="library">Open your library</button></div>`
-    : `<div class="card"><h2>Build your public library</h2><p>Capture now. Sign in with X or Google when you are ready to publish, follow, or respond.</p>${enabledProviders(state.authProviders).length ? '<button class="btn btn-wide" data-action="open-signin">Sign in</button>' : '<p>No sign-in provider is configured.</p>'}</div>`;
+    : `<div class="card"><h2>Build your public library</h2><p>Capture now. Sign in with X or Google when you are ready to publish, follow, or respond.</p>${enabledProviders(state.authProviders).length ? '' : '<p>No sign-in provider is configured.</p>'}</div>`;
   const trendingCard = state.trendingSources.length ? `
     <div class="card"><h2>Trending sources</h2><p>Where attention is going right now — ranked by opens of the original.</p>${state.trendingSources.map((source) => `
       <div class="trend-row"><a href="/s/${encodeURIComponent(source.host)}" data-action="open-hub" data-host="${escapeHTML(source.host)}">${escapeHTML(source.host)}</a><span class="trend-stat"><strong>${Number(source.opens) || 0}</strong> opens · ${Number(source.annotationCount) || 0} ${source.annotationCount === 1 ? 'note' : 'notes'}</span></div>`).join('')}</div>` : '';

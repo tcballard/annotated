@@ -129,7 +129,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .chrome .search input {
   font: inherit;
   font-size: 13px;
-  width: 100%;
+  width: 220px;
   padding: 6px 12px;
   border: 1px solid var(--chrome-dark);
   border-radius: 4px;
@@ -140,17 +140,25 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .chrome .search input::placeholder { color: #8B919A; }
 
-.chrome .auth { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-left: auto; }
+.chrome .auth { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chrome .auth:last-child { margin-left: auto; }
+.chrome .search { margin-left: auto; }
+.chrome .search + .auth { margin-left: 0; }
+.chrome.has-rail .search + .auth { margin-left: auto; }
 
-/* Only the search box aligns with the page grid: it sits exactly over the
-   rail column below (300px band). The rest of the bar stays full-bleed. */
-.chrome .search {
+/* On the timeline the search box sits exactly over the rail column below
+   (300px band); on rail-less views it keeps its place in the right
+   cluster. The rest of the bar stays full-bleed everywhere. */
+.chrome.has-rail .search {
   position: absolute;
   left: min(calc(50% + 154px), calc(100% - 316px));
   width: 300px;
   top: 50%;
   transform: translateY(-50%);
+  margin-left: 0;
 }
+
+.chrome.has-rail .search input { width: 100%; }
 
 .chrome .auth .auth-link { color: #fff; font-size: 13.5px; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
 
