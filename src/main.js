@@ -110,6 +110,8 @@ const initialState = {
   followingIds: {},
   commentDraft: '',
   claimOpen: false,
+  signinOpen: false,
+  signinContext: '',
   lightbox: null,
   claimSlug: '',
   claimTitle: '',
@@ -149,7 +151,6 @@ const initialState = {
   authProviders: {},
   authRequired: false,
   authNotice: '',
-  authPrompt: '',
   serverStatus: 'checking',
   serverError: '',
   sourceError: '',
@@ -248,9 +249,39 @@ const avatarHtml = (person = {}) => person.avatarUrl
 
 /* ── auth ──────────────────────────────────────────────────────────── */
 
-const authLinks = (className = 'auth-prompt-link') => enabledProviders(state.authProviders)
-  .map((provider) => `<a class="${className}" href="${escapeHTML(oauthStartUrl(provider))}">Sign in with ${providerLabel(provider)}</a>`)
-  .join('');
+// One door: every sign-in affordance opens the same modal — the anatomy the
+// extension panel established. The provider buttons are real anchors (web
+// OAuth is a full-page hop), so the modal needs no JS to do its job.
+const signinModal = () => {
+  const providers = enabledProviders(state.authProviders);
+  const doors = providers.length
+    ? providers.map((provider) => `<a class="continue" href="${escapeHTML(oauthStartUrl(provider))}"><span class="pmark" aria-hidden="true">${escapeHTML(providerLabel(provider).slice(0, 1))}</span>Continue with ${providerLabel(provider)}</a>`).join('')
+    : '<p class="signin-unavailable">No sign-in provider is configured on this backend.</p>';
+  return `<div class="modal-backdrop" data-action="close-signin">
+  <div class="signin-modal" role="dialog" aria-modal="true" aria-labelledby="signin-title">
+    <h3 id="signin-title">Add your name to the margin</h3>
+    <p class="signin-sub">One account across the extension, the web, and the app.</p>
+    ${state.signinContext ? `<p class="signin-context">${escapeHTML(state.signinContext)} Your draft and current page stay put while you sign in.</p>` : ''}
+    ${doors}
+    <button class="signin-cancel" data-action="close-signin">Not now</button>
+  </div>
+</div>`;
+};
+
+const openSignin = (context = '') => {
+  state.signinContext = context;
+  state.signinOpen = true;
+  render();
+  document.querySelector('.signin-modal .continue')?.focus();
+};
+
+const closeSignin = () => {
+  if (!state.signinOpen) return;
+  state.signinOpen = false;
+  state.signinContext = '';
+  render();
+  document.querySelector('[data-action="open-signin"]')?.focus();
+};
 
 const chromeAuth = () => {
   if (state.user) {
@@ -263,8 +294,7 @@ const chromeAuth = () => {
   }
   const providers = enabledProviders(state.authProviders);
   if (!providers.length) return `<span class="auth"><span class="connection-note">${state.serverStatus === 'offline' ? 'offline' : 'local'}</span></span>`;
-  const [first, ...rest] = providers;
-  return `<span class="auth"><a class="auth-link" href="${escapeHTML(oauthStartUrl(first))}"><span class="auth-long">Sign in with </span>${providerLabel(first)}</a>${rest.map((provider) => `<a class="auth-link" href="${escapeHTML(oauthStartUrl(provider))}">${providerLabel(provider)}</a>`).join('')}</span>`;
+  return `<span class="auth"><button class="auth-link" data-action="open-signin">Sign in</button></span>`;
 };
 
 const authStateView = () => {
@@ -274,16 +304,13 @@ const authStateView = () => {
     cancelled: 'Sign-in was cancelled. Your draft is still here.',
   }[state.authNotice];
   const notice = noticeCopy ? `<div class="auth-notice ${state.authNotice === 'success' ? 'is-success' : 'is-error'}" role="status"><span>${escapeHTML(noticeCopy)}</span><button class="auth-notice-dismiss" data-action="dismiss-auth" aria-label="Dismiss sign-in message">${icon('close')}</button></div>` : '';
-  const promptLinks = authLinks() || '<span class="auth-prompt-unavailable">No sign-in provider is available.</span>';
-  const prompt = state.authPrompt && !state.user ? `<div class="auth-prompt" role="alert"><div><strong>${escapeHTML(state.authPrompt)}</strong><span class="auth-prompt-note">Your draft and current page stay put while you sign in.</span></div><div class="auth-prompt-actions">${promptLinks}<button class="auth-prompt-dismiss" data-action="dismiss-auth">Not now</button></div></div>` : '';
-  return `${notice}${prompt}`;
+  return notice;
 };
 
 const requestSignIn = (action) => {
   if (!state.authRequired || state.user) return false;
   state.authNotice = '';
-  state.authPrompt = `Sign in to ${action}.`;
-  render();
+  openSignin(`Sign in to ${action}.`);
   return true;
 };
 
@@ -294,8 +321,7 @@ const recoverAuthError = (error, message = 'Your session has expired. Sign in ag
   state.isUploadingAudio = false;
   state.authRequired = true;
   state.authNotice = '';
-  state.authPrompt = message;
-  render();
+  openSignin(message);
   return true;
 };
 
@@ -317,7 +343,8 @@ const routeFor = (view) => view === 'feed' ? '/'
 
 const navigate = (view, { push = true } = {}) => {
   state.activeView = view;
-  state.authPrompt = '';
+  state.signinOpen = false;
+  state.signinContext = '';
   if (push) window.history.pushState({}, '', routeFor(view));
   if (view === 'moderation') loadModerationClaims().then(render);
   if (view === 'library') loadLibrary().then(render);
@@ -583,7 +610,7 @@ const skeletonPost = () => `
 const railView = () => {
   const signCard = state.user
     ? `<div class="card"><h2>Your library</h2><p>Everything you publish keeps a live link back to its source.</p><button class="btn btn-wide" data-action="set-view" data-view="library">Open your library</button></div>`
-    : `<div class="card"><h2>Build your public library</h2><p>Capture now. Sign in with X or Google when you are ready to publish, follow, or respond.</p>${enabledProviders(state.authProviders).map((provider) => `<a class="btn btn-wide" href="${escapeHTML(oauthStartUrl(provider))}">Sign in with ${providerLabel(provider)}</a>`).join('') || '<p>No sign-in provider is configured.</p>'}</div>`;
+    : `<div class="card"><h2>Build your public library</h2><p>Capture now. Sign in with X or Google when you are ready to publish, follow, or respond.</p>${enabledProviders(state.authProviders).length ? '<button class="btn btn-wide" data-action="open-signin">Sign in</button>' : '<p>No sign-in provider is configured.</p>'}</div>`;
   const trendingCard = state.trendingSources.length ? `
     <div class="card"><h2>Trending sources</h2><p>Where attention is going right now — ranked by opens of the original.</p>${state.trendingSources.map((source) => `
       <div class="trend-row"><a href="/s/${encodeURIComponent(source.host)}" data-action="open-hub" data-host="${escapeHTML(source.host)}">${escapeHTML(source.host)}</a><span class="trend-stat"><strong>${Number(source.opens) || 0}</strong> opens · ${Number(source.annotationCount) || 0} ${source.annotationCount === 1 ? 'note' : 'notes'}</span></div>`).join('')}</div>` : '';
@@ -694,7 +721,7 @@ const permalinkView = () => {
   const pull = item.quote ? `<blockquote class="pull">&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
   const respondArea = state.user || !state.authRequired
     ? `<form class="respform" data-action="comment-form"><input aria-label="Add a response" placeholder="Add a considered response…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" maxlength="500" /><button class="btn" aria-label="Post response">Respond</button></form>`
-    : `<div class="respprompt">${authLinks('auth-prompt-link') ? `${enabledProviders(state.authProviders).map((provider) => `<a href="${escapeHTML(oauthStartUrl(provider))}"><b>Sign in with ${providerLabel(provider)}</b></a>`).join(' · ')} to add a response.` : 'Sign-in is unavailable right now.'}</div>`;
+    : `<div class="respprompt">${enabledProviders(state.authProviders).length ? '<button class="linklike" data-action="open-signin"><b>Sign in</b></button> to add a response.' : 'Sign-in is unavailable right now.'}</div>`;
   return `
   <div class="page single">
     <article class="permacard">
@@ -834,7 +861,7 @@ const captureView = () => {
 
 const libraryView = () => {
   if (!state.user) {
-    return `<div class="page single"><div class="perma-empty"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h2>Your library is waiting.</h2><p>Sign in to see everything you have published, with per-annotation stats.</p>${authLinks('btn')}</div></div>`;
+    return `<div class="page single"><div class="perma-empty"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h2>Your library is waiting.</h2><p>Sign in to see everything you have published, with per-annotation stats.</p><button class="btn" data-action="open-signin">Sign in</button></div></div>`;
   }
   if (state.libraryLoading) return `<div class="page single">${skeletonPost()}${skeletonPost()}</div>`;
   const profile = state.libraryData;
@@ -1141,7 +1168,7 @@ const notificationIcon = (type) => type === 'response' ? 'respond' : type === 'l
 
 const notificationsView = () => {
   if (!state.user) {
-    return `<div class="page single"><div class="perma-empty"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h2>Nothing to ring about yet.</h2><p>Sign in to see responses, likes, and new followers.</p>${authLinks('btn')}</div></div>`;
+    return `<div class="page single"><div class="perma-empty"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h2>Nothing to ring about yet.</h2><p>Sign in to see responses, likes, and new followers.</p><button class="btn" data-action="open-signin">Sign in</button></div></div>`;
   }
   if (state.notificationsLoading) return `<div class="page single">${skeletonPost()}${skeletonPost()}</div>`;
   const rows = state.notifications.length
@@ -1206,8 +1233,8 @@ const render = () => {
     : state.activeView === 'notifications' ? notificationsView()
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
-  app.innerHTML = `${SHELL_MODE ? '' : chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${state.claimOpen ? claimModal() : ''}${lightboxView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
-  const overlayOpen = state.claimOpen || Boolean(state.lightbox);
+  app.innerHTML = `${SHELL_MODE ? '' : chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${state.claimOpen ? claimModal() : ''}${state.signinOpen ? signinModal() : ''}${lightboxView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
+  const overlayOpen = state.claimOpen || state.signinOpen || Boolean(state.lightbox);
   for (const element of app.querySelectorAll('.chrome, .auth-notice, .auth-prompt, .page, footer, .offline-note')) {
     element.inert = overlayOpen;
     if (overlayOpen) element.setAttribute('aria-hidden', 'true');
@@ -1738,9 +1765,17 @@ app.addEventListener('click', (event) => {
     dismissPublishMoment();
     return;
   }
+  if (action === 'open-signin') {
+    openSignin();
+    return;
+  }
+  if (action === 'close-signin') {
+    if (event.target.closest('.signin-modal') && !event.target.closest('[data-action="close-signin"]')) return;
+    closeSignin();
+    return;
+  }
   if (action === 'dismiss-auth') {
     state.authNotice = '';
-    state.authPrompt = '';
     render();
     document.querySelector('.nav-link.is-active')?.focus();
     return;
@@ -2006,12 +2041,12 @@ app.addEventListener('keydown', (event) => {
     render();
     return;
   }
-  if (state.claimOpen) {
-    const dialog = app.querySelector('.claim-modal');
+  if (state.claimOpen || state.signinOpen) {
+    const dialog = app.querySelector(state.claimOpen ? '.claim-modal' : '.signin-modal');
     if (!dialog) return;
     if (event.key === 'Escape') {
       event.preventDefault();
-      closeClaimDialog();
+      if (state.claimOpen) closeClaimDialog(); else closeSignin();
       return;
     }
     if (event.key !== 'Tab') return;

@@ -228,46 +228,67 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .auth-notice-dismiss { color: var(--meta); border-radius: 99px; padding: 6px; min-width: 32px; min-height: 32px; }
 .auth-notice-dismiss:hover { background: var(--soft); color: var(--ink); }
 
-.auth-prompt {
-  max-width: 940px;
-  margin: 12px auto 0;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+/* ── sign-in: one door, both providers behind it (same anatomy as the
+   extension panel's modal) ──────────────────────────────────────────── */
+
+.signin-modal {
   background: var(--card);
-  font-size: 13px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lift);
+  padding: 20px 18px 14px;
+  width: min(340px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.signin-modal h3 { font-size: 16px; font-weight: 700; }
+.signin-modal h3::after { content: "."; color: var(--accent); }
+
+.signin-sub { color: var(--meta); font-size: 12.5px; }
+
+.signin-context { color: var(--ink-soft); font-size: 12.5px; border-left: 2px solid var(--border); padding-left: 10px; }
+
+.signin-modal .continue {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  padding: 9px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  min-height: 42px;
+  transition: background .12s ease;
 }
 
-.auth-prompt strong { display: block; font-size: 13.5px; }
-.auth-prompt .auth-prompt-note { color: var(--meta); }
+.signin-modal .continue:hover { background: var(--hover-row); text-decoration: none; }
 
-.auth-prompt-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
-.auth-prompt-link {
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--chrome);
-  border-radius: 99px;
-  padding: 8px 16px;
-  min-height: 40px;
+.pmark {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  transition: background .12s ease, transform .06s ease;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--soft);
+  font-family: var(--serif);
+  font-size: 13px;
+  font-weight: 700;
 }
 
-.auth-prompt-link:hover { background: var(--chrome-dark); text-decoration: none; }
-.auth-prompt-link:active { transform: translateY(1px); }
+.signin-cancel { align-self: center; color: var(--meta); font-size: 12.5px; padding: 6px 10px; min-height: 36px; }
+.signin-cancel:hover { color: var(--ink-soft); }
 
-.auth-prompt-dismiss { color: var(--meta); font-size: 13px; padding: 8px 12px; border-radius: 99px; min-height: 40px; }
-.auth-prompt-dismiss:hover { background: var(--soft); color: var(--ink); }
+.signin-unavailable { color: var(--meta); font-size: 12.5px; }
 
-.auth-prompt-unavailable { color: var(--meta); font-size: 12.5px; }
+.respprompt .linklike { color: var(--link); padding: 0; }
+.respprompt .linklike:hover { text-decoration: underline; }
 
 /* ── page grid ──────────────────────────────────────────────────────── */
 

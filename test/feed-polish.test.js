@@ -11,7 +11,7 @@ test('feed screenshots enlarge in a lightbox with keyboard and inert handling', 
   assert.match(main, /class="shot-open"/);
   assert.match(main, /Click to enlarge/);
   assert.match(main, /state\.lightbox && event\.key === 'Escape'/);
-  assert.match(main, /state\.claimOpen \|\| Boolean\(state\.lightbox\)/, 'lightbox must inert the page behind it');
+  assert.match(main, /state\.claimOpen \|\| state\.signinOpen \|\| Boolean\(state\.lightbox\)/, 'lightbox must inert the page behind it');
   assert.match(main, /class="lightbox-open"/, 'the lightbox keeps the original one click away');
   assert.match(css, /\.lightbox \{/);
   assert.match(css, /\.shot-open .shot-hint/);

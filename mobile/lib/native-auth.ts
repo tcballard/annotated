@@ -10,11 +10,13 @@ import { sessionExchangeUrl, ticketFromCallback, withMobileReturn } from './shel
 import { ORIGIN } from './origin';
 import { api } from './api';
 
+// The one door, in the platform's native shape: same voice as the web and
+// extension modals, spoken through the system alert.
 const pickProvider = (providers: string[]): Promise<string | null> => {
   if (providers.length === 1) return Promise.resolve(providers[0]);
   return new Promise((resolve) => {
-    Alert.alert('Sign in', 'Choose how to sign in.', [
-      ...providers.map((provider) => ({ text: providerLabel(provider), onPress: () => resolve(provider) })),
+    Alert.alert('Add your name to the margin', 'One account across the extension, the web, and the app.', [
+      ...providers.map((provider) => ({ text: `Continue with ${providerLabel(provider)}`, onPress: () => resolve(provider) })),
       { text: 'Not now', style: 'cancel' as const, onPress: () => resolve(null) },
     ]);
   });
