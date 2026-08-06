@@ -4,15 +4,24 @@ import test from 'node:test';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('the supplied mark is wired into the web and extension entry points', async () => {
-  const [index, main, panelHtml, panelRuntime] = await Promise.all([
+test('the wordmark leads the web while the supplied mark owns compact entry points', async () => {
+  const [index, main, styles, wordmarkPrimary, wordmarkInverse, panelHtml, panelRuntime] = await Promise.all([
     read('index.html'),
     read('src/main.js'),
+    read('src/styles.css'),
+    read('public/brand/logo-primary.svg'),
+    read('public/brand/logo-inverse.svg'),
     read('extension/sidepanel.html'),
     read('extension/sidepanel.js'),
   ]);
   assert.match(index, /\/brand\/favicon\.svg/);
   assert.match(index, /\/brand\/favicon-16\.png/);
+  assert.match(main, /class="logo"[\s\S]*src="\/brand\/logo-inverse\.svg"/);
+  assert.match(styles, /\.chrome \.logo img[\s\S]*width: 88px/);
+  assert.match(wordmarkPrimary, />annotated<tspan[^>]*>\.<\/tspan><\/text>/);
+  assert.match(wordmarkPrimary, /fill="#26292F"/);
+  assert.match(wordmarkInverse, /fill="#FFFFFF"/);
+  assert.match(wordmarkInverse, /fill="#E0A48E"/);
   assert.match(main, /src="\/brand\/app-icon-light-128\.png"/);
   assert.match(main, /class="empty-symbol" src="\/brand\/app-icon-light-128\.png"/);
   // Chrome's side-panel bar shows the icon and product name above the panel,
