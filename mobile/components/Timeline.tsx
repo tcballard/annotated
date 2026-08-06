@@ -211,9 +211,9 @@ export const FeedCard = ({ item, following, ownId, liked, likeCount, onOpenAnnot
             <Feather name={following ? 'user-check' : 'user-plus'} size={15} color={following ? ink : meta} />
           </Pressable>
         ) : null}
-        <Pressable style={[styles.act, styles.actRight]} onPress={() => onOpenOriginal(item)} hitSlop={8}>
+        <Pressable style={[styles.act, styles.actRight]} onPress={() => onOpenOriginal(item)} hitSlop={8} accessibilityLabel="Open the original source">
           <Feather name="external-link" size={15} color={ink} />
-          <Text style={styles.actText}>Open original{item.opens ? ` · ${item.opens}` : ''}</Text>
+          {item.opens ? <Text style={styles.actText}>{item.opens}</Text> : null}
         </Pressable>
         <Pressable style={styles.act} onPress={() => onShare(item)} hitSlop={8} accessibilityLabel="Share annotation">
           <Feather name="share" size={15} color={meta} />

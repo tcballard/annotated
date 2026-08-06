@@ -1202,23 +1202,22 @@ const timelinePost = (item) => {
         ${quote}
       </div>
       <div class="actions">
-        <a class="act" href="${escapeHTML(item.url)}" target="_blank" rel="noreferrer" title="Open responses">
+        <a class="act" href="${escapeHTML(item.url)}" target="_blank" rel="noreferrer" title="Open responses" aria-label="Open responses">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 12a8 8 0 0 1-8 8H4l3-3a8 8 0 1 1 14-5z"/></svg>
-          ${item.comments ? `<span class="n">${item.comments}</span>` : 'Respond'}
+          ${item.comments ? `<span class="n">${item.comments}</span>` : ''}
         </a>
         <button class="act${item.likedByMe ? ' is-liked' : ''}" type="button" data-like-slug="${escapeHTML(item.slug)}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
           ${item.likes ? `<span class="n">${item.likes}</span>` : ''}
         </button>
-        ${item.type === 'article' && item.quote && (panelMode === 'page' || matchesCurrentTab(item)) ? `<button class="act" type="button" data-highlight-slug="${escapeHTML(item.slug)}" title="Highlight this passage on the page">
+        ${item.type === 'article' && item.quote && (panelMode === 'page' || matchesCurrentTab(item)) ? `<button class="act" type="button" data-highlight-slug="${escapeHTML(item.slug)}" title="Highlight this passage on the page" aria-label="Highlight this passage on the page">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-          On page
         </button>` : ''}
-        <a class="act primary" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-open-slug="${escapeHTML(item.slug)}" title="${escapeHTML(openOriginalLabel(item))}">
+        <a class="act primary" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-open-slug="${escapeHTML(item.slug)}" title="${escapeHTML(openOriginalLabel(item))}" aria-label="${escapeHTML(openOriginalLabel(item))}">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg>
-          Open${item.opens ? ` <span class="n">${item.opens}</span>` : ''}
+          ${item.opens ? `<span class="n">${item.opens}</span>` : ''}
         </a>
-        <button class="act share" type="button" data-share-url="${escapeHTML(item.url)}" title="Copy the page link">
+        <button class="act share" type="button" data-share-url="${escapeHTML(item.url)}" title="Copy the page link" aria-label="Copy the page link">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12M8 7l4-4 4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg>
         </button>
       </div>
