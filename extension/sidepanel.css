@@ -593,21 +593,64 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   * { transition: none !important; animation: none !important; }
 }
 
-/* The publish beat: the button confirms with the accent's check —
-   publishing IS the moment. */
-#publish.is-published { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
-
-.pub-check-mini {
-  width: 15px;
-  height: 15px;
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-dasharray: 24;
-  stroke-dashoffset: 24;
-  animation: pub-draw-mini .3s ease forwards;
+/* The publish moment: the panel is the desktop stage, so it gets the same
+   full-screen beat as the web — the ring draws closed, the tick strikes,
+   and the fresh note is already waiting on This page underneath.
+   Publishing IS the moment. */
+.pub-moment {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  cursor: pointer;
+  animation: pub-fade .18s ease;
 }
 
-@keyframes pub-draw-mini { to { stroke-dashoffset: 0; } }
+.pub-check { width: 78px; height: 78px; margin-bottom: 4px; }
+
+.pub-check .ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 233;
+  stroke-dashoffset: 233;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  animation: pub-draw .52s ease forwards;
+}
+
+.pub-check .tick {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 44;
+  stroke-dashoffset: 44;
+  animation: pub-draw .3s ease .38s forwards;
+}
+
+@keyframes pub-draw { to { stroke-dashoffset: 0; } }
+@keyframes pub-fade { from { opacity: 0; } }
+
+.pub-moment h2 { font-size: 23px; font-weight: 650; color: var(--ink); }
+
+.pub-moment .dot { color: var(--accent); }
+
+.pub-moment .pub-title {
+  font-family: var(--serif);
+  color: var(--ink-soft);
+  font-size: 15.5px;
+  max-width: 340px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.pub-moment .pub-hint { color: var(--meta); font-size: 12.5px; text-align: center; }

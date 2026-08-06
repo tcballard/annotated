@@ -146,6 +146,34 @@ const showToast = (message, link = null) => {
   toastTimer = setTimeout(() => { toast.hidden = true; }, link ? 6000 : 2800);
 };
 
+// The panel is where desktop publishing happens — it gets the full moment,
+// same anatomy as the web: the ring draws closed over the panel while the
+// fresh note is already waiting on This page underneath. The toast (with its
+// View page link) is revealed when the moment steps aside.
+let publishMomentTimer;
+const dismissPublishMoment = () => {
+  clearTimeout(publishMomentTimer);
+  document.querySelector('.pub-moment')?.remove();
+};
+
+const showPublishMoment = (title) => {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  dismissPublishMoment();
+  const moment = document.createElement('div');
+  moment.className = 'pub-moment';
+  moment.setAttribute('role', 'status');
+  moment.title = 'Continue';
+  moment.innerHTML = `
+    <svg class="pub-check" viewBox="0 0 80 80" aria-hidden="true"><circle class="ring" cx="40" cy="40" r="37"/><path class="tick" d="m25 42 10 11 21-25"/></svg>
+    <h2>Published<span class="dot">.</span></h2>
+    <div class="pub-title"></div>
+    <div class="pub-hint">This moment now has a page — with the source attached.</div>`;
+  moment.querySelector('.pub-title').textContent = title || 'This moment';
+  moment.addEventListener('click', dismissPublishMoment);
+  document.body.append(moment);
+  publishMomentTimer = setTimeout(dismissPublishMoment, 1600);
+};
+
 /* ── source detection ──────────────────────────────────────────────── */
 
 const classifyByUrl = (url) => {
@@ -873,13 +901,7 @@ publishButton.addEventListener('click', async () => {
     syncSource();
     syncNote();
     syncComposer();
-    // The post-tweet beat, panel-sized: the button itself confirms.
-    publishButton.classList.add('is-published');
-    publishButton.innerHTML = '<svg class="pub-check-mini" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12 4.5 4.5L19 7"/></svg>Published';
-    setTimeout(() => {
-      publishButton.classList.remove('is-published');
-      publishButton.textContent = 'Publish';
-    }, 1600);
+    showPublishMoment(annotation.sourceTitle || currentTab.title);
     // Public notes land on This page so they are seen in place; unlisted and
     // private stay put — they will never appear in a public timeline.
     if ((payload.visibility || 'public') === 'public') {

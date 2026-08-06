@@ -18,9 +18,15 @@ test('publishing gets its moment: the check draws over the already-loaded permal
   assert.match(css, /stroke-dashoffset: 233/, 'the ring draws itself');
 });
 
-test('the panel publish button confirms in place', () => {
-  assert.match(panel, /publishButton\.classList\.add\('is-published'\)/);
-  assert.match(panel, /pub-check-mini/);
-  assert.match(panel, /publishButton\.textContent = 'Publish';\s*\n\s*\}, 1600\)/, 'and reverts');
-  assert.match(panelCss, /\.pub-check-mini \{/);
+test('the panel gets the same full moment — it is the desktop stage', () => {
+  assert.match(panel, /showPublishMoment\(annotation\.sourceTitle \|\| currentTab\.title\)/);
+  assert.match(panel, /publishMomentTimer = setTimeout\(dismissPublishMoment, 1600\)/, 'it gets out of the way on its own');
+  assert.match(panel, /moment\.addEventListener\('click', dismissPublishMoment\)/, 'a tap dismisses it early');
+  assert.match(panel, /prefers-reduced-motion: reduce/, 'reduced motion keeps the quiet toast');
+  assert.match(panel, /Published<span class="dot">\.<\/span>/);
+  assert.match(panelCss, /\.pub-check \.ring/);
+  assert.match(panelCss, /\.pub-check \.tick/);
+  assert.match(panelCss, /stroke-dashoffset: 233/, 'the ring draws itself');
+  assert.match(panelCss, /color-mix\(in srgb, var\(--paper\) 96%, transparent\)/, 'the veil follows the panel theme, dark included');
+  assert.doesNotMatch(panel, /pub-check-mini/, 'the compact button nod is retired');
 });
