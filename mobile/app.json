@@ -30,6 +30,12 @@
         "projectId": "4f9d6332-865d-4d5a-a44a-0aeaee7754db"
       }
     },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/4f9d6332-865d-4d5a-a44a-0aeaee7754db"
+    },
     "plugins": [
       "expo-web-browser",
       [
