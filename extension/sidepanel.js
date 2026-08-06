@@ -417,7 +417,13 @@ function snipRegionInPage() {
     veil.id = 'annotated-snip-veil';
     veil.style.cssText = 'position:fixed;inset:0;z-index:2147483647;cursor:crosshair;user-select:none;-webkit-user-select:none;background:rgba(38,41,47,.28);';
     const marquee = document.createElement('div');
-    marquee.style.cssText = 'position:fixed;display:none;border:1.5px solid #B0674D;box-shadow:0 0 0 200000px rgba(38,41,47,.28);pointer-events:none;';
+    marquee.style.cssText = 'position:fixed;display:none;border:2px solid #B0674D;box-shadow:0 0 0 200000px rgba(38,41,47,.28);pointer-events:none;';
+    // corner brackets, echoing the snip button's icon — readable over busy pages
+    for (const [v, h] of [['top', 'left'], ['top', 'right'], ['bottom', 'left'], ['bottom', 'right']]) {
+      const corner = document.createElement('div');
+      corner.style.cssText = `position:absolute;width:16px;height:16px;${v}:-3px;${h}:-3px;border:0 solid #B0674D;border-${v}-width:4px;border-${h}-width:4px;`;
+      marquee.append(corner);
+    }
     const hint = document.createElement('div');
     hint.textContent = 'Drag over the part that matters — Esc cancels';
     hint.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);background:rgba(38,41,47,.92);color:#F5F4F0;font:12px/1.4 system-ui,sans-serif;padding:6px 12px;border-radius:99px;pointer-events:none;';
