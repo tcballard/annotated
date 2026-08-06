@@ -211,7 +211,7 @@ export const FeedCard = ({ item, following, ownId, liked, likeCount, onOpenAnnot
             <Feather name={following ? 'user-check' : 'user-plus'} size={15} color={following ? ink : meta} />
           </Pressable>
         ) : null}
-        <Pressable style={[styles.act, styles.actRight]} onPress={() => onOpenOriginal(item)} hitSlop={8} accessibilityLabel="Open the original source">
+        <Pressable style={[styles.act, styles.actRight]} onPress={() => onOpenOriginal(item)} hitSlop={8} accessibilityLabel={`Open the original source${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}`}>
           <Feather name="external-link" size={15} color={ink} />
           {item.opens ? <Text style={styles.actText}>{item.opens}</Text> : null}
         </Pressable>

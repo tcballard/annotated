@@ -1213,7 +1213,7 @@ const timelinePost = (item) => {
         ${item.type === 'article' && item.quote && (panelMode === 'page' || matchesCurrentTab(item)) ? `<button class="act" type="button" data-highlight-slug="${escapeHTML(item.slug)}" title="Highlight this passage on the page" aria-label="Highlight this passage on the page">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
         </button>` : ''}
-        <a class="act primary" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-open-slug="${escapeHTML(item.slug)}" title="${escapeHTML(openOriginalLabel(item))}" aria-label="${escapeHTML(openOriginalLabel(item))}">
+        <a class="act primary" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-open-slug="${escapeHTML(item.slug)}" title="${escapeHTML(openOriginalLabel(item))}${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}" aria-label="${escapeHTML(openOriginalLabel(item))}${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg>
           ${item.opens ? `<span class="n">${item.opens}</span>` : ''}
         </a>

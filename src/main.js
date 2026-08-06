@@ -505,7 +505,8 @@ const chromeBar = () => {
 const openOriginalAction = (item, { withLabel = true } = {}) => {
   const href = openOriginalHref(item);
   const count = item.opens ? ` <span class="n">· ${item.opens}</span>` : '';
-  return `<a class="act primary" href="${escapeHTML(href)}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug || '')}">${icon('open')}${withLabel ? `Open original${count}` : `Open${count}`}</a>`;
+  const opensTip = item.opens ? ` title="${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original"` : '';
+  return `<a class="act primary" href="${escapeHTML(href)}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug || '')}"${opensTip}>${icon('open')}${withLabel ? `Open original${count}` : `Open${count}`}</a>`;
 };
 
 const hubLink = (host) => host ? `<a href="/s/${encodeURIComponent(host)}" data-action="open-hub" data-host="${escapeHTML(host)}" title="See everything annotated from ${escapeHTML(host)}">${escapeHTML(host)}</a>` : '';
