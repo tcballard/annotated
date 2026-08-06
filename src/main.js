@@ -632,7 +632,7 @@ const railView = () => {
 const feedView = () => {
   const items = state.feedAnnotations.map(annotationToFeedItem);
   const trendingEmpty = !state.feedFollowing && state.feedSort === 'trending';
-  const emptyTitle = state.feedQuery ? `No annotations match “${escapeHTML(state.feedQuery)}”.` : state.feedFollowing ? 'No annotations from people you follow yet.' : trendingEmpty ? 'Nothing is trending yet.' : 'No public annotations yet.';
+  const emptyTitle = state.feedQuery ? `Nothing matches “${escapeHTML(state.feedQuery)}”.` : state.feedFollowing ? 'No annotations from people you follow yet.' : trendingEmpty ? 'Nothing is trending yet.' : 'No public annotations yet.';
   const emptyBody = state.feedQuery ? 'Try a different source, author, or phrase.' : state.feedFollowing ? 'Follow someone whose context you want to keep up with.' : trendingEmpty ? 'Annotations trend as readers open their originals and respond.' : 'Capture the first source-backed moment and it will appear here.';
   const emptyAction = state.feedQuery
     ? `<button class="ghost" data-action="clear-feed-search">Clear search</button>`

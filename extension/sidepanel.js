@@ -1260,7 +1260,7 @@ const renderTimeline = () => {
     const mark = '<img class="mark" src="icons/icon-128.png" alt="" aria-hidden="true" />';
     timeline.innerHTML = panelMode === 'page'
       ? `<div class="empty">${mark}<h2>No annotations on this page yet.</h2><p>Yours would be the first.</p><button type="button" data-focus-note>Write the first note</button></div>`
-      : `<div class="empty">${mark}<h2>${panelMode === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${panelMode === 'following' ? 'Follow someone from their page.' : 'Capture the first source-backed moment.'}</p></div>`;
+      : `<div class="empty">${mark}<h2>${panelMode === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${panelMode === 'following' ? 'Follow someone whose context you want to keep up with.' : 'Capture the first source-backed moment and it will appear here.'}</p></div>`;
     return;
   }
   timeline.innerHTML = cache.items.map(timelinePost).join('');
