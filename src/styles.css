@@ -436,9 +436,11 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .byline { font-size: 14px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .byline .posttime { margin-left: auto; flex-shrink: 0; }
 
-/* the social row: share holds the card's bottom-right corner; a given
-   like fills its heart in ink (the accent stays reserved for the moment) */
-.actions .share { margin-left: auto; }
+/* The social row follows the muscle memory of every feed: engagement
+   verbs on the left (respond, like, follow), outbound actions clustered
+   right (open original, then share in the corner). A given like fills
+   its heart in ink — the accent stays reserved for the moment. */
+.actions .act.primary { margin-left: auto; }
 .act.is-liked .icon svg { fill: var(--ink); stroke: var(--ink); }
 
 .byline .name { font-weight: 700; color: var(--ink); }
@@ -760,7 +762,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .permacard .actions { padding: 6px 12px 12px; margin: 0; }
 
-.act.claim { margin-left: auto; border: 1px solid var(--border); color: var(--meta); }
+.act.claim { border: 1px solid var(--border); color: var(--meta); }
 .act.claim:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
 .responses { margin-top: 18px; background: var(--card); border-radius: var(--radius-card); box-shadow: var(--shadow); overflow: hidden; }

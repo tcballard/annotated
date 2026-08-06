@@ -198,10 +198,6 @@ export const FeedCard = ({ item, following, ownId, liked, likeCount, onOpenAnnot
         : <Text style={styles.note}>Audio note{item.audioDuration ? ` · ${formatTime(item.audioDuration)}` : ''} — listen below.</Text>}
       <SourceCard item={item} />
       <View style={styles.actions}>
-        <Pressable style={styles.act} onPress={() => onOpenOriginal(item)} hitSlop={8}>
-          <Feather name="external-link" size={15} color={ink} />
-          <Text style={styles.actText}>Open original{item.opens ? ` · ${item.opens}` : ''}</Text>
-        </Pressable>
         <Pressable style={styles.act} onPress={() => onOpenAnnotation(item)} hitSlop={8} accessibilityLabel="Respond">
           <Feather name="message-circle" size={15} color={meta} />
           {item.comments ? <Text style={styles.actMuted}>{item.comments}</Text> : null}
@@ -215,7 +211,11 @@ export const FeedCard = ({ item, following, ownId, liked, likeCount, onOpenAnnot
             <Feather name={following ? 'user-check' : 'user-plus'} size={15} color={following ? ink : meta} />
           </Pressable>
         ) : null}
-        <Pressable style={[styles.act, styles.actShare]} onPress={() => onShare(item)} hitSlop={8} accessibilityLabel="Share annotation">
+        <Pressable style={[styles.act, styles.actRight]} onPress={() => onOpenOriginal(item)} hitSlop={8}>
+          <Feather name="external-link" size={15} color={ink} />
+          <Text style={styles.actText}>Open original{item.opens ? ` · ${item.opens}` : ''}</Text>
+        </Pressable>
+        <Pressable style={styles.act} onPress={() => onShare(item)} hitSlop={8} accessibilityLabel="Share annotation">
           <Feather name="share" size={15} color={meta} />
         </Pressable>
       </View>
@@ -486,10 +486,10 @@ const styles = StyleSheet.create({
   media: { marginTop: 8, borderRadius: 10, overflow: 'hidden', position: 'relative' },
   mediaImage: { width: '100%', aspectRatio: 16 / 10, backgroundColor: tokens.soft },
   quote: { fontFamily: serif, fontSize: 14.5, lineHeight: 21, color: tokens['ink-soft'], marginTop: 8 },
-  actions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, paddingRight: 4 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 18, marginTop: 8, paddingRight: 4 },
   act: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   actText: { color: ink, fontSize: 12.5, fontWeight: '600' },
-  actShare: { marginLeft: 'auto' },
+  actRight: { marginLeft: 'auto' },
   actMuted: { color: meta, fontSize: 12.5 },
   empty: { backgroundColor: card, borderRadius: radiusCard, padding: 22, alignItems: 'center' },
   emptyTitle: { color: ink, fontWeight: '700', fontSize: 15.5, textAlign: 'center' },

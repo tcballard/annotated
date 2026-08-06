@@ -586,10 +586,10 @@ const feedPost = (item) => {
       ${note}
       ${srcCard(item)}
       <div class="actions">
-        ${openOriginalAction(item)}
         <button class="act" data-action="open-respond" data-slug="${escapeHTML(item.slug || '')}">${icon('respond')}<span class="n">${item.comments || 'Respond'}</span></button>
         <button class="act ${item.likedByMe ? 'is-liked' : ''}" data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">${icon('heart')}${item.likes ? `<span class="n">${item.likes}</span>` : ''}</button>
         ${followAct}
+        ${openOriginalAction(item)}
         <button class="act share" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(item, window.location.origin))}" aria-label="Share annotation">${icon('share')}</button>
       </div>
     </div>
@@ -743,13 +743,13 @@ const permalinkView = () => {
       ${pull}
       ${commentaryAudio}
       <div class="actions">
-        ${openOriginalAction(item)}
         <button class="act" data-action="focus-comment">${icon('respond')}Respond${comments.length ? ` <span class="n">· ${comments.length}</span>` : ''}</button>
         <button class="act ${item.likedByMe ? 'is-liked' : ''}" data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">${icon('heart')}${item.likes ? `<span class="n">${item.likes}</span>` : 'Like'}</button>
         <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(annotation, window.location.origin))}">${icon('share')}Share</button>
         ${item.visibility !== 'private' ? `<a class="act" href="/og/${encodeURIComponent(item.slug)}.png?download=1" download="annotated-${escapeHTML(item.slug)}.png" title="Download this annotation's share card as an image">Save card</a>` : ''}
         ${isMine && annotation.commentaryMode === 'text' && withinEditWindow(annotation) && !state.editingNote ? `<button class="act" data-action="edit-note">Edit note</button>` : ''}
         ${isMine ? `<button class="act" data-action="delete-annotation" data-slug="${escapeHTML(item.slug)}">Delete</button>` : ''}
+        ${openOriginalAction(item)}
         <button class="act claim" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug)}" data-claim-title="${escapeHTML(item.sourceTitle)}">${icon('claim')}File a claim</button>
       </div>
     </article>
