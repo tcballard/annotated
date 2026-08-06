@@ -1192,7 +1192,7 @@ const timelinePost = (item) => {
       ? `<span class="avatar has-photo" aria-hidden="true"><img src="${escapeHTML(item.avatarUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" /></span>`
       : `<span class="avatar" aria-hidden="true" style="background:${avatarColor(item.handle || item.displayName)};color:#fff">${escapeHTML(avatarInitial(item))}</span>`}
     <div class="content">
-      <div class="byline"><span class="name">@${escapeHTML(item.handle)}</span><span class="meta">· ${escapeHTML(item.time)}${item.editedAt ? ' · edited' : ''}</span></div>
+      <div class="byline"><span class="name">@${escapeHTML(item.handle)}</span>${item.editedAt ? '<span class="meta">· edited</span>' : ''}<span class="meta posttime">${escapeHTML(item.time)}</span></div>
       ${noteLine}
       <div class="srccard">
         <div class="srchead">${chip ? `<span class="chip">${escapeHTML(chip)}</span>` : ''}<span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(item.type)}</span></div>

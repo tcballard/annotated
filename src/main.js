@@ -582,7 +582,7 @@ const feedPost = (item) => {
   <article class="post" data-action="open-annotation" data-slug="${escapeHTML(item.slug || '')}">
     ${avatarHtml(item)}
     <div class="content">
-      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a><span class="meta">· ${escapeHTML(item.time)} · ${escapeHTML(annotationVerb(item.type))}${item.editedAt ? ' · edited' : ''}</span>${item.topic ? `<button class="topic-tag" data-action="feed-topic" data-topic="${escapeHTML(item.topic)}" title="See what's trending in ${escapeHTML(topicLabel(item.topic))}">${escapeHTML(topicLabel(item.topic))}</button>` : ''}</div>
+      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a><span class="meta">· ${escapeHTML(annotationVerb(item.type))}${item.editedAt ? ' · edited' : ''}</span>${item.topic ? `<button class="topic-tag" data-action="feed-topic" data-topic="${escapeHTML(item.topic)}" title="See what's trending in ${escapeHTML(topicLabel(item.topic))}">${escapeHTML(topicLabel(item.topic))}</button>` : ''}<span class="meta posttime">${escapeHTML(item.time)}</span></div>
       ${note}
       ${srcCard(item)}
       <div class="actions">

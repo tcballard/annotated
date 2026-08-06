@@ -164,9 +164,12 @@ export const FeedCard = ({ item, following, ownId, onOpenAnnotation, onOpenProfi
       <View style={styles.byline}>
         <Pressable onPress={() => onOpenProfile(item)} hitSlop={6} style={styles.who}>
           <Text style={styles.name} numberOfLines={1}>{item.displayName || `@${item.handle}`}</Text>
-          <Text style={styles.metaText} numberOfLines={1}>{`${item.displayName ? `@${item.handle} · ` : ''}${item.time}${item.editedAt ? ' · edited' : ''}`}</Text>
+          {(item.displayName || item.editedAt) ? (
+            <Text style={styles.metaText} numberOfLines={1}>{`${item.displayName ? `@${item.handle}` : ''}${item.editedAt ? `${item.displayName ? ' · ' : ''}edited` : ''}`}</Text>
+          ) : null}
         </Pressable>
         {item.topic ? <Text style={styles.topicTag}>{topicLabel(item.topic)}</Text> : null}
+        <Text style={styles.postTime}>{item.time}</Text>
       </View>
       {item.commentary
         ? <Text style={styles.note}>{item.commentary}</Text>
@@ -443,7 +446,8 @@ const styles = StyleSheet.create({
   who: { flexDirection: 'row', alignItems: 'baseline', flexShrink: 1, minWidth: 0 },
   name: { color: ink, fontWeight: '700', fontSize: 14.5, flexShrink: 1 },
   metaText: { color: meta, fontSize: 12.5, flexShrink: 1, marginLeft: 5 },
-  topicTag: { marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: tokens['ink-soft'], backgroundColor: tokens.soft, borderRadius: 99, paddingHorizontal: 7, paddingVertical: 2, overflow: 'hidden' },
+  postTime: { color: meta, fontSize: 12.5, marginLeft: 'auto', flexShrink: 0 },
+  topicTag: { marginLeft: 8, flexShrink: 0, fontSize: 11, color: tokens['ink-soft'], backgroundColor: tokens.soft, borderRadius: 99, paddingHorizontal: 7, paddingVertical: 2, overflow: 'hidden' },
   note: { color: ink, fontSize: 14.5, lineHeight: 20, marginTop: 2 },
   srccard: { marginTop: 8, backgroundColor: tokens.strip, borderWidth: 1, borderColor: tokens.hair, borderRadius: radiusInner, padding: 10 },
   srchead: { flexDirection: 'row', alignItems: 'center', gap: 8 },

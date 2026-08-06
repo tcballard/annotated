@@ -524,6 +524,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .post .content { flex: 1; min-width: 0; }
 
 .byline { font-size: 13px; display: flex; align-items: baseline; gap: 5px; }
+.byline .posttime { margin-left: auto; flex-shrink: 0; }
 .byline .name { font-weight: 700; color: var(--ink); }
 .byline .meta { color: var(--meta); font-size: 12px; }
 
