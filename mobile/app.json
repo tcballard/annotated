@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "annotated",
+    "slug": "annotated",
+    "scheme": "annotated",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F5F4F0",
+    "primaryColor": "#33383F",
+    "ios": {
+      "bundleIdentifier": "co.armytage.annotated",
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "co.armytage.annotated",
+      "adaptiveIcon": {
+        "backgroundColor": "#F3F1ED",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "extra": {
+      "origin": "https://annotated-staging.up.railway.app"
+    },
+    "plugins": [
+      "expo-web-browser",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "androidIntentFilters": [
+            "text/*"
+          ]
+        }
+      ],
+      "expo-router",
+      "expo-video",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "annotated uses the microphone to record the short voice notes you attach to a source."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 140,
+          "resizeMode": "contain",
+          "backgroundColor": "#F5F4F0"
+        }
+      ]
+    ]
+  }
+}

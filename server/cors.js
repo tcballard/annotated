@@ -20,10 +20,26 @@ export const isChromeExtensionOrigin = (origin, env = process.env) => {
     && (!parsed.pathname || parsed.pathname === '/');
 };
 
+// The app's own origins are always allowed: browsers attach an Origin header
+// to every same-origin POST, and publishing from the web app must not depend
+// on the operator duplicating PUBLIC_ORIGIN into CORS_ORIGINS.
+const selfOrigins = (env = process.env) => {
+  const origins = [];
+  for (const value of [env.PUBLIC_ORIGIN, env.APP_ORIGIN]) {
+    try { origins.push(new URL(value).origin); } catch { /* unset or invalid */ }
+  }
+  if (env.NODE_ENV !== 'production') {
+    const port = Number(env.PORT || 8787);
+    origins.push(`http://localhost:${port}`, `http://127.0.0.1:${port}`);
+  }
+  return origins;
+};
+
 export const resolveCorsOrigin = (requestOrigin, env = process.env) => {
   const webOrigins = configuredCorsOrigins(env);
   if (!requestOrigin) return webOrigins[0] || '*';
   if (webOrigins.includes(requestOrigin)) return requestOrigin;
+  if (selfOrigins(env).includes(requestOrigin)) return requestOrigin;
   if (isChromeExtensionOrigin(requestOrigin, env)) return requestOrigin;
   return null;
 };

@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
-import { buildFfmpegArgs, buildProviderArgs, canRetryMediaJob, checkMediaRuntime, mediaJobLeaseExpired, runMediaCommand, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe, validateProviderRuntimeConfig } from '../server/media-worker.js';
+import { buildFfmpegArgs, buildPosterArgs, buildProviderArgs, canRetryMediaJob, checkMediaRuntime, mediaJobLeaseExpired, runMediaCommand, shouldAbortMediaJob, shouldClaimMediaJob, shouldRecoverMediaJob, validateMediaProbe, validateProviderRuntimeConfig } from '../server/media-worker.js';
 import { normalizeAudioMimeType } from '../server/media-store.js';
 
 test('audio uploads accept recorder parameters but reject non-audio content types', () => {
@@ -24,6 +24,15 @@ test('podcast transcodes remove video and use the requested bounded duration', (
   const args = buildFfmpegArgs({ sourceType: 'podcast', clipStart: 12, clipEnd: 42 }, 'input.mp3', 'output.webm');
   assert.equal(args[args.indexOf('-t') + 1], '30');
   assert.ok(args.includes('-vn'));
+});
+
+test('poster extraction seeks a third in, bounded to three seconds, one frame', () => {
+  const args = buildPosterArgs(48, 'clip.mp4', 'poster.jpg');
+  assert.equal(args[args.indexOf('-ss') + 1], '3', 'long clips cap the seek at three seconds');
+  assert.equal(args[args.indexOf('-frames:v') + 1], '1');
+  assert.equal(args[args.length - 1], 'poster.jpg');
+  assert.equal(buildPosterArgs(6, 'c.mp4', 'p.jpg')[1 + buildPosterArgs(6, 'c.mp4', 'p.jpg').indexOf('-ss')], '2', 'short clips seek a third of the way in');
+  assert.equal(buildPosterArgs(0, 'c.mp4', 'p.jpg')[1 + buildPosterArgs(0, 'c.mp4', 'p.jpg').indexOf('-ss')], '0');
 });
 
 test('provider arguments make runtime egress configuration explicit', () => {
@@ -164,4 +173,12 @@ test('a generated video fixture is transcoded and passes the real FFprobe contra
   assert.ok(inspected.duration <= 90.05);
   assert.equal(video.height, 240);
   assert.ok(video.width <= 480);
+
+  // the poster frame comes off the same artifact with the production args
+  const posterPath = path.join(directory, 'poster.jpg');
+  await runMediaCommand('ffmpeg', buildPosterArgs(1.5, outputPath, posterPath));
+  const posterProbe = JSON.parse((await runMediaCommand('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name,height', '-of', 'json', posterPath])).stdout);
+  const posterStream = posterProbe.streams.find((stream) => stream.codec_name === 'mjpeg');
+  assert.ok(posterStream, 'the poster is a jpeg frame');
+  assert.ok(Number(posterStream.height) <= 240, 'the poster stays within the clip resolution');
 });

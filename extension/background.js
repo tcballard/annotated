@@ -1,4 +1,4 @@
-import { apiOrigin } from './config.js';
+import { apiOrigin, authHeaders } from './config.js';
 import { extensionStorage, MAX_PENDING_ATTEMPTS } from './storage.js';
 import { deleteAudioDraft, readAudioDraft } from './media-draft-store.js';
 
@@ -121,22 +121,50 @@ const setupRetry = async () => {
   await retryPendingCaptures();
 };
 
+// The toolbar icon wears the unseen-notifications count, X-style: signed
+// in, the pinned extension shows what's waiting without being opened.
+// Opening the panel marks everything seen, which clears it.
+const refreshNotificationsBadge = async () => {
+  try {
+    const headers = await authHeaders();
+    if (!headers.authorization) return await chrome.action.setBadgeText({ text: '' });
+    const origin = await apiOrigin();
+    const response = await fetch(`${origin}/api/notifications`, { headers });
+    if (!response.ok) return await chrome.action.setBadgeText({ text: '' });
+    const body = await response.json().catch(() => ({}));
+    const unseen = Number(body.unseenCount) || 0;
+    await chrome.action.setBadgeBackgroundColor({ color: '#B0674D' });
+    await chrome.action.setBadgeText({ text: unseen > 0 ? (unseen > 9 ? '9+' : String(unseen)) : '' });
+  } catch { /* offline — leave the badge as it was */ }
+};
+
+const setupNotificationsBadge = async () => {
+  await chrome.alarms.create('annotated-notifications', { periodInMinutes: 5 });
+  await refreshNotificationsBadge();
+};
+
 chrome.runtime.onInstalled.addListener(() => {
   runBackgroundTask('installation setup', async () => {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
     await setupRetry();
+    await setupNotificationsBadge();
   });
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  runBackgroundTask('startup setup', setupRetry);
+  runBackgroundTask('startup setup', async () => {
+    await setupRetry();
+    await setupNotificationsBadge();
+  });
 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'annotated-retry') runBackgroundTask('pending capture retry', retryPendingCaptures);
+  if (alarm.name === 'annotated-notifications') runBackgroundTask('notifications badge refresh', refreshNotificationsBadge);
 });
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message?.type === 'RETRY_PENDING') return runBackgroundTask('manual pending capture retry', retryPendingCaptures);
+  if (message?.type === 'NOTIFICATIONS_SEEN') return runBackgroundTask('notifications badge clear', async () => chrome.action.setBadgeText({ text: '' }));
 });
 
 chrome.action.onClicked.addListener((tab) => {

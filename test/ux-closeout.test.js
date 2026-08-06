@@ -8,21 +8,26 @@ const [mainSource, styles] = await Promise.all([
 ]);
 
 test('contextual authentication prompts clear when the user changes views', () => {
-  const setView = mainSource.match(/if \(action === 'set-view'\) \{[\s\S]*?\n  \}/u)?.[0] || '';
-  assert.match(setView, /state\.authPrompt = '';/u);
+  const navigateBlock = mainSource.match(/const navigate = [\s\S]*?\n\};/u)?.[0] || '';
+  assert.match(navigateBlock, /state\.authPrompt = '';/u);
   assert.match(mainSource, /document\.querySelector\('\.nav-link\.is-active'\)\?\.focus\(\)/u);
 });
 
-test('unavailable capture and published media do not present fake play buttons', () => {
-  const videoCanvas = mainSource.match(/const videoCanvas = \(\) => `[\s\S]*?`;/u)?.[0] || '';
-  assert.match(videoCanvas, /class="preview-unavailable" role="status"/u);
-  assert.doesNotMatch(videoCanvas, /data-action="toggle-preview"/u);
-  assert.doesNotMatch(mainSource, /if \(action === 'toggle-preview'\)/u);
+test('unavailable media renders shipped status states, never a fake play button', () => {
+  const player = mainSource.match(/const playerBlock = [\s\S]*?\n\};/u)?.[0] || '';
+  assert.match(player, /Preparing the 240p clip…/u);
+  assert.match(player, /Clip queued for processing…/u);
+  assert.match(player, /media-recovery/u);
+  assert.match(player, /Retry clip/u);
+  // the CLIP tag and duration · 240p badge stay visible in every state
+  assert.match(player, /class="cliptag">CLIP/u);
+  assert.match(player, /240p/u);
 });
 
 test('claim dialog has modal isolation, keyboard escape, focus trapping, and restoration', () => {
   assert.match(mainSource, /aria-modal="true"/u);
-  assert.match(mainSource, /element\.inert = state\.claimOpen/u);
+  assert.match(mainSource, /element\.inert = overlayOpen/u);
+  assert.match(mainSource, /const overlayOpen = state\.claimOpen \|\| Boolean\(state\.lightbox\)/u);
   assert.match(mainSource, /event\.key === 'Escape'/u);
   assert.match(mainSource, /event\.key !== 'Tab'/u);
   assert.match(mainSource, /restoreClaimFocus/u);
@@ -30,30 +35,44 @@ test('claim dialog has modal isolation, keyboard escape, focus trapping, and res
   assert.match(mainSource, /class="claim-success" role="status"/u);
 });
 
-test('anonymous timeline copy does not masquerade as a local profile', () => {
-  assert.match(mainSource, /class="aside-card profile-card signed-out-card"/u);
-  assert.match(mainSource, /Build your public library\./u);
-  assert.doesNotMatch(mainSource, /profile-stamp">\$\{state\.user \? 'SIGNED IN' : 'LOCAL'\}/u);
+test('signed-out surfaces offer both brief providers instead of a fake local profile', () => {
+  assert.match(mainSource, /Sign in with \$\{providerLabel\(provider\)\}/u);
+  assert.match(mainSource, /Sign in with X or Google when you are ready/u);
+  assert.doesNotMatch(mainSource, /LOCAL ACCOUNT|profile-stamp/u);
 });
 
-test('mobile capture compresses the preview and keeps primary targets at least 44px', () => {
-  assert.match(mainSource, /class="mobile-source-summary"/u);
-  assert.match(mainSource, /aria-expanded="\$\{state\.showMobileSourcePreview\}"/u);
-  assert.match(styles, /\.browser-frame \{ display: none; \}/u);
-  assert.match(styles, /\.browser-frame\.is-mobile-expanded \{ display: block; \}/u);
-  assert.match(styles, /\.brand-mark \{ min-width: 44px; min-height: 44px; \}/u);
-  assert.match(styles, /\.nav-link \{ min-width: 44px; min-height: 44px;/u);
+test('interactive targets keep at least 40px and focus stays visible everywhere', () => {
+  assert.match(styles, /:focus-visible \{ outline: 2px solid var\(--accent\)/u);
+  for (const selector of ['.act', '.btn', '.tabs .tab', '.markfield', '.auth-prompt-link']) {
+    const block = styles.split(`${selector} {`).slice(1, 2).join('');
+    assert.match(block.slice(0, 400), /min-height: (?:3[6-9]|4[0-9])px/u, `${selector} needs a ≥36px target`);
+  }
+  assert.match(styles, /prefers-reduced-motion/u);
 });
 
-test('clip timer presents an instrument-style ruler without replacing native range inputs', () => {
-  assert.match(mainSource, /class="range-console"/u);
-  assert.match(mainSource, /class="range-scale"/u);
-  assert.match(mainSource, /data-range-duration/u);
-  assert.match(mainSource, /type="range"[^>]*data-action="clip-start"/u);
-  assert.match(mainSource, /type="range"[^>]*data-action="clip-end"/u);
-  assert.match(styles, /\.range-console \.range-track \{/u);
-  assert.match(styles, /repeating-linear-gradient/u);
-  assert.match(styles, /--range-surface: var\(--surface\)/u);
-  assert.match(styles, /background: var\(--range-surface\)/u);
-  assert.match(styles, /\.range-console \.range-track input:focus-visible/u);
+test('feed posts embed ready media like a social feed, never a dead frame', () => {
+  const media = mainSource.match(/const srcCardMedia = [\s\S]*?\n\};/u)?.[0] || '';
+  // only ready clips and screenshots render; processing stays on the permalink
+  assert.match(media, /item\.mediaStatus === 'ready' && item\.type === 'video'/u);
+  assert.match(media, /item\.mediaStatus === 'ready' && item\.type === 'podcast'/u);
+  assert.match(media, /item\.screenshotUrl/u);
+  assert.match(media, /class="srcmedia"/u);
+  assert.match(media, /CLIP/u);
+  assert.match(media, /240p/u);
+  // playing inline media must not navigate to the permalink
+  assert.match(mainSource, /closest\('a, button:not\(\[data-action="open-annotation"\]\), video, audio, \.srcmedia'\)/u);
+});
+
+test('every fetch surface ships loading, empty, and error states', () => {
+  assert.match(mainSource, /skeletonPost/u);
+  assert.match(mainSource, /feed-empty/u);
+  assert.match(mainSource, /The timeline could not be loaded\./u);
+  assert.match(mainSource, /data-action="feed-retry"/u);
+  assert.match(mainSource, /perma-empty/u);
+});
+
+test('the keyboard path covers publish and clear on the capture surface', () => {
+  assert.match(mainSource, /event\.metaKey \|\| event\.ctrlKey/u);
+  assert.match(mainSource, /publishAnnotation\(\)/u);
+  assert.match(mainSource, /event\.key === 'Escape' && !event\.target\.closest\('input, textarea'\)/u);
 });

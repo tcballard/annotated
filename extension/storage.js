@@ -1,4 +1,7 @@
+import { isTopic } from './topics.js';
+
 const DRAFT_KEY = 'annotatedDraft';
+const TAB_DRAFT_PREFIX = 'annotatedTabDraft:';
 const LAST_PUBLISHED_KEY = 'annotatedLastPublished';
 const CONFIG_KEY = 'annotatedConfig';
 export const PENDING_KEY = 'annotatedPendingCaptures';
@@ -29,6 +32,12 @@ export const compactDraft = (draft = {}) => ({
   audioDuration: boundedDuration(draft.audioDuration),
   audioDraftId: boundedString(draft.audioDraftId, 80),
   clientRequestId: boundedString(draft.clientRequestId, 80),
+  visibility: ['public', 'unlisted', 'private'].includes(draft.visibility) ? draft.visibility : 'public',
+  topic: isTopic(draft.topic) ? draft.topic : '',
+  screenshotAssetId: boundedString(draft.screenshotAssetId, 80),
+  anchorParagraph: Math.max(0, Math.min(9999, Number(draft.anchorParagraph) || 0)),
+  anchorPrefix: boundedString(draft.anchorPrefix, 300),
+  anchorSuffix: boundedString(draft.anchorSuffix, 300),
 });
 
 export const compactPublished = (annotation = {}) => ({
@@ -69,6 +78,26 @@ export const extensionStorage = {
 
   async clearDraft() {
     await chrome.storage.local.remove(DRAFT_KEY);
+  },
+
+  // Unsaved marks and notes persist per tab, in ephemeral session storage:
+  // switching tabs re-binds the panel without losing either side's draft, and
+  // nothing survives the browser session.
+  async getTabDraft(tabId) {
+    if (!chrome.storage.session || !Number.isInteger(tabId)) return null;
+    const key = `${TAB_DRAFT_PREFIX}${tabId}`;
+    const result = await chrome.storage.session.get(key);
+    return result[key] ? compactDraft(result[key]) : null;
+  },
+
+  async saveTabDraft(tabId, draft) {
+    if (!chrome.storage.session || !Number.isInteger(tabId)) return;
+    await chrome.storage.session.set({ [`${TAB_DRAFT_PREFIX}${tabId}`]: compactDraft(draft) });
+  },
+
+  async clearTabDraft(tabId) {
+    if (!chrome.storage.session || !Number.isInteger(tabId)) return;
+    await chrome.storage.session.remove(`${TAB_DRAFT_PREFIX}${tabId}`);
   },
 
   async savePublished(annotation) {

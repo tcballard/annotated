@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, stat, unlink } from 'node:fs/promises';
+import { mkdir, readFile, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -97,6 +97,13 @@ class LocalObjectStore {
     await unlink(safeLocalPath(key || fileName)).catch((error) => { if (error.code !== 'ENOENT') throw error; });
   }
 
+  async getBytes(media, maxBytes = 8 * 1024 * 1024) {
+    const filePath = safeLocalPath(media.key || media.fileName);
+    const info = await stat(filePath);
+    if (info.size > maxBytes) throw new Error('Media object is too large to inline.');
+    return readFile(filePath);
+  }
+
   async serve(response, media) {
     const filePath = safeLocalPath(media.key || media.fileName);
     try {
@@ -150,6 +157,13 @@ class S3ObjectStore {
 
   async remove({ key, fileName }) {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key || fileName }));
+  }
+
+  async getBytes(media, maxBytes = 8 * 1024 * 1024) {
+    const result = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: media.key || media.fileName }));
+    const bytes = Buffer.from(await result.Body.transformToByteArray());
+    if (bytes.length > maxBytes) throw new Error('Media object is too large to inline.');
+    return bytes;
   }
 
   async url(media) {

@@ -10,8 +10,9 @@ const location = {
   hash: '#comments',
 };
 
-test('auth UI exposes only configured providers in stable order', () => {
-  assert.deepEqual(enabledProviders({ x: true, google: true, unknown: true }), ['google', 'x']);
+test('auth UI exposes only configured providers, X first per the brief surfaces', () => {
+  assert.deepEqual(enabledProviders({ x: true, google: true, unknown: true }), ['x', 'google']);
+  assert.deepEqual(enabledProviders({ google: true }), ['google']);
   assert.equal(providerLabel('google'), 'Google');
   assert.equal(providerLabel('x'), 'X');
   assert.equal(providerLabel('unknown'), 'sign-in provider');

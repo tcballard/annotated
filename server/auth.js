@@ -58,8 +58,10 @@ export const parseCookies = (header = '') => Object.fromEntries(header.split(';'
 }));
 
 export const authIsRequired = () => authRequired;
+// The brief requires X or Google sign-in; both ship enabled unless an
+// operator narrows OAUTH_PROVIDERS explicitly.
 export const enabledProviderNames = () => {
-  const configured = String(process.env.OAUTH_PROVIDERS || 'x').split(',').map((name) => name.trim().toLowerCase()).filter(Boolean);
+  const configured = String(process.env.OAUTH_PROVIDERS || 'x,google').split(',').map((name) => name.trim().toLowerCase()).filter(Boolean);
   const names = [...new Set(configured)];
   const unsupported = names.filter((name) => !providers[name]);
   if (!names.length || unsupported.length) throw new Error(`Unsupported OAuth provider configuration: ${[...unsupported, ...(names.length ? [] : ['none'])].join(', ')}.`);
@@ -89,6 +91,9 @@ const providerFor = (name) => {
 };
 
 const chromiumReturnUrl = (url) => url.protocol === 'https:' && url.hostname.endsWith('.chromiumapp.org');
+// The mobile shell returns through its custom scheme; the callback carries a
+// one-time ticket exactly like the extension flow.
+const mobileReturnUrl = (url) => url.protocol === 'annotated:' && url.hostname === 'auth';
 const configuredAppOrigin = () => {
   try { return new URL(process.env.APP_ORIGIN || publicOrigin).origin; } catch { throw new Error('OAuth app origin is invalid.'); }
 };
@@ -100,7 +105,8 @@ const validateReturnTo = (value) => {
   try { url = new URL(value); } catch { throw new Error('OAuth return URL is invalid.'); }
   const allowedExtension = chromiumReturnUrl(url);
   const allowedApp = appReturnUrl(url);
-  if (!allowedExtension && !allowedApp) throw new Error('OAuth return URL is not allowed.');
+  const allowedMobile = mobileReturnUrl(url);
+  if (!allowedExtension && !allowedApp && !allowedMobile) throw new Error('OAuth return URL is not allowed.');
   return url.toString();
 };
 
@@ -166,8 +172,15 @@ const profileFromProvider = async (providerName, provider, accessToken) => {
     handle: String(data.preferred_username || data.username || data.email?.split('@')[0] || `${providerName}-${String(data.sub || data.id).slice(0, 8)}`).slice(0, 80),
     displayName: String(data.name || data.email || 'Annotated user').slice(0, 120),
     email: data.email || null,
-    avatarUrl: data.picture || data.profile_image_url || null,
+    avatarUrl: providerAvatarUrl(data.picture || data.profile_image_url),
   };
+};
+
+// Only an https URL is ever stored, bounded; X hands out the 48px
+// `_normal` variant, which upgrades to 400px for retina rendering.
+const providerAvatarUrl = (value) => {
+  const url = String(value || '').replace('_normal.', '_400x400.').slice(0, 500);
+  return /^https:\/\//.test(url) ? url : null;
 };
 
 const upsertUser = async (identity) => {
@@ -212,7 +225,7 @@ export const finishOAuth = async (request, providerName, url) => {
   const session = await createSession(user);
   const returnTo = cookies[returnCookieName] || null;
   const returnUrl = returnTo ? new URL(returnTo) : null;
-  const extension = returnUrl && chromiumReturnUrl(returnUrl) ? await createExtensionTicket(user, returnTo) : null;
+  const extension = returnUrl && (chromiumReturnUrl(returnUrl) || mobileReturnUrl(returnUrl)) ? await createExtensionTicket(user, returnTo) : null;
   const browserRedirect = returnUrl && appReturnUrl(returnUrl) ? (() => {
     returnUrl.searchParams.set('auth', 'success');
     return returnUrl.toString();
@@ -249,6 +262,13 @@ export const exchangeExtensionTicket = async (ticket) => {
   if (!user) throw new Error('The extension account no longer exists.');
   const session = await createSession(user);
   return { token: session.token, expiresAt: session.expiresAt, user };
+};
+
+// The mobile shell exchanges its one-time ticket for a browser-style cookie
+// session — the WebView then behaves exactly like the signed-in web app.
+export const mobileTicketSession = async (ticket) => {
+  const session = await exchangeExtensionTicket(ticket);
+  return { sessionCookie: cookie(cookieName, session.token, { maxAge: sessionTtlSeconds }), user: session.user };
 };
 
 export const currentUser = async (request) => {

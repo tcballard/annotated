@@ -16,8 +16,18 @@ test('in-memory mutation limits expose an explicit denial boundary', () => {
 
 test('static security headers include a restrictive policy', () => {
   assert.match(securityHeaders()['content-security-policy'], /frame-ancestors 'none'/);
+  assert.equal(securityHeaders()['x-frame-options'], 'DENY');
   assert.equal(securityHeaders()['x-content-type-options'], 'nosniff');
   assert.equal(securityHeaders()['permissions-policy'], 'camera=(), geolocation=(), payment=()');
+  // The dev-preview framing exception opens only behind its explicit flag.
+  process.env.ANNOTATED_DEV_ALLOW_FRAMING = '1';
+  try {
+    assert.equal(securityHeaders()['x-frame-options'], undefined);
+    assert.match(securityHeaders()['content-security-policy'], /frame-ancestors \*/);
+  } finally {
+    delete process.env.ANNOTATED_DEV_ALLOW_FRAMING;
+  }
+  assert.equal(securityHeaders()['x-frame-options'], 'DENY');
 });
 
 test('production hardening rejects wildcard CORS', () => {

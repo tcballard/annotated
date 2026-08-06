@@ -14,3 +14,9 @@ export const validateClaimTransition = (from, to) => {
 };
 
 export const findActiveClaim = (claims, annotationId, reporterId) => (claims || []).find((claim) => claim.annotationId === annotationId && claim.reporterId === reporterId && ['open', 'in_review'].includes(claim.status)) || null;
+
+// The no-JS form accepts signed-out reporters; their active claims dedupe by
+// the contact address they supplied instead of an account id.
+export const findActiveClaimByContact = (claims, annotationId, contact) => contact
+  ? (claims || []).find((claim) => claim.annotationId === annotationId && claim.reporterContact === contact && ['open', 'in_review'].includes(claim.status)) || null
+  : null;

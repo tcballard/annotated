@@ -90,12 +90,11 @@ production integrations are available.
 |------------|------|---------------|
 | `sidePanel` | permissions | Opens Annotated's persistent capture workspace beside the page. |
 | `tabs` | permissions | Reads the active tab's URL and title, detects tab changes, and supplies the tab context required for selected-text capture. |
-| `scripting` | permissions | Reads the user's current text selection from the active page when the sidebar is open. |
+| `scripting` | permissions | Injects only on explicit user actions while the sidebar is open: reads the current text selection, draws the drag-to-snip overlay when the user chooses a region screenshot, and highlights a chosen annotation's quoted passage on its page. |
 | `storage` | permissions | Stores bounded drafts, API configuration, retry metadata, compact published-result metadata, and the temporary browser session. It never stores media Blobs in key/value storage. |
 | `identity` | permissions | Opens the configured X sign-in handoff and receives the one-time extension callback; the Google adapter remains available for a future release. |
 | `alarms` | permissions | Wakes the extension periodically to retry queued captures without relying on a persistent background page. |
-| `http://*/*` | host_permissions | Supports local HTTP development and lets the sidebar read a source page selected by the user. Production API origins are separately restricted to HTTPS in settings. |
-| `https://*/*` | host_permissions | The product is intentionally source-agnostic: it must read the active page and selected passage on any HTTPS site the user chooses. It does not inject code until the user opens the sidebar and does not publish without an explicit action. |
+| `<all_urls>` | host_permissions | The product is intentionally source-agnostic: it must read the active page and selected passage on any site the user chooses, and the user-drawn snip screenshot uses `tabs.captureVisibleTab`, which Chrome only grants to the literal `<all_urls>` pattern (narrower http/https host patterns are rejected for capture). It does not inject code until the user opens the sidebar, captures nothing without an explicit user action, and does not publish without one either. Production API origins are separately restricted to HTTPS in settings. |
 
 ## Privacy & Data Use
 

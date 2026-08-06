@@ -4,10 +4,25 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { dataDirectory } from './store.js';
 import { getObjectStore, objectStorageMode } from './object-store.js';
+import { assertAudioDurationPolicy } from './media-probe.js';
+import { extractAudioPeaks } from './audio-peaks.js';
 
 const mediaDirectory = path.join(dataDirectory, 'media');
 const mediaWorkDirectory = path.join(dataDirectory, 'media-work');
 const maxMediaBytes = 25 * 1024 * 1024;
+const maxImageBytes = 8 * 1024 * 1024;
+
+const imageMimeExtensions = new Map([
+  ['image/jpeg', 'jpg'],
+  ['image/png', 'png'],
+  ['image/webp', 'webp'],
+]);
+
+export const normalizeImageMimeType = (mimeType) => {
+  const normalized = String(mimeType || '').split(';', 1)[0].trim().toLowerCase();
+  if (!imageMimeExtensions.has(normalized)) throw new Error('Unsupported screenshot content type.');
+  return normalized;
+};
 
 const audioMimeExtensions = new Map([
   ['audio/aac', 'aac'],
@@ -31,6 +46,39 @@ const extensionForMime = (mimeType) => {
   return audioMimeExtensions.get(mimeType) || 'webm';
 };
 
+const bufferRequestToFile = (request, filePath, maxBytes) => new Promise((resolve, reject) => {
+  const output = createWriteStream(filePath, { flags: 'wx' });
+  let bytes = 0;
+  let settled = false;
+  const finish = async (error) => {
+    if (settled) return;
+    settled = true;
+    if (error) {
+      output.destroy();
+      await unlink(filePath).catch(() => {});
+      reject(error);
+      return;
+    }
+    resolve(bytes);
+  };
+  request.on('data', (chunk) => {
+    bytes += chunk.length;
+    if (bytes > maxBytes) {
+      request.pause();
+      void finish(new Error('Media payload is too large.'));
+      return;
+    }
+    if (!output.write(chunk)) request.pause();
+  });
+  output.on('drain', () => request.resume());
+  request.on('end', () => output.end(() => { void finish(); }));
+  request.on('aborted', () => { void finish(new Error('Media upload was aborted.')); });
+  request.on('error', (error) => { void finish(error); });
+  output.on('error', (error) => { void finish(error); });
+});
+
+// Audio uploads land in the work directory first so the 90-second policy can
+// be verified with ffprobe before the object is stored and addressable.
 export async function writeIncomingMedia(request, mimeType) {
   const normalizedMimeType = normalizeAudioMimeType(mimeType);
   const contentLength = Number(request.headers['content-length'] || 0);
@@ -38,9 +86,37 @@ export async function writeIncomingMedia(request, mimeType) {
   const id = randomUUID();
   const extension = extensionForMime(normalizedMimeType);
   const key = `audio/${id}.${extension}`;
-  const store = getObjectStore();
-  const result = await store.putStream(request, { id, key, mimeType: normalizedMimeType, maxBytes: maxMediaBytes });
-  return { id, key, fileName: result.fileName || key, mimeType: normalizedMimeType, bytes: result.bytes, createdAt: new Date().toISOString() };
+  const workPath = path.join(mediaWorkDirectory, `incoming-${id}.${extension}`);
+  await mkdir(mediaWorkDirectory, { recursive: true });
+  try {
+    const bytes = await bufferRequestToFile(request, workPath, maxMediaBytes);
+    const durationSeconds = await assertAudioDurationPolicy(workPath);
+    const peaks = await extractAudioPeaks(workPath);
+    const store = getObjectStore();
+    const result = await store.putFile(workPath, { id, key, mimeType: normalizedMimeType });
+    return { id, key, fileName: result.fileName || key, mimeType: normalizedMimeType, bytes, durationSeconds, peaks, createdAt: new Date().toISOString() };
+  } finally {
+    await unlink(workPath).catch(() => {});
+  }
+}
+
+// Screenshots are plain images: bounded and typed, no duration policy.
+export async function writeIncomingImage(request, mimeType) {
+  const normalizedMimeType = normalizeImageMimeType(mimeType);
+  const contentLength = Number(request.headers['content-length'] || 0);
+  if (contentLength > maxImageBytes) throw new Error('Media payload is too large.');
+  const id = randomUUID();
+  const key = `shots/${id}.${imageMimeExtensions.get(normalizedMimeType)}`;
+  const workPath = path.join(mediaWorkDirectory, `incoming-${id}.${imageMimeExtensions.get(normalizedMimeType)}`);
+  await mkdir(mediaWorkDirectory, { recursive: true });
+  try {
+    const bytes = await bufferRequestToFile(request, workPath, maxImageBytes);
+    const store = getObjectStore();
+    const result = await store.putFile(workPath, { id, key, mimeType: normalizedMimeType });
+    return { id, key, fileName: result.fileName || key, mimeType: normalizedMimeType, bytes, createdAt: new Date().toISOString() };
+  } finally {
+    await unlink(workPath).catch(() => {});
+  }
 }
 
 export async function storeMediaFile(filePath, { id, key, mimeType }) {

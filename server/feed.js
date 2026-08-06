@@ -29,3 +29,23 @@ export const matchesFeedQuery = (annotation, users, query) => {
   const normalized = normalizeFeedQuery(query).toLocaleLowerCase();
   return !normalized || searchableFields(annotation, users).includes(normalized);
 };
+
+// "This page" in the side panel filters the feed to annotations of the URL the
+// user is looking at. Comparison ignores hash, trailing slash, and www.
+export const normalizeSourceUrlKey = (value) => {
+  try {
+    const url = new URL(String(value || ''));
+    if (!['http:', 'https:'].includes(url.protocol)) return '';
+    url.hash = '';
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    const pathname = url.pathname.replace(/\/+$/, '') || '/';
+    return `${host}${pathname}${url.search}`;
+  } catch {
+    return '';
+  }
+};
+
+export const matchesFeedUrl = (annotation, urlKey) => {
+  if (!urlKey) return true;
+  return [annotation.sourceUrl, annotation.canonicalUrl].some((candidate) => normalizeSourceUrlKey(candidate) === urlKey);
+};

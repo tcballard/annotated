@@ -9,6 +9,8 @@
     "build": "vite build",
     "test": "node --test",
     "acceptance:staging": "node scripts/accept-staging.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "seed:personas": "node scripts/seed-personas.mjs",
     "acceptance:staging:media": "node scripts/accept-staging-media.mjs",
     "acceptance:staging:rate-limit": "node scripts/accept-staging-rate-limit.mjs",
     "configure:object-retention": "node scripts/configure-object-retention.mjs",
@@ -21,11 +23,14 @@
     "start": "NODE_ENV=production node server/index.js"
   },
   "devDependencies": {
+    "typescript": "6.0.3",
     "vite": "^7.0.0"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1101.0",
     "@aws-sdk/s3-request-presigner": "^3.1101.0",
-    "pg": "^8.22.0"
+    "@resvg/resvg-js": "^2.6.2",
+    "pg": "^8.22.0",
+    "satori": "^0.29.0"
   }
 }

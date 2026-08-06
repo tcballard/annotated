@@ -1,0 +1,41 @@
+[
+  {
+    "title": "yt-dlp test video",
+    "sourceUrl": "https://www.youtube.com/watch?v=BaW_jenozKc",
+    "sourceType": "video",
+    "clipStart": 2,
+    "clipEnd": 8,
+    "note": "The canonical test clip — six seconds, transcoded to 240p, with the live link back. The pipeline in one post.",
+    "clientRequestId": "seed-demo-video-1",
+    "topic": "tech"
+  },
+  {
+    "title": "Wikipedia — Annotation",
+    "sourceUrl": "https://en.wikipedia.org/wiki/Annotation",
+    "sourceType": "article",
+    "excerpt": "An annotation is extra information associated with a particular point in a document or other piece of information.",
+    "note": "The oldest interface pattern on the web, finally with a live pointer back to where the words came from.",
+    "clientRequestId": "seed-demo-article-1",
+    "topic": "tech"
+  },
+  {
+    "title": "OPERATOR: a This Week in Startups or All-In moment",
+    "sourceUrl": "https://www.youtube.com/watch?v=SET_ME",
+    "sourceType": "video",
+    "clipStart": 0,
+    "clipEnd": 60,
+    "note": "Pick a sharp 60 seconds from a recent episode and say why it matters — the demo works best on the judge's own content.",
+    "clientRequestId": "seed-demo-jcal-1",
+    "topic": "ai"
+  },
+  {
+    "title": "OPERATOR: a podcast episode from an open RSS feed",
+    "sourceUrl": "https://SET_ME.example/episode",
+    "sourceType": "podcast",
+    "clipStart": 60,
+    "clipEnd": 130,
+    "note": "A 70-second segment cut from the enclosure, playable on the landing page with the deep link back.",
+    "clientRequestId": "seed-demo-podcast-1",
+    "topic": "media"
+  }
+]
