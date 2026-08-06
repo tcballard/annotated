@@ -25,7 +25,10 @@
       "predictiveBackGestureEnabled": false
     },
     "extra": {
-      "origin": "https://annotated-staging.up.railway.app"
+      "origin": "https://annotated-staging.up.railway.app",
+      "eas": {
+        "projectId": "4f9d6332-865d-4d5a-a44a-0aeaee7754db"
+      }
     },
     "plugins": [
       "expo-web-browser",
