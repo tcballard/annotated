@@ -5,13 +5,22 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_ORIGIN": "https://annotated-staging.up.railway.app"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_ORIGIN": "https://annotated-staging.up.railway.app"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_ORIGIN": "https://annotated-staging.up.railway.app"
+      }
     }
   },
   "submit": {

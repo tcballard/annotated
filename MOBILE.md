@@ -82,33 +82,68 @@ test suite fails if either goes stale.
 - **Originals open OUT.** From native cards and WebViews alike, any other
   origin opens in the real browser — the product's point, kept on mobile.
 
-## Building it (requires your accounts; not runnable from CI)
+## Sorting out EAS (requires your accounts; not runnable from CI)
 
-One-time setup:
+**Accounts first — one is instant, one has a wait.** Start the Apple one
+today even if you build next week:
+
+1. **Apple Developer Program** — enroll at
+   developer.apple.com/programs ($99/year). Approval is usually fast but
+   can take 24–48 hours; it gates everything iOS, so it's the long pole.
+2. **Expo account** — sign up free at expo.dev (2 minutes). The free tier
+   builds iOS apps; you only queue behind paid builds at busy times.
+
+One-time link-up once both exist:
 
 ```bash
 cd mobile
 npm ci
 npx eas-cli login                 # your Expo account
-npx eas-cli build:configure       # links the EAS project id into app.json
+npx eas-cli build:configure       # writes the EAS projectId into app.json — commit that
 ```
 
-Set the deployment origin if it differs from staging: edit
-`expo.extra.origin` in `app.json`.
+**What's already configured in this repo** (no clicking around required):
+the bundle id `co.armytage.annotated`, remote build numbering
+(`autoIncrement` — no manual version bumps), the microphone permission
+string for voice notes, the branded splash screen, and
+`ITSAppUsesNonExemptEncryption: false` so TestFlight never stops you with
+the export-compliance question. EAS generates and stores certificates and
+provisioning profiles itself, including the share-extension target — say
+yes when it offers.
 
-**iOS** (Apple Developer account required; EAS manages certificates and the
-share-extension provisioning profile automatically):
+**Fast lane — on your phone tonight, no App Store Connect involved.**
+`preview` builds are ad-hoc: they install over the air on registered
+devices only.
 
 ```bash
-npx eas-cli build --platform ios --profile preview   # installable via TestFlight
-npx eas-cli submit --platform ios                    # push to TestFlight
+npx eas-cli device:create                            # register your iPhone's UDID (once)
+npx eas-cli build --platform ios --profile preview   # ~15 min; open the build URL on the phone
 ```
 
-**Android:**
+**TestFlight lane — shareable with anyone.** TestFlight requires an App
+Store distribution build, which is the `production` profile (ad-hoc
+`preview` builds cannot be submitted):
 
 ```bash
-npx eas-cli build --platform android --profile preview   # .apk for direct install
+npx eas-cli build --platform ios --profile production
+npx eas-cli submit --platform ios
 ```
+
+The submit wizard signs into your Apple account, creates the App Store
+Connect app record and an API key for you, and uploads. Then in App Store
+Connect → TestFlight, add yourself (and J-Cal's crew) to an **internal
+testing** group — internal testers skip Beta App Review entirely; builds
+are installable ~10 minutes after processing.
+
+**Where the app points.** Each `eas.json` build profile pins the API
+origin via `EXPO_PUBLIC_ORIGIN` (all three currently aim at the Railway
+staging URL). When the real domain exists, change it there — one line per
+profile; `expo.extra.origin` in `app.json` is only the fallback for local
+development.
+
+**Android:** `npx eas-cli build --platform android --profile preview`
+produces an installable `.apk`. Google Play (separate $25 one-time
+account) can wait — TestFlight is the demo path.
 
 Development build with hot reload on a real device:
 

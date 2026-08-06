@@ -11,6 +11,7 @@
     "expo-linking": "~57.0.5",
     "expo-router": "~57.0.10",
     "expo-share-intent": "^8.0.1",
+    "expo-splash-screen": "~57.0.5",
     "expo-status-bar": "~57.0.1",
     "expo-video": "~57.0.2",
     "expo-web-browser": "~57.0.2",

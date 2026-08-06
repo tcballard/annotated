@@ -44,7 +44,21 @@
       ],
       "expo-router",
       "expo-video",
-      "expo-audio"
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "annotated uses the microphone to record the short voice notes you attach to a source."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 140,
+          "resizeMode": "contain",
+          "backgroundColor": "#F5F4F0"
+        }
+      ]
     ]
   }
 }
