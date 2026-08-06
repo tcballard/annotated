@@ -493,12 +493,16 @@ const chromeBar = () => {
   ];
   return `
   <header class="chrome">
+    <div class="chrome-inner">
     <button class="logo" data-action="set-view" data-view="feed" aria-label="annotated home">annotated<span class="dot">.</span></button>
     <nav aria-label="Primary">
       ${links.map(([view, label]) => `<button class="nav-link ${state.activeView === view ? 'is-active' : ''}" data-action="set-view" data-view="${view}">${label}</button>`).join('')}
     </nav>
+    <span class="chrome-rail">
     <form class="search" data-action="chrome-search-form"><input type="search" data-action="chrome-search" placeholder="Search annotations" aria-label="Search annotations" maxlength="80" value="${escapeHTML(state.feedQuery)}"></form>
     ${chromeAuth()}
+    </span>
+    </div>
   </header>`;
 };
 
