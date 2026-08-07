@@ -1,8 +1,12 @@
 // GENERATED from src/styles.css by scripts/generate-mobile-tokens.mjs — do
 // not edit by hand. The web stylesheet is the single source of truth for
 // the identity; this file carries the same tokens to the native shell.
+// On iOS, tokens the web's dark scheme overrides become DynamicColorIOS
+// pairs, so the native chrome follows the system setting by itself.
 
-export const tokens = {
+import { DynamicColorIOS, Platform, type ColorValue } from 'react-native';
+
+const light = {
   "chrome": "#33383F",
   "chrome-dark": "#26292F",
   "paper": "#F5F4F0",
@@ -25,6 +29,30 @@ export const tokens = {
   "radius-card": "18px",
   "radius-inner": "14px",
 } as const;
+
+const dark = {
+  "paper": "#26292F",
+  "card": "#2C3037",
+  "soft": "#33383F",
+  "border": "#3E444E",
+  "hair": "#383E47",
+  "ink": "#E9EAEC",
+  "ink-soft": "#C9CDD3",
+  "meta": "#9AA0A8",
+  "link": "#8FA4C9",
+  "accent-soft": "rgba(224, 164, 142, .14)",
+  "hover-row": "#31363E",
+  "strip": "#2A2E35",
+} as const;
+
+const dynamic = (name: keyof typeof light): ColorValue | string =>
+  Platform.OS === 'ios' && name in dark
+    ? DynamicColorIOS({ light: light[name], dark: dark[name as keyof typeof dark] })
+    : light[name];
+
+export const tokens = Object.fromEntries(
+  (Object.keys(light) as Array<keyof typeof light>).map((name) => [name, dynamic(name)]),
+) as Record<keyof typeof light, ColorValue | string>;
 
 export const chrome = tokens['chrome'];
 export const paper = tokens['paper'];

@@ -79,7 +79,7 @@ export default function NotificationsScreen() {
       data={items}
       keyExtractor={(item, index) => `${item.type}-${item.createdAt}-${index}`}
       style={styles.frame}
-      contentContainerStyle={[styles.list, { paddingBottom: 84 + Math.max(insets.bottom, 12) }]}
+      contentContainerStyle={[styles.list, { paddingBottom: 24 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={meta} />}
       renderItem={({ item }) => (
         <Pressable

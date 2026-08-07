@@ -333,7 +333,7 @@ const FeedPane = ({ selection, active, actions, ownId, chromePad, onChromeIntent
             onShare={actions.share}
           />
         )}
-        contentContainerStyle={[styles.list, { paddingTop: offline ? 10 : chromePad + 10, paddingBottom: 84 + Math.max(insets.bottom, 12) }]}
+        contentContainerStyle={[styles.list, { paddingTop: offline ? 10 : chromePad + 10, paddingBottom: 24 }]}
         onScroll={onScroll}
         scrollEventThrottle={16}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={meta} progressViewOffset={chromePad} />}
@@ -432,8 +432,8 @@ export default function Timeline() {
   );
 }
 
-const radiusCard = parseInt(tokens['radius-card'], 10) || 18;
-const radiusInner = parseInt(tokens['radius-inner'], 10) || 14;
+const radiusCard = parseInt(String(tokens['radius-card']), 10) || 18;
+const radiusInner = parseInt(String(tokens['radius-inner']), 10) || 14;
 
 const styles = StyleSheet.create({
   frame: { flex: 1, backgroundColor: paper },

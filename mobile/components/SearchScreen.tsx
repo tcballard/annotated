@@ -93,7 +93,7 @@ export default function SearchScreen() {
         data={items}
         keyExtractor={(item, index) => item.slug || String(index)}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.list, { paddingBottom: 84 + Math.max(insets.bottom, 12) }]}
+        contentContainerStyle={[styles.list, { paddingBottom: 24 }]}
         ListHeaderComponent={people.length ? (
           <View style={styles.peopleBlock}>
             <Text style={styles.sectionLabel}>People</Text>

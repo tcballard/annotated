@@ -1,6 +1,8 @@
 // The slide-out panel: who you are, your library, and the product's public
-// pages — the X drawer anatomy in annotated's identity. Signed out it
-// offers exactly one thing: sign in.
+// pages — the X drawer anatomy in annotated's identity. The panel has a
+// top and a bottom: identity (or the wordmark) up top, navigation in the
+// middle with room to breathe, and the session action — sign in or sign
+// out — pinned to the bottom where X keeps settings.
 
 import { useContext, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -13,6 +15,7 @@ import { api } from '../lib/api';
 import { signInNatively } from '../lib/native-auth';
 import { AccountContext } from './AccountContext';
 import { SessionEpochContext } from './WebScreen';
+import BrandMark from './BrandMark';
 import { card, ink, meta, tokens } from '../lib/tokens';
 
 type Counts = { followers: number; following: number; annotationCount: number };
@@ -38,7 +41,7 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
 
   const item = (iconName: keyof typeof Feather.glyphMap, label: string, onPress: () => void) => (
     <Pressable key={label} style={({ pressed }) => [styles.item, pressed && styles.itemPressed]} onPress={onPress}>
-      <Feather name={iconName} size={19} color={ink} />
+      <Feather name={iconName} size={21} color={ink} />
       <Text style={styles.itemLabel}>{label}</Text>
     </Pressable>
   );
@@ -65,14 +68,8 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
         </View>
       ) : (
         <View style={styles.head}>
-          <Text style={styles.name}>annotated</Text>
+          <BrandMark size={26} />
           <Text style={styles.blurb}>Keep the moment, keep the source.</Text>
-          <Pressable
-            style={styles.signIn}
-            onPress={async () => { if (await signInNatively()) { bump(); close(); } }}
-          >
-            <Text style={styles.signInText}>Sign in</Text>
-          </Pressable>
         </View>
       )}
 
@@ -86,15 +83,26 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
         {item('file-text', 'Terms', () => go('/web/terms'))}
       </View>
 
+      <View style={styles.spacer} />
+
       {me ? (
         <Pressable
-          style={({ pressed }) => [styles.item, styles.signOut, pressed && styles.itemPressed]}
+          style={({ pressed }) => [styles.item, styles.foot, pressed && styles.itemPressed]}
           onPress={async () => { await api.logout().catch(() => {}); bump(); close(); }}
         >
-          <Feather name="log-out" size={19} color={meta} />
+          <Feather name="log-out" size={20} color={meta} />
           <Text style={[styles.itemLabel, { color: meta }]}>Sign out</Text>
         </Pressable>
-      ) : null}
+      ) : (
+        <View style={styles.foot}>
+          <Pressable
+            style={styles.signIn}
+            onPress={async () => { if (await signInNatively()) { bump(); close(); } }}
+          >
+            <Text style={styles.signInText}>Sign in</Text>
+          </Pressable>
+        </View>
+      )}
       <Text style={styles.footnote}>annotated · source-first notes</Text>
     </SafeAreaView>
   );
@@ -102,7 +110,7 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
 
 const styles = StyleSheet.create({
   frame: { flex: 1, backgroundColor: card },
-  head: { padding: 18, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: tokens.hair },
+  head: { padding: 20, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: tokens.hair },
   avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   avatarImage: { width: 52, height: 52, borderRadius: 26, backgroundColor: tokens.soft, marginBottom: 10 },
   avatarText: { color: '#fff', fontWeight: '700', fontSize: 20 },
@@ -111,13 +119,14 @@ const styles = StyleSheet.create({
   counts: { flexDirection: 'row', gap: 14, marginTop: 10 },
   count: { color: meta, fontSize: 13 },
   countN: { color: ink, fontWeight: '700' },
-  blurb: { color: meta, fontSize: 13.5, marginTop: 4 },
-  signIn: { marginTop: 14, backgroundColor: tokens.chrome, borderRadius: 99, paddingVertical: 10, alignItems: 'center' },
-  signInText: { color: '#fff', fontWeight: '700', fontSize: 14.5 },
-  items: { paddingVertical: 8 },
-  item: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 18, paddingVertical: 13 },
+  blurb: { color: meta, fontSize: 14, marginTop: 6 },
+  items: { paddingVertical: 10 },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 20, paddingVertical: 15 },
   itemPressed: { backgroundColor: tokens.soft },
-  itemLabel: { color: ink, fontSize: 15.5, fontWeight: '600' },
-  signOut: { marginTop: 'auto', borderTopWidth: 1, borderTopColor: tokens.hair },
-  footnote: { color: meta, fontSize: 11.5, paddingHorizontal: 18, paddingVertical: 10 },
+  itemLabel: { color: ink, fontSize: 16.5, fontWeight: '700' },
+  spacer: { flex: 1 },
+  foot: { borderTopWidth: 1, borderTopColor: tokens.hair, paddingHorizontal: 20, paddingVertical: 14 },
+  signIn: { backgroundColor: tokens.chrome, borderRadius: 99, paddingVertical: 12, alignItems: 'center' },
+  signInText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  footnote: { color: meta, fontSize: 11.5, paddingHorizontal: 20, paddingBottom: 10 },
 });

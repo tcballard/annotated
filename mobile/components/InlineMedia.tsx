@@ -6,7 +6,7 @@
 // web draws.
 
 import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, type ColorValue } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
@@ -19,7 +19,7 @@ import { ink, meta, tokens } from '../lib/tokens';
 export const Waveform = ({ peaks, progress = 0 }: { peaks: number[] | null; progress?: number }) => {
   const [width, setWidth] = useState(0);
   if (!Array.isArray(peaks) || !peaks.length) return null;
-  const bars = (color: string) => peaks.map((peak, index) => (
+  const bars = (color: ColorValue | string) => peaks.map((peak, index) => (
     <View key={index} style={[styles.waveBar, { backgroundColor: color, height: `${Math.max(8, Math.min(100, Number(peak) || 0))}%` }]} />
   ));
   return (

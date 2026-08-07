@@ -22,11 +22,9 @@ export default function TabsLayout() {
   // The pen is not a destination: it summons the capture sheet over
   // whatever you were reading, X-compose style.
   const [captureOpen, setCaptureOpen] = useState(false);
-  // The pill floats: inset from the edges, above the home indicator, and
-  // the surfaces that cannot scroll behind it (the WebView tabs) end at
-  // its clearance instead.
-  const barBottom = Math.max(insets.bottom, 12) + 4;
-  const webSceneStyle = { backgroundColor: paper, paddingBottom: barBottom + 60 };
+  // The bar is flat and full-width, X-style: card surface, one hairline,
+  // icons over the home indicator. No pill, no shadow, no float.
+  const webSceneStyle = { backgroundColor: paper };
   return (
     <>
     <Tabs
@@ -41,24 +39,16 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: meta,
         tabBarShowLabel: false,
         tabBarStyle: {
-          position: 'absolute',
-          left: 14,
-          right: 14,
-          bottom: barBottom,
-          height: 58,
-          borderRadius: 29,
           backgroundColor: card,
-          borderTopWidth: 0,
-          borderWidth: 1,
-          borderColor: tokens.border,
-          paddingBottom: 0,
-          shadowColor: tokens['chrome-dark'],
-          shadowOpacity: 0.18,
-          shadowRadius: 24,
-          shadowOffset: { width: 0, height: 6 },
-          elevation: 8,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: tokens.border,
+          height: 52 + insets.bottom,
+          paddingBottom: insets.bottom,
+          paddingTop: 2,
+          elevation: 0,
+          shadowOpacity: 0,
         },
-        tabBarItemStyle: { height: 58, paddingTop: 8 },
+        tabBarItemStyle: { height: 50 },
       }}
       screenListeners={{
         tabPress: () => { void Haptics.selectionAsync(); },
