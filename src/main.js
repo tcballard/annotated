@@ -751,7 +751,7 @@ const permalinkView = () => {
         ${isMine && annotation.commentaryMode === 'text' && withinEditWindow(annotation) && !state.editingNote ? `<button class="act" data-action="edit-note">Edit note</button>` : ''}
         ${isMine ? `<button class="act" data-action="delete-annotation" data-slug="${escapeHTML(item.slug)}">Delete</button>` : ''}
         ${openOriginalAction(item)}
-        <button class="act claim" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug)}" data-claim-title="${escapeHTML(item.sourceTitle)}">${icon('claim')}File a claim</button>
+        <button class="act claim" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug)}" data-claim-title="${escapeHTML(item.sourceTitle)}" title="Dispute a fair-use breach on this annotation">${icon('claim')}Dispute fair use</button>
       </div>
     </article>
     <section class="responses">
@@ -977,11 +977,11 @@ const lightboxView = () => state.lightbox ? `<div class="lightbox" data-action="
 const claimModal = () => `<div class="modal-backdrop" data-action="close-claim">
   <div class="claim-modal" role="dialog" aria-modal="true" aria-labelledby="claim-title" aria-describedby="claim-description" data-action="stop-modal" data-stop-click="true">
     <button class="modal-close" data-action="close-claim" aria-label="Close claim form">${icon('close')}</button>
-    <h3 id="claim-title">${state.claimSubmitted ? 'Claim received' : 'File a claim'}</h3>
+    <h3 id="claim-title">${state.claimSubmitted ? 'Dispute received' : 'Dispute fair use'}</h3>
     ${state.claimTitle ? `<p class="claim-context">About: ${escapeHTML(state.claimTitle)}</p>` : ''}
     ${state.claimSubmitted
       ? `<div class="claim-success" role="status"><strong>Thank you for flagging this.</strong><p id="claim-description">The report is attached to this annotation for review.</p></div><button class="btn full-button" data-action="close-claim">Done</button>`
-      : `<p id="claim-description">Tell us what is wrong with this annotation. The report stays attached to the source page.</p><label>What should we review?<textarea placeholder="Describe the issue…" data-action="claim-text" aria-describedby="claim-error">${escapeHTML(state.claimReason)}</textarea></label>${state.claimError ? `<p class="claim-error" id="claim-error" role="alert">${escapeHTML(state.claimError)}</p>` : '<span id="claim-error" hidden></span>'}<button class="btn full-button" data-action="submit-claim">Send claim</button>`}
+      : `<p id="claim-description">Use this if the annotation misuses your work or breaches fair use. The report stays attached to the source page.</p><label>What should we review?<textarea placeholder="Describe the issue…" data-action="claim-text" aria-describedby="claim-error">${escapeHTML(state.claimReason)}</textarea></label>${state.claimError ? `<p class="claim-error" id="claim-error" role="alert">${escapeHTML(state.claimError)}</p>` : '<span id="claim-error" hidden></span>'}<button class="btn full-button" data-action="submit-claim">Send dispute</button>`}
   </div>
 </div>`;
 
@@ -1060,7 +1060,7 @@ const auditRows = [
   ['A landing page per clip', 'Every annotation gets <span class="kbd-mono">/a/:slug</span> with server-injected social meta and a rendered share card at <span class="kbd-mono">/og/:slug.png</span>.'],
   ['Public feed, follow, comment', 'A public timeline with Recent and Following, responses on every page, profiles, per-source hubs, and curators ranked by opens driven back to sources.'],
   ['Sign in with X or Google only', 'Both providers ship enabled; production refuses to boot unless both credential pairs are configured.'],
-  ['File a claim on every annotation page', 'Above the fold on every page. Claims persist, deduplicate, and feed a moderation queue that can resolve into a real takedown — a public tombstone with the hosted media deleted.'],
+  ['Dispute fair use on every annotation page', 'A clearly visible button on every page, plus a no-JS form for rights holders without an account. Disputes persist, deduplicate, and feed a moderation queue that can resolve into a real takedown — a public tombstone with the hosted media deleted.'],
   ['YouTube, podcasts, and articles', 'YouTube via the extractor pipeline, podcasts from RSS enclosures and direct audio, articles through a bounded resolver — one annotation model across all three.'],
 ];
 
@@ -1082,7 +1082,7 @@ const rightsView = () => docPage('Rights &amp; claims', 'for source owners', `
     <p>annotated hosts bounded excerpts — at most 90 seconds, video at 240p — with a required, prominent link to the original on every page. The point of the product is to send readers back to the source; opens of the original are the number we rank by.</p>
   </div>
   <div class="card"><h2>Filing a claim</h2>
-    <p>Every annotation page has a <strong>File a claim</strong> action above the fold. A claim is persisted, attached to the annotation, deduplicated while active, and lands in a moderation queue with the source and reporter attached.</p>
+    <p>Every annotation page has a <strong>Dispute fair use</strong> button, clearly visible in the page's action bar — and a <a href="/rights" data-action="set-view" data-view="rights">no-JS form</a> at <code>/a/&lt;slug&gt;/claim</code> for rights holders without an account. A dispute is persisted, attached to the annotation, deduplicated while active, and lands in a moderation queue with the source and reporter attached.</p>
   </div>
   <div class="card"><h2>What a takedown looks like</h2>
     <p>A claim resolved with a takedown removes the annotation for real: the hosted media is deleted and the page becomes a public tombstone stating that the source owner asked for it to come down. The claim trail is retained for accountability — takedowns are visible, not silent, and every one is listed on the public <a href="/transparency" data-action="set-view" data-view="transparency">transparency report</a>.</p>
@@ -1124,7 +1124,7 @@ const transparencyView = () => {
     <div class="card"><h2>How removal works here</h2>
       <p>A claim upheld by moderation removes the annotation for real: hosted media is deleted and the page becomes a permanent public tombstone — takedowns are visible, never silent. Authors can also delete their own work at any time; those pages simply cease to exist and are not listed here.</p>
     </div>
-    <p class="doc-footnote">To report a rights issue, use <strong>File a claim</strong> on the annotation page — see <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>.</p>
+    <p class="doc-footnote">To report a rights issue, use <strong>Dispute fair use</strong> on the annotation page — see <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>.</p>
   `);
 };
 

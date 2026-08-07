@@ -723,6 +723,8 @@ const servePermalink = async (response, slug) => {
   if (!found) return serveAppShell(response);
   let html;
   try { html = await readFile(path.join(projectRoot, 'dist/index.html'), 'utf8'); } catch { return notFound(response); }
+  // The dispute path survives with JavaScript off: the meta injector adds a
+  // visible no-script link to the plain /a/<slug>/claim form on every page.
   const payload = injectAnnotationMeta(html, found.annotation, found.author, publicOrigin, { index: allowsIndexing(found.annotation) });
   response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...securityHeaders() });
   return response.end(payload);
@@ -736,7 +738,7 @@ const servePermalink = async (response, slug) => {
 // "moment".
 
 const claimFormHtml = ({ annotation, mode = 'form', error = '', values = {} }) => {
-  const title = mode === 'received' ? 'Claim received' : mode === 'gone' ? 'Already taken down' : mode === 'missing' ? 'Annotation not found' : 'File a claim';
+  const title = mode === 'received' ? 'Dispute received' : mode === 'gone' ? 'Already taken down' : mode === 'missing' ? 'Annotation not found' : 'Dispute fair use';
   const context = annotation
     ? `<p class="ctx">About: <strong>${escapeHtml(annotation.sourceTitle || 'an annotation')}</strong>${annotation.sourceHost ? ` · ${escapeHtml(annotation.sourceHost)}` : ''}</p>`
     : '';
@@ -753,7 +755,7 @@ const claimFormHtml = ({ annotation, mode = 'form', error = '', values = {} }) =
       <label>How can we reach you?<br /><input type="email" name="contact" required maxlength="200" placeholder="you@example.com" value="${escapeHtml(values.contact || '')}" /></label>
       <label>What should we review?<br /><textarea name="reason" required maxlength="2000" rows="6" placeholder="Tell us what is wrong with this annotation…">${escapeHtml(values.reason || '')}</textarea></label>
       <div class="hp"><label>Leave this field empty<input type="text" name="website" tabindex="-1" autocomplete="off" value="" /></label></div>
-      <button type="submit">Send claim</button>
+      <button type="submit">Send dispute</button>
     </form>
     <p class="fine">Reviews are logged with an audit trail. Read <a href="/rights">Rights &amp; claims</a> for how takedowns work.</p>`;
   return `<!doctype html>

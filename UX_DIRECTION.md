@@ -57,7 +57,7 @@ laws, not suggestions; `test/terracotta-audit.test.js` enforces the first one.
 - Targets ≥ 40px in the panel. Text ≥ 12.5px. `--meta` on white ≥ 4.5:1.
   Empty states name the next action.
 - Copy: sentence case, active voice, the interface never apologizes. Buttons
-  say what happens: "Publish", "File a claim", "Open original at 0:14".
+  say what happens: "Publish", "Dispute fair use", "Open original at 0:14".
 
 ## Surfaces
 
@@ -71,7 +71,7 @@ laws, not suggestions; `test/terracotta-audit.test.js` enforces the first one.
 - **Permalink** (`/a/:slug`) is the judged surface: byline → note → hosted
   240p clip with CLIP tag and duration badge → source strip with the chip and
   "Open original at 0:14 ↗" → serif pull-quote → action bar with
-  Open original · Respond · Share · **File a claim** always above the fold →
+  Open original · Respond · Share · **Dispute fair use** always above the fold →
   responses.
 - **Capture** (`/capture`): the paste-a-URL fallback for step 02 — one card,
   URL + Resolve, polymorphic selection row, note, Publish.
