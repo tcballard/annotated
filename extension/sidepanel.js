@@ -691,6 +691,7 @@ const restoreDraft = (draft) => {
 const resetCaptureState = () => {
   recordingToken += 1;
   clearInterval(recordingTimer);
+  setReviewTake(null);
   if (mediaRecorder?.state === 'recording') mediaRecorder.stop();
   recordingStream?.getTracks().forEach((track) => track.stop());
   recordingStream = null;
@@ -968,6 +969,45 @@ const stopAudioRecording = () => {
   mediaRecorder.stop();
 };
 
+// Voice notes were published unheard. The staged take stays reviewable —
+// one button, play or stop, revoked whenever the take changes.
+let reviewAudio = null;
+let reviewUrl = '';
+const audioReview = $('#audioReview');
+
+const setReviewTake = (blob) => {
+  if (reviewAudio) { reviewAudio.pause(); reviewAudio = null; }
+  if (reviewUrl) { URL.revokeObjectURL(reviewUrl); reviewUrl = ''; }
+  audioStatus.classList.remove('rec-ending');
+  audioReview.hidden = !blob;
+  audioReview.classList.remove('is-playing');
+  audioReview.textContent = 'Review take';
+  if (blob) reviewUrl = URL.createObjectURL(blob);
+};
+
+audioReview.addEventListener('click', () => {
+  if (!reviewUrl) return;
+  if (reviewAudio && !reviewAudio.paused) {
+    reviewAudio.pause();
+    reviewAudio.currentTime = 0;
+    audioReview.classList.remove('is-playing');
+    audioReview.textContent = 'Review take';
+    return;
+  }
+  if (!reviewAudio) reviewAudio = new Audio(reviewUrl);
+  reviewAudio.currentTime = 0;
+  audioReview.classList.add('is-playing');
+  audioReview.textContent = 'Stop review';
+  reviewAudio.addEventListener('ended', () => {
+    audioReview.classList.remove('is-playing');
+    audioReview.textContent = 'Review take';
+  }, { once: true });
+  void reviewAudio.play().catch(() => {
+    audioReview.classList.remove('is-playing');
+    audioReview.textContent = 'Review take';
+  });
+});
+
 const startAudioRecording = async () => {
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     showError('Audio recording is not supported in this browser.');
@@ -1001,6 +1041,7 @@ const startAudioRecording = async () => {
       recordingChunks = [];
       if (mediaRecorder === recorder) mediaRecorder = null;
       if (token !== recordingToken || currentTab.url !== sourceUrl) return;
+      setReviewTake(blob); // hear it before you publish it
       try {
         const stagedId = await stageAudioDraft(blob, { duration: audioDurationSeconds, mimeType: recordedMimeType });
         if (token !== recordingToken || currentTab.url !== sourceUrl) {
@@ -1017,10 +1058,14 @@ const startAudioRecording = async () => {
       syncComposer();
     });
     recorder.start(250);
+    setReviewTake(null);
     setAudioStatus('Recording your take…', `Press to stop · max ${format(MAX_AUDIO_SECONDS)}`);
     recordingTimer = setInterval(() => {
       audioDurationSeconds = clampAudioDuration((Date.now() - recordingStartedAt) / 1000);
-      setAudioStatus('Recording your take…', `Press to stop · max ${format(MAX_AUDIO_SECONDS)}`);
+      const remaining = Math.max(0, Math.ceil(MAX_AUDIO_SECONDS - audioDurationSeconds));
+      // the last ten seconds speak up instead of cutting off by surprise
+      audioStatus.classList.toggle('rec-ending', remaining <= 10);
+      setAudioStatus('Recording your take…', remaining <= 10 ? `${remaining}s left — it stops itself at ${format(MAX_AUDIO_SECONDS)}` : `Press to stop · max ${format(MAX_AUDIO_SECONDS)}`);
       if (audioDurationSeconds >= MAX_AUDIO_SECONDS) stopAudioRecording();
     }, 250);
   } catch (recordingError) {

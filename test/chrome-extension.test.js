@@ -266,6 +266,11 @@ test('the badge keeps its promise: the digest shows before the watermark moves',
   assert.match(runtime, /if \(currentTabId !== tab\.id\) return; \/\/ a faster tab switch won the race/);
   assert.match(runtime, /if \(currentTab\.url !== url\) return;/);
   assert.match(runtime, /changeInfo\.status === 'complete' \|\| changeInfo\.url/);
+  // voice notes are reviewable before publishing, and the cap warns first
+  assert.match(html, /id="audioReview" type="button" hidden>Review take</);
+  assert.match(runtime, /setReviewTake\(blob\); \/\/ hear it before you publish it/);
+  assert.match(runtime, /URL\.revokeObjectURL\(reviewUrl\)/, 'takes are revoked, never leaked');
+  assert.match(runtime, /s left — it stops itself at/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {

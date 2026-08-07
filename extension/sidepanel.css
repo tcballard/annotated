@@ -829,6 +829,10 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .grabber[disabled] { opacity: .55; cursor: progress; }
 .grabber[disabled]:hover { background: var(--soft); color: var(--meta); }
 
+/* the last ten seconds of a take speak up; a review in flight says so */
+#audioStatus.rec-ending { color: var(--ink); font-weight: 700; }
+.rec-retry.is-playing { color: var(--ink); border-color: var(--ink-soft); }
+
 /* a like is a stamp pressed in, not a pop */
 .act svg { transition: fill var(--t-hover) var(--e-ink), stroke var(--t-hover) var(--e-ink); }
 .act.just-liked svg { animation: heart-press var(--t-fade) var(--e-enter); }
