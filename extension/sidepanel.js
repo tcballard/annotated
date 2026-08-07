@@ -825,10 +825,27 @@ const armGrabber = (preview) => {
 };
 
 chrome.runtime?.onMessage?.addListener((message, sender) => {
-  if (message?.type !== 'ANNOTATED_SELECTION') return;
-  if (sender?.tab?.id !== currentTabId) return;
-  armGrabber(message.preview || '');
+  if (message?.type === 'ANNOTATED_SELECTION') {
+    if (sender?.tab?.id !== currentTabId) return;
+    armGrabber(message.preview || '');
+    return;
+  }
+  // Right-click "Annotate" while the panel is already open: capture now.
+  if (message?.type === 'ANNOTATED_GRAB_SELECTION' && message.tabId === currentTabId) {
+    void captureSelection();
+  }
 });
+
+// Right-click "Annotate" on a cold panel: the background stashed the request
+// before opening us; consume it once the tab is known.
+const consumePendingGrab = async () => {
+  try {
+    const { annotatedPendingGrab } = await chrome.storage.session.get('annotatedPendingGrab');
+    if (!annotatedPendingGrab) return;
+    await chrome.storage.session.remove('annotatedPendingGrab');
+    if (annotatedPendingGrab.tabId === currentTabId) await captureSelection();
+  } catch { /* nothing pending */ }
+};
 
 const installSelectionWatcher = async (tabId, url) => {
   if (!Number.isInteger(tabId) || !/^https?:/.test(url || '')) return;
@@ -1631,6 +1648,7 @@ const boot = async () => {
   // Source resolution is gated on the backend being online; if the tab won
   // the race, run the light same-tab pass now that the backend answered.
   if (backendOnline && !resolvedSource) await loadCurrentTab();
+  await consumePendingGrab();
   await loadTimeline('recent');
   await refreshQueueStatus();
   await markNotificationsSeen();

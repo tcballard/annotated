@@ -181,6 +181,15 @@ test('the first seconds are honest: no false errors while the panel boots', asyn
   assert.match(html, /id="grabLabel"/);
   // capturing hands focus to the note — the next step of the loop
   assert.match(runtime, /saveDraft\(\);\s*\n\s*note\.focus\(\);/);
+  // a keyboard and a right-click both reach the panel
+  const manifest = JSON.parse(await read('manifest.json'));
+  assert.equal(manifest.commands._execute_action.suggested_key.default, 'Alt+A');
+  assert.ok(manifest.permissions.includes('contextMenus'));
+  const background = await read('background.js');
+  assert.match(background, /contextMenus\.create\(\{ id: 'annotated-capture-selection', title: 'Annotate “%s”', contexts: \['selection'\] \}\)/);
+  assert.match(background, /chrome\.sidePanel\.open\(\{ tabId: tab\.id \}\)/, 'the context-menu click is the user gesture that opens the panel');
+  assert.match(runtime, /ANNOTATED_GRAB_SELECTION/);
+  assert.match(runtime, /const consumePendingGrab = /, 'a cold panel finds the stashed request at boot');
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {

@@ -146,8 +146,23 @@ const setupNotificationsBadge = async () => {
 chrome.runtime.onInstalled.addListener(() => {
   runBackgroundTask('installation setup', async () => {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+    // Right-click a selection anywhere → the panel opens with it captured.
+    await chrome.contextMenus.removeAll().catch(() => {});
+    chrome.contextMenus.create({ id: 'annotated-capture-selection', title: 'Annotate “%s”', contexts: ['selection'] });
     await setupRetry();
     await setupNotificationsBadge();
+  });
+});
+
+chrome.contextMenus?.onClicked.addListener((info, tab) => {
+  if (info.menuItemId !== 'annotated-capture-selection' || !tab?.id) return;
+  runBackgroundTask('context-menu capture', async () => {
+    // Stash first so a cold panel finds the request at boot; the message
+    // covers the already-open panel. The context-menu click is the user
+    // gesture sidePanel.open requires.
+    await chrome.storage.session.set({ annotatedPendingGrab: { tabId: tab.id } }).catch(() => {});
+    await chrome.sidePanel.open({ tabId: tab.id });
+    await chrome.runtime.sendMessage({ type: 'ANNOTATED_GRAB_SELECTION', tabId: tab.id }).catch(() => {});
   });
 });
 
