@@ -26,6 +26,7 @@ const ALLOWED_SELECTORS = [
   /::after$/, // section-header full stops (h1/h2-level only)
   /\.pull$/,  // the pull-quote's terracotta rule
   /\.bell \.n$/, // the unseen-notifications dot — new activity IS a moment
+  /\.notif-digest \.n$/, // the panel's digest count — same law, same moment
   /\.pub-check \.(ring|tick)$/, // the publish celebration — publishing IS the moment
   /\.pub-moment \.dot$/, // its full stop
   // keyframe stops carry accent values only on behalf of animations that are

@@ -1674,10 +1674,40 @@ document.addEventListener('keydown', (event) => {
 
 // Opening the panel counts as seeing your notifications: the server-side
 // watermark moves, and the background worker drops the toolbar badge.
+// The toolbar badge made a promise; keep it. Before the watermark moves,
+// show what arrived — a digest strip naming the count and the latest event,
+// opening the full notifications page on the web.
+const notifDigest = $('#notifDigest');
+const notifDigestCount = $('#notifDigestCount');
+const notifDigestDetail = $('#notifDigestDetail');
+
+const notificationSentence = (item) => {
+  const actor = item?.actor?.displayName || (item?.actor?.handle ? `@${item.actor.handle}` : 'Someone');
+  if (item?.type === 'response') return `${actor} responded to your annotation`;
+  if (item?.type === 'like') return `${actor} liked your annotation`;
+  if (item?.type === 'follow') return `${actor} followed you`;
+  return `${actor} — new activity`;
+};
+
+notifDigest.addEventListener('click', async () => {
+  notifDigest.hidden = true;
+  const origin = await apiOrigin();
+  window.open(`${origin}/notifications`, '_blank', 'noreferrer');
+});
+
 const markNotificationsSeen = async () => {
   try {
     const headers = await authHeaders();
     if (!headers.authorization) return;
+    try {
+      const digest = await apiRequest('/api/notifications');
+      const unseen = Number(digest.unseenCount) || 0;
+      if (unseen > 0) {
+        notifDigestCount.textContent = unseen > 9 ? '9+' : String(unseen);
+        notifDigestDetail.textContent = notificationSentence((digest.notifications || [])[0]);
+        notifDigest.hidden = false;
+      }
+    } catch { /* the digest is a courtesy; the watermark still moves below */ }
     await fetch(`${await apiOrigin()}/api/notifications/seen`, { method: 'POST', headers });
     await chrome.runtime.sendMessage({ type: 'NOTIFICATIONS_SEEN' });
   } catch { /* offline or signed out — the badge keeps its count */ }

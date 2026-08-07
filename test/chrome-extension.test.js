@@ -232,6 +232,18 @@ test('the panel moves on one clock: motion tokens and gated one-shot beats', asy
   assert.match(styles, /\.publish:not\(\[disabled\]\):hover/);
 });
 
+test('the badge keeps its promise: the digest shows before the watermark moves', async () => {
+  const runtime = await read('sidepanel.js');
+  const html = await read('sidepanel.html');
+  assert.match(html, /id="notifDigest" type="button" hidden/);
+  assert.match(runtime, /const digest = await apiRequest\('\/api\/notifications'\);/);
+  assert.match(runtime, /notifDigest\.hidden = false;/);
+  // the digest renders BEFORE the seen POST in the same function
+  const fn = runtime.match(/const markNotificationsSeen = [\s\S]*?\n\};/)[0];
+  assert.ok(fn.indexOf('notifDigest.hidden = false') < fn.indexOf('/api/notifications/seen'), 'digest first, watermark second');
+  assert.match(runtime, /responded to your annotation/);
+});
+
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {
   const html = await read('sidepanel.html');
   const runtime = await read('sidepanel.js');

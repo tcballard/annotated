@@ -19,6 +19,14 @@
     </header>
 
     <div class="scroll">
+      <!-- what the toolbar badge promised: the digest of new activity,
+           shown once before the watermark moves -->
+      <button class="notif-digest" id="notifDigest" type="button" hidden>
+        <span class="n" id="notifDigestCount" aria-hidden="true"></span>
+        <span class="notif-digest-main"><b>Since you last looked</b><small id="notifDigestDetail"></small></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+      </button>
+
       <!-- panel modes: writing the margin or reading it, each at full height -->
       <div class="thead">
         <div class="tabs" role="tablist" aria-label="Panel mode">
