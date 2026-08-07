@@ -16,17 +16,23 @@ take if you can — the product's pacing is part of the pitch.
   2. A long-form article worth quoting.
   3. The annotated web timeline, signed in.
 - iOS Simulator pre-arranged screen-right with the native app on its
-  timeline, signed in as the same account. No Apple Developer membership
-  or device registration needed — simulators skip all of it:
+  timeline, signed in as the same account. Easiest path is
+  [Expo Orbit](https://expo.dev/orbit): sign in, pick
+  **tcballard-oss / annotated**, and install the latest `simulator`
+  profile build straight into a simulator — one click, no Xcode build,
+  no dev server, no Apple credentials (simulator builds are unsigned by
+  design). The build runs standalone against staging with the JS
+  embedded.
+
+  Fallback if you'd rather build locally:
 
   ```sh
   cd mobile && npm ci
   EXPO_PUBLIC_ORIGIN=https://annotated-staging.up.railway.app npx expo run:ios
   ```
 
-  (Needs Xcode with an iOS Simulator runtime installed. A physical phone
-  with the dev build works too, but on a screen recording the simulator
-  reads better anyway.)
+  (A physical phone with the dev build works too, but on a screen
+  recording the simulator reads better anyway.)
 - OS in light mode, reduced motion off, notifications silenced.
 - One practice run for the marks: the demo lives or dies on beat 1's
   confidence.
