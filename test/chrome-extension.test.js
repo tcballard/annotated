@@ -173,6 +173,14 @@ test('the first seconds are honest: no false errors while the panel boots', asyn
   assert.match(runtime, /annotatedIntroSeen/);
   // the Following empty state teaches instead of dead-ending
   assert.match(runtime, /data-feed-tab-jump="recent">Browse Recent</);
+  // the grabber arms itself from a live selection instead of waiting to fail
+  assert.match(runtime, /function watchSelectionInPage\(\)/);
+  assert.match(runtime, /window\.__annotatedSelectionWatch/, 'the injected watcher self-guards against double injection');
+  assert.match(runtime, /type: 'ANNOTATED_SELECTION'/);
+  assert.match(runtime, /sender\?\.tab\?\.id !== currentTabId/, 'messages from other tabs never arm the grabber');
+  assert.match(html, /id="grabLabel"/);
+  // capturing hands focus to the note — the next step of the loop
+  assert.match(runtime, /saveDraft\(\);\s*\n\s*note\.focus\(\);/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {

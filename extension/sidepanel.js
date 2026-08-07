@@ -709,7 +709,9 @@ const loadCurrentTab = async () => {
   }
   const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
   currentTab = { url, title: tab.title || host || 'This tab', host, sourceType: currentTab.sourceType || 'article', duration: 0 };
+  if (changed) armGrabber('');
   currentTab.sourceType = await detectSourceType(tab.id, url);
+  void installSelectionWatcher(tab.id, url);
   if (changed) {
     const draft = await extensionStorage.getTabDraft(currentTabId).catch(() => null);
     if (draft && draft.sourceUrl === url) restoreDraft(draft);
@@ -793,6 +795,48 @@ manualOut.addEventListener('change', () => applyManualMark('out', manualOut));
 
 /* ── article selection ─────────────────────────────────────────────── */
 
+// The grabber arms itself: a debounced selectionchange watcher lives in the
+// page (self-guarding, injected once per document) and messages the panel,
+// so the button reads "Capture 'The first few words…'" the moment a
+// selection exists instead of waiting to fail.
+function watchSelectionInPage() {
+  if (window.__annotatedSelectionWatch) return true;
+  window.__annotatedSelectionWatch = true;
+  let timer;
+  document.addEventListener('selectionchange', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const text = String(window.getSelection()?.toString() || '').replace(/\s+/g, ' ').trim();
+      try { chrome.runtime.sendMessage({ type: 'ANNOTATED_SELECTION', preview: text.slice(0, 80) }); } catch { /* extension reloaded */ }
+    }, 250);
+  });
+  return true;
+}
+
+const grabLabel = $('#grabLabel');
+const GRAB_IDLE_LABEL = 'Highlight a passage on the page, then capture it';
+
+const armGrabber = (preview) => {
+  const armed = Boolean(preview);
+  grabSelection.classList.toggle('is-armed', armed);
+  grabLabel.textContent = armed
+    ? `Capture “${preview.length > 42 ? `${preview.slice(0, 42).trimEnd()}…` : preview}”`
+    : GRAB_IDLE_LABEL;
+};
+
+chrome.runtime?.onMessage?.addListener((message, sender) => {
+  if (message?.type !== 'ANNOTATED_SELECTION') return;
+  if (sender?.tab?.id !== currentTabId) return;
+  armGrabber(message.preview || '');
+});
+
+const installSelectionWatcher = async (tabId, url) => {
+  if (!Number.isInteger(tabId) || !/^https?:/.test(url || '')) return;
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, func: watchSelectionInPage });
+  } catch { /* pages that refuse injection simply keep the un-armed grabber */ }
+};
+
 const captureSelection = async () => {
   const grabbed = await readPageSelection();
   if (!grabbed.text) {
@@ -803,6 +847,7 @@ const captureSelection = async () => {
   selection = grabbed;
   syncSelectionCard();
   saveDraft();
+  note.focus();
 };
 
 grabSelection.addEventListener('click', () => { void captureSelection(); });
