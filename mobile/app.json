@@ -22,10 +22,23 @@
         "backgroundColor": "#F3F1ED",
         "foregroundImage": "./assets/adaptive-icon.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "extra": {
-      "origin": "https://annotated-staging.up.railway.app"
+      "origin": "https://annotated-staging.up.railway.app",
+      "eas": {
+        "projectId": "1655592c-905a-426f-97af-3eeaafd7a0c2"
+      },
+      "router": {}
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
     },
     "plugins": [
       "expo-web-browser",
@@ -59,6 +72,10 @@
           "backgroundColor": "#F5F4F0"
         }
       ]
-    ]
+    ],
+    "owner": "tcballard-oss",
+    "updates": {
+      "url": "https://u.expo.dev/1655592c-905a-426f-97af-3eeaafd7a0c2"
+    }
   }
 }

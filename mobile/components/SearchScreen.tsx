@@ -105,10 +105,13 @@ export default function SearchScreen() {
             item={item}
             following={Boolean(actions.followingIds[item.authorId])}
             ownId={me?.id || ''}
+            liked={actions.likeStateOf(item).likedByMe}
+            likeCount={actions.likeStateOf(item).likes}
             onOpenAnnotation={actions.openAnnotation}
             onOpenProfile={actions.openProfile}
             onOpenOriginal={actions.openOriginal}
             onToggleFollow={actions.toggleFollow}
+            onToggleLike={actions.toggleLike}
             onShare={actions.share}
           />
         )}

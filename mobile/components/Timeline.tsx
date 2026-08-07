@@ -133,7 +133,26 @@ export const useFeedActions = () => {
     }
   };
 
-  return { followingIds, openAnnotation, openProfile, openOriginal, share, toggleFollow };
+  // Optimistic like state, keyed by slug; the server's likedByMe/likes are
+  // the baseline until the reader toggles.
+  const [likeOverrides, setLikeOverrides] = useState<Record<string, { likedByMe: boolean; likes: number }>>({});
+  const likeStateOf = (item: FeedItem) => (item.slug && likeOverrides[item.slug]) || { likedByMe: item.likedByMe, likes: item.likes };
+  const toggleLike = async (item: FeedItem) => {
+    if (!item.slug) return;
+    const slug = item.slug;
+    const current = likeStateOf(item);
+    const next = { likedByMe: !current.likedByMe, likes: Math.max(0, current.likes + (current.likedByMe ? -1 : 1)) };
+    setLikeOverrides((overrides) => ({ ...overrides, [slug]: next }));
+    try {
+      await (current.likedByMe ? api.unlike(slug) : api.like(slug));
+      void Haptics.selectionAsync();
+    } catch (error: any) {
+      setLikeOverrides((overrides) => ({ ...overrides, [slug]: current }));
+      if (error?.status === 401 && await signInNatively()) bump();
+    }
+  };
+
+  return { followingIds, openAnnotation, openProfile, openOriginal, share, toggleFollow, likeStateOf, toggleLike };
 };
 
 export type FeedActions = ReturnType<typeof useFeedActions>;
@@ -142,14 +161,17 @@ type CardProps = {
   item: FeedItem;
   following: boolean;
   ownId: string;
+  liked: boolean;
+  likeCount: number;
   onOpenAnnotation: (item: FeedItem) => void;
   onOpenProfile: (item: FeedItem) => void;
   onOpenOriginal: (item: FeedItem) => void;
   onToggleFollow: (item: FeedItem) => void;
+  onToggleLike: (item: FeedItem) => void;
   onShare: (item: FeedItem) => void;
 };
 
-export const FeedCard = ({ item, following, ownId, onOpenAnnotation, onOpenProfile, onOpenOriginal, onToggleFollow, onShare }: CardProps) => (
+export const FeedCard = ({ item, following, ownId, liked, likeCount, onOpenAnnotation, onOpenProfile, onOpenOriginal, onToggleFollow, onToggleLike, onShare }: CardProps) => (
   <Pressable style={({ pressed }) => [styles.post, pressed && styles.postPressed]} onPress={() => onOpenAnnotation(item)}>
     <Pressable onPress={() => onOpenProfile(item)} hitSlop={6}>
       {item.avatarUrl
@@ -164,28 +186,35 @@ export const FeedCard = ({ item, following, ownId, onOpenAnnotation, onOpenProfi
       <View style={styles.byline}>
         <Pressable onPress={() => onOpenProfile(item)} hitSlop={6} style={styles.who}>
           <Text style={styles.name} numberOfLines={1}>{item.displayName || `@${item.handle}`}</Text>
-          <Text style={styles.metaText} numberOfLines={1}>{`${item.displayName ? `@${item.handle} · ` : ''}${item.time}${item.editedAt ? ' · edited' : ''}`}</Text>
+          {(item.displayName || item.editedAt) ? (
+            <Text style={styles.metaText} numberOfLines={1}>{`${item.displayName ? `@${item.handle}` : ''}${item.editedAt ? `${item.displayName ? ' · ' : ''}edited` : ''}`}</Text>
+          ) : null}
         </Pressable>
         {item.topic ? <Text style={styles.topicTag}>{topicLabel(item.topic)}</Text> : null}
+        <Text style={styles.postTime}>{item.time}</Text>
       </View>
       {item.commentary
         ? <Text style={styles.note}>{item.commentary}</Text>
         : <Text style={styles.note}>Audio note{item.audioDuration ? ` · ${formatTime(item.audioDuration)}` : ''} — listen below.</Text>}
       <SourceCard item={item} />
       <View style={styles.actions}>
-        <Pressable style={styles.act} onPress={() => onOpenOriginal(item)} hitSlop={8}>
-          <Feather name="external-link" size={15} color={ink} />
-          <Text style={styles.actText}>Open original{item.opens ? ` · ${item.opens}` : ''}</Text>
-        </Pressable>
         <Pressable style={styles.act} onPress={() => onOpenAnnotation(item)} hitSlop={8} accessibilityLabel="Respond">
           <Feather name="message-circle" size={15} color={meta} />
           {item.comments ? <Text style={styles.actMuted}>{item.comments}</Text> : null}
+        </Pressable>
+        <Pressable style={styles.act} onPress={() => onToggleLike(item)} hitSlop={8} accessibilityLabel={liked ? 'Unlike this annotation' : 'Like this annotation'}>
+          <Feather name="heart" size={15} color={liked ? ink : meta} />
+          {likeCount ? <Text style={liked ? styles.actText : styles.actMuted}>{likeCount}</Text> : null}
         </Pressable>
         {item.authorId && item.authorId !== ownId ? (
           <Pressable style={styles.act} onPress={() => onToggleFollow(item)} hitSlop={8} accessibilityLabel={following ? 'Following' : 'Follow'}>
             <Feather name={following ? 'user-check' : 'user-plus'} size={15} color={following ? ink : meta} />
           </Pressable>
         ) : null}
+        <Pressable style={[styles.act, styles.actRight]} onPress={() => onOpenOriginal(item)} hitSlop={8} accessibilityLabel={`Open the original source${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}`}>
+          <Feather name="external-link" size={15} color={ink} />
+          {item.opens ? <Text style={styles.actText}>{item.opens}</Text> : null}
+        </Pressable>
         <Pressable style={styles.act} onPress={() => onShare(item)} hitSlop={8} accessibilityLabel="Share annotation">
           <Feather name="share" size={15} color={meta} />
         </Pressable>
@@ -294,10 +323,13 @@ const FeedPane = ({ selection, active, actions, ownId, chromePad, onChromeIntent
             item={item}
             following={Boolean(actions.followingIds[item.authorId])}
             ownId={ownId}
+            liked={actions.likeStateOf(item).likedByMe}
+            likeCount={actions.likeStateOf(item).likes}
             onOpenAnnotation={actions.openAnnotation}
             onOpenProfile={actions.openProfile}
             onOpenOriginal={actions.openOriginal}
             onToggleFollow={actions.toggleFollow}
+            onToggleLike={actions.toggleLike}
             onShare={actions.share}
           />
         )}
@@ -443,7 +475,8 @@ const styles = StyleSheet.create({
   who: { flexDirection: 'row', alignItems: 'baseline', flexShrink: 1, minWidth: 0 },
   name: { color: ink, fontWeight: '700', fontSize: 14.5, flexShrink: 1 },
   metaText: { color: meta, fontSize: 12.5, flexShrink: 1, marginLeft: 5 },
-  topicTag: { marginLeft: 'auto', flexShrink: 0, fontSize: 11, color: tokens['ink-soft'], backgroundColor: tokens.soft, borderRadius: 99, paddingHorizontal: 7, paddingVertical: 2, overflow: 'hidden' },
+  postTime: { color: meta, fontSize: 12.5, marginLeft: 'auto', flexShrink: 0 },
+  topicTag: { marginLeft: 8, flexShrink: 0, fontSize: 11, color: tokens['ink-soft'], backgroundColor: tokens.soft, borderRadius: 99, paddingHorizontal: 7, paddingVertical: 2, overflow: 'hidden' },
   note: { color: ink, fontSize: 14.5, lineHeight: 20, marginTop: 2 },
   srccard: { marginTop: 8, backgroundColor: tokens.strip, borderWidth: 1, borderColor: tokens.hair, borderRadius: radiusInner, padding: 10 },
   srchead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -453,9 +486,10 @@ const styles = StyleSheet.create({
   media: { marginTop: 8, borderRadius: 10, overflow: 'hidden', position: 'relative' },
   mediaImage: { width: '100%', aspectRatio: 16 / 10, backgroundColor: tokens.soft },
   quote: { fontFamily: serif, fontSize: 14.5, lineHeight: 21, color: tokens['ink-soft'], marginTop: 8 },
-  actions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, paddingRight: 4 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 18, marginTop: 8, paddingRight: 4 },
   act: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   actText: { color: ink, fontSize: 12.5, fontWeight: '600' },
+  actRight: { marginLeft: 'auto' },
   actMuted: { color: meta, fontSize: 12.5 },
   empty: { backgroundColor: card, borderRadius: radiusCard, padding: 22, alignItems: 'center' },
   emptyTitle: { color: ink, fontWeight: '700', fontSize: 15.5, textAlign: 'center' },

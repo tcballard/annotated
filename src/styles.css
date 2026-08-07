@@ -33,6 +33,31 @@
   --radius-inner: 14px;
 }
 
+/* Dark is the same identity on darker paper — the palette the extension
+   panel proved. The chrome bar, media wells, lightbox, and toast are
+   already ink-dark by design and serve both schemes unchanged; terracotta
+   stays terracotta. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #26292F;
+    --card: #2C3037;
+    --soft: #33383F;
+    --border: #3E444E;
+    --hair: #383E47;
+    --ink: #E9EAEC;
+    --ink-soft: #C9CDD3;
+    --meta: #9AA0A8;
+    --link: #8FA4C9;
+    --accent-soft: rgba(224, 164, 142, .14);
+    --hover-row: #31363E;
+    --strip: #2A2E35;
+    --shadow: 0 2px 10px rgba(0, 0, 0, .30);
+    --shadow-lift: 0 4px 16px rgba(0, 0, 0, .40);
+  }
+  .post:hover .srccard { border-color: #4A505A; }
+  .wave:hover .wave-base span { background: #565D68; }
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html { font-size: 14px; min-width: 320px; }
@@ -50,7 +75,10 @@ a:hover { text-decoration: underline; }
 
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+/* Focus is navigation, not the moment: the ring is ink, per the accent law.
+   On the permanently dark chrome bar the ring flips to paper so it stays visible. */
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 3px; }
+.chrome :focus-visible { outline-color: #F5F4F0; }
 
 .icon svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; vertical-align: -2px; }
 
@@ -115,10 +143,25 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .chrome .search input::placeholder { color: #8B919A; }
 
-.chrome .auth { display: flex; align-items: center; gap: 10px; }
-.chrome .search + .auth { margin-left: 0; }
+.chrome .auth { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .chrome .auth:last-child { margin-left: auto; }
 .chrome .search { margin-left: auto; }
+.chrome .search + .auth { margin-left: 0; }
+.chrome.has-rail .search + .auth { margin-left: auto; }
+
+/* On the timeline the search box sits exactly over the rail column below
+   (300px band); on rail-less views it keeps its place in the right
+   cluster. The rest of the bar stays full-bleed everywhere. */
+.chrome.has-rail .search {
+  position: absolute;
+  left: min(calc(50% + 154px), calc(100% - 316px));
+  width: 300px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 0;
+}
+
+.chrome.has-rail .search input { width: 100%; }
 
 .chrome .auth .auth-link { color: #fff; font-size: 13.5px; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
 
@@ -228,46 +271,67 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .auth-notice-dismiss { color: var(--meta); border-radius: 99px; padding: 6px; min-width: 32px; min-height: 32px; }
 .auth-notice-dismiss:hover { background: var(--soft); color: var(--ink); }
 
-.auth-prompt {
-  max-width: 940px;
-  margin: 12px auto 0;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+/* ── sign-in: one door, both providers behind it (same anatomy as the
+   extension panel's modal) ──────────────────────────────────────────── */
+
+.signin-modal {
   background: var(--card);
-  font-size: 13px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lift);
+  padding: 20px 18px 14px;
+  width: min(340px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.signin-modal h3 { font-size: 16px; font-weight: 700; }
+.signin-modal h3::after { content: "."; color: var(--accent); }
+
+.signin-sub { color: var(--meta); font-size: 12.5px; }
+
+.signin-context { color: var(--ink-soft); font-size: 12.5px; border-left: 2px solid var(--border); padding-left: 10px; }
+
+.signin-modal .continue {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card);
+  padding: 9px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+  min-height: 42px;
+  transition: background .12s ease;
 }
 
-.auth-prompt strong { display: block; font-size: 13.5px; }
-.auth-prompt .auth-prompt-note { color: var(--meta); }
+.signin-modal .continue:hover { background: var(--hover-row); text-decoration: none; }
 
-.auth-prompt-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-
-.auth-prompt-link {
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--chrome);
-  border-radius: 99px;
-  padding: 8px 16px;
-  min-height: 40px;
+.pmark {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  transition: background .12s ease, transform .06s ease;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--soft);
+  font-family: var(--serif);
+  font-size: 13px;
+  font-weight: 700;
 }
 
-.auth-prompt-link:hover { background: var(--chrome-dark); text-decoration: none; }
-.auth-prompt-link:active { transform: translateY(1px); }
+.signin-cancel { align-self: center; color: var(--meta); font-size: 12.5px; padding: 6px 10px; min-height: 36px; }
+.signin-cancel:hover { color: var(--ink-soft); }
 
-.auth-prompt-dismiss { color: var(--meta); font-size: 13px; padding: 8px 12px; border-radius: 99px; min-height: 40px; }
-.auth-prompt-dismiss:hover { background: var(--soft); color: var(--ink); }
+.signin-unavailable { color: var(--meta); font-size: 12.5px; }
 
-.auth-prompt-unavailable { color: var(--meta); font-size: 12.5px; }
+.respprompt .linklike { color: var(--link); padding: 0; }
+.respprompt .linklike:hover { text-decoration: underline; }
 
 /* ── page grid ──────────────────────────────────────────────────────── */
 
@@ -373,6 +437,14 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .post .content { flex: 1; min-width: 0; }
 
 .byline { font-size: 14px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.byline .posttime { margin-left: auto; flex-shrink: 0; }
+
+/* The social row follows the muscle memory of every feed: engagement
+   verbs on the left (respond, like, follow), outbound actions clustered
+   right (open original, then share in the corner). A given like fills
+   its heart in ink — the accent stays reserved for the moment. */
+.actions .act.primary { margin-left: auto; }
+.act.is-liked .icon svg { fill: var(--ink); stroke: var(--ink); }
 
 .byline .name { font-weight: 700; color: var(--ink); }
 .byline a.name:hover { color: var(--ink); }
@@ -693,7 +765,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .permacard .actions { padding: 6px 12px 12px; margin: 0; }
 
-.act.claim { margin-left: auto; border: 1px solid var(--border); color: var(--meta); }
+.act.claim { border: 1px solid var(--border); color: var(--meta); }
 .act.claim:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
 .responses { margin-top: 18px; background: var(--card); border-radius: var(--radius-card); box-shadow: var(--shadow); overflow: hidden; }
@@ -1111,7 +1183,6 @@ footer .footer-note { margin-left: auto; }
   .page { grid-template-columns: minmax(0, 1fr); }
   .rail { display: none; }
   .chrome .search { display: none; }
-  .chrome .auth:last-child { margin-left: auto; }
 }
 
 @media (max-width: 560px) {
@@ -1150,7 +1221,7 @@ footer .footer-note { margin-left: auto; }
   justify-content: center;
   gap: 12px;
   padding: 24px;
-  background: rgba(245, 244, 240, .96);
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
   cursor: pointer;
   animation: pub-fade .18s ease;
 }

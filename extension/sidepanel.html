@@ -14,11 +14,25 @@
       <span class="backend" id="backendStatus" aria-live="polite" title="Backend connection"><i aria-hidden="true"></i><span class="backend-label">connecting</span></span>
       <div class="auth" id="authActions">
         <button type="button" class="auth-btn" id="signInOpen" hidden>Sign in</button>
-        <button type="button" class="me" id="signOut" hidden aria-label="Sign out">A</button>
+        <button type="button" class="me" id="meButton" hidden aria-haspopup="menu" aria-expanded="false" aria-label="Account menu">A</button>
+        <div class="me-menu" id="meMenu" role="menu" aria-label="Account" hidden>
+          <span class="me-name" id="meName" aria-hidden="true"></span>
+          <button type="button" role="menuitem" id="menuProfile">View profile</button>
+          <button type="button" role="menuitem" id="menuSettings">Settings</button>
+          <button type="button" role="menuitem" id="menuSignOut">Sign out</button>
+        </div>
       </div>
     </header>
 
     <div class="scroll">
+      <!-- what the toolbar badge promised: the digest of new activity,
+           shown once before the watermark moves -->
+      <button class="notif-digest" id="notifDigest" type="button" hidden>
+        <span class="n" id="notifDigestCount" aria-hidden="true"></span>
+        <span class="notif-digest-main"><b>Since you last looked</b><small id="notifDigestDetail"></small></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+      </button>
+
       <!-- panel modes: writing the margin or reading it, each at full height -->
       <div class="thead">
         <div class="tabs" role="tablist" aria-label="Panel mode">
@@ -31,8 +45,20 @@
 
       <!-- capture: the source is the live tab -->
       <section class="capture" id="captureSection" aria-label="Capture from this tab">
+        <!-- first run only: frame the loop once, then get out of the way -->
+        <div class="intro" id="introCard" hidden>
+          <h2>Keep the moment, with the source attached</h2>
+          <ol>
+            <li><b>Capture</b> — highlight a passage, mark a clip on video or podcasts, or snip part of the page.</li>
+            <li><b>Add your take</b> — a note, or a voice memo.</li>
+            <li><b>Publish</b> — your moment gets its own page, on the public feed by default. Unlisted and private are one switch away.</li>
+          </ol>
+          <p class="intro-foot">The original stays the point: every page links back to the exact moment, and opens of the original are the number that matters.</p>
+          <button class="intro-got" id="introGot" type="button">Got it</button>
+        </div>
         <div class="cap-source">
           <span class="livedot" aria-hidden="true"></span>
+          <img class="favicon" id="sourceFavicon" alt="" hidden />
           <span class="t" id="sourceTitle">Reading this tab…</span>
           <label class="type-select"><span class="visually-hidden">Source type</span>
             <select id="typeSelect" aria-label="Source type">
@@ -70,7 +96,7 @@
         <div class="textsel" id="textSelection" hidden>
           <button class="grabber" id="grabSelection" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h10M4 17h7" /></svg>
-            Highlight a passage on the page, then capture it
+            <span id="grabLabel">Highlight a passage on the page, then capture it</span>
             <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
           </button>
           <div class="passage" id="passageCard" hidden>
@@ -110,6 +136,7 @@
           <span class="rec-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
           <span class="rec-time" id="audioDuration">0:00</span>
           <button class="rec-retry" id="audioRetry" type="button" hidden>Retry upload</button>
+          <button class="rec-retry" id="audioReview" type="button" hidden>Review take</button>
         </div>
 
         <div class="cap-foot">
@@ -127,7 +154,7 @@
             <button data-mode="audio" id="modeAudio" type="button" aria-pressed="false">Audio</button>
           </span>
         </div>
-        <p class="cap-hint" id="publishHint">Marks follow the player. Nothing is published until you publish.</p>
+        <p class="cap-hint" id="publishHint">Nothing is published until you publish.</p>
         <p class="panel-error" id="error" role="alert" hidden></p>
         <div class="queue-status" id="queueStatus" role="status" aria-live="polite" hidden>
           <span class="queue-dot" aria-hidden="true"></span>
@@ -145,10 +172,19 @@
       <div class="signin-modal" role="dialog" aria-modal="true" aria-labelledby="signinTitle">
         <h2 id="signinTitle">Add your name to the margin</h2>
         <p class="signin-sub">One account across the extension, the web, and the app.</p>
+        <p class="signin-context" id="signinContext" hidden></p>
         <button type="button" class="continue" data-auth="x" hidden><span class="pmark" aria-hidden="true">X</span>Continue with X</button>
         <button type="button" class="continue" data-auth="google" hidden><span class="pmark" aria-hidden="true">G</span>Continue with Google</button>
         <button type="button" class="signin-cancel" id="signinCancel">Not now</button>
       </div>
+    </div>
+
+    <!-- the screenshot at full size: verify what you snipped before it ships -->
+    <div class="shot-veil" id="shotVeil" role="dialog" aria-modal="true" aria-label="Screenshot at full size" hidden>
+      <img id="shotVeilImg" alt="Captured screenshot at full size" />
+      <button class="shot-veil-close" id="shotVeilClose" type="button" aria-label="Close the screenshot">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" /></svg>
+      </button>
     </div>
 
     <div class="toast" id="toast" role="status" hidden><span id="toastText"></span><a id="toastLink" target="_blank" rel="noreferrer" hidden></a></div>

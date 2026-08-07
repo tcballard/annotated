@@ -21,6 +21,16 @@
   --hover-row: #FBFAF8;
   --serif: Georgia, 'Times New Roman', serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* motion tokens — one clock for the whole panel */
+  --t-press: 60ms;   /* tactile ack */
+  --t-hover: 120ms;  /* hovers, fast exits */
+  --t-fade: 180ms;   /* fades and small reveals */
+  --t-move: 240ms;   /* anything that travels or lands */
+  --e-ink: cubic-bezier(.25, .1, .25, 1);
+  --e-enter: cubic-bezier(.2, .7, .3, 1);
+  --e-exit: cubic-bezier(.4, 0, .7, 1);
+  --e-hold: ease-in-out;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -46,7 +56,10 @@ a:hover { text-decoration: underline; }
 
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+/* Focus is navigation, not the moment: the ring is ink, per the accent law.
+   On the permanently dark header the ring flips to paper so it stays visible. */
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 3px; }
+.phead :focus-visible { outline-color: #F5F4F0; }
 
 kbd {
   font-family: var(--mono);
@@ -84,6 +97,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .backend i { width: 6px; height: 6px; border-radius: 50%; background: #8B919A; }
 .backend.is-live i { background: #E0A48E; }
 .backend.is-live .backend-label { color: #B9BEC6; }
+.backend:not(.is-live) { cursor: pointer; }
 
 .auth { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 
@@ -115,6 +129,46 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .me:hover { background: #565D68; }
 
+/* the avatar opens a small menu — identity, profile, settings, and only
+   then sign out; no more one-click sign-out landmine */
+.auth { position: relative; }
+
+.me-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 170px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  animation: card-in var(--t-fade) var(--e-enter);
+}
+
+.me-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--meta);
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--hair);
+  margin-bottom: 4px;
+}
+
+.me-menu [role="menuitem"] {
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--ink);
+  padding: 7px 8px;
+  border-radius: 6px;
+  min-height: 30px;
+  transition: background var(--t-hover) var(--e-ink);
+}
+
+.me-menu [role="menuitem"]:hover { background: var(--hover-row); }
+
 /* ── sign-in: one door, both providers behind it ────────────────────── */
 
 .signin-veil {
@@ -144,6 +198,8 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .signin-modal h2::after { content: "."; color: var(--accent); }
 
 .signin-sub { color: var(--meta); font-size: 12px; margin-bottom: 4px; }
+
+.signin-context { color: var(--ink-soft); font-size: 12px; border-left: 2px solid var(--border); padding-left: 10px; }
 
 .continue {
   display: flex;
@@ -186,11 +242,91 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .signin-cancel:hover { color: var(--ink-soft); }
 
-.scroll { overflow-y: auto; flex: 1; }
+.scroll { overflow-y: auto; flex: 1; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+/* the scrollbar matches the paper it slides on */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--meta); }
+::-webkit-scrollbar-track { background: transparent; }
 
 /* ── capture widget ─────────────────────────────────────────────────── */
 
 .capture { background: var(--card); border-bottom: 1px solid var(--border); padding: 12px 14px; }
+
+/* ── notifications digest: the badge's promise, kept ────────────────── */
+
+.notif-digest {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 28px);
+  margin: 10px 14px 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  text-align: left;
+  transition: background var(--t-hover) var(--e-ink);
+  animation: card-in var(--t-move) var(--e-enter);
+}
+
+.notif-digest:hover { background: var(--hover-row); }
+
+.notif-digest .n {
+  flex-shrink: 0;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notif-digest-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.notif-digest-main b { font-size: 12.5px; color: var(--ink); }
+.notif-digest-main small { font-size: 11.5px; color: var(--meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.notif-digest svg { width: 14px; height: 14px; stroke: var(--meta); stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+/* ── first-run intro: one card, one dismissal, never again ──────────── */
+
+.intro {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--strip);
+  padding: 12px 14px 10px;
+  margin-bottom: 12px;
+}
+
+.intro h2 { font-size: 13.5px; font-weight: 700; margin-bottom: 8px; }
+.intro h2::after { content: "."; color: var(--accent); }
+
+.intro ol { margin: 0 0 6px 16px; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.intro li { font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
+.intro li b { color: var(--ink); }
+.intro-foot { font-size: 11.5px; color: var(--meta); margin: 2px 0 8px; line-height: 1.5; }
+
+.intro-got {
+  display: block;
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  padding: 5px 14px;
+  min-height: 30px;
+  transition: background .12s ease;
+}
+
+.intro-got:hover { background: var(--hover-row); }
 
 .cap-source { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--meta); margin-bottom: 10px; }
 
@@ -206,13 +342,22 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--meta);
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 4px 6px;
   min-height: 30px;
   cursor: pointer;
 }
 
-.cap-unsupported { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-radius: 10px; padding: 8px 10px; margin-bottom: 10px; }
+.cap-unsupported { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+
+/* Honest edges: on a page that can't be captured, the composer doesn't
+   pretend. The dot goes gray and the writing tools leave entirely. */
+.capture.is-unsupported .livedot { background: var(--meta); }
+.capture.is-unsupported .type-select,
+.capture.is-unsupported .cap-note,
+.capture.is-unsupported .cap-foot,
+.capture.is-unsupported .cap-hint,
+.capture.is-unsupported .recorder { display: none; }
 
 .marks { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 
@@ -224,7 +369,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--ink);
   background: var(--soft);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 0 8px;
   min-height: 40px;
   display: inline-flex;
@@ -281,7 +426,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--ink);
   background: var(--soft);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 3px 4px 3px 10px;
   min-height: 36px;
 }
@@ -307,7 +452,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--ink-soft);
   background: var(--soft);
   border-left: 3px solid var(--ink-soft);
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 8px 8px 0;
   padding: 7px 10px;
   margin-bottom: 10px;
 }
@@ -323,7 +468,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--meta);
   background: var(--soft);
   border: 1px dashed var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 10px;
   min-height: 40px;
   margin-bottom: 10px;
@@ -332,9 +477,14 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 }
 
 .grabber:hover { background: var(--hair); color: var(--ink); }
+
+/* a live selection arms the grabber: solid border, ink voice, the words
+   themselves quoting what is about to be kept */
+.grabber.is-armed { border-style: solid; border-color: var(--ink-soft); color: var(--ink); font-weight: 600; background: var(--card); }
+.grabber.is-armed:hover { background: var(--hover-row); }
 .grabber svg { width: 14px; height: 14px; flex: none; }
 
-.passage { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 10px; }
+.passage { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
 
 .passage-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 11.5px; color: var(--meta); background: var(--strip); border-bottom: 1px solid var(--hair); }
 
@@ -362,7 +512,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   font-size: 13.5px;
   color: var(--ink);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--card);
   padding: 9px 10px;
   height: 64px;
@@ -372,7 +522,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .cap-note::placeholder { color: #9AA0A8; }
 
-.recorder { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
+.recorder { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
 
 .rec-button {
   width: 44px;
@@ -388,6 +538,8 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   transition: background .12s ease, color .12s ease;
 }
 
+.rec-button[disabled] { opacity: .55; cursor: progress; }
+
 .rec-button:hover { background: var(--hair); }
 .rec-button.is-recording { background: var(--ink); color: var(--card); border-color: var(--ink); }
 .rec-button svg { width: 18px; height: 18px; }
@@ -397,7 +549,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .rec-copy small { font-size: 11px; color: var(--meta); }
 
 .rec-wave { display: flex; align-items: center; gap: 2px; height: 22px; flex: none; }
-.rec-wave i { width: 3px; height: 100%; border-radius: 2px; background: var(--border); transform: scaleY(.55); }
+.rec-wave i { width: 3px; height: 100%; border-radius: 99px; background: var(--border); transform: scaleY(.55); }
 .recorder.is-recording .rec-wave i { background: var(--ink-soft); animation: wave 1s ease-in-out infinite; }
 .recorder.is-recording .rec-wave i:nth-child(2n) { animation-delay: .18s; }
 .recorder.is-recording .rec-wave i:nth-child(3n) { animation-delay: .32s; }
@@ -423,12 +575,14 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   border-radius: 99px;
   padding: 8px 16px;
   min-height: 40px;
-  transition: background .12s ease, transform .06s ease;
+  transition: background var(--t-hover) var(--e-ink), transform var(--t-press) var(--e-ink), opacity var(--t-fade) var(--e-ink);
 }
 
-.publish:hover { background: var(--chrome-dark); }
+.publish:not([disabled]):hover { background: var(--chrome-dark); }
 .publish:active { transform: translateY(1px); }
 .publish[disabled] { opacity: .55; cursor: not-allowed; transform: none; }
+.publish.is-working { animation: working-pulse 1.2s var(--e-hold) infinite; }
+@keyframes working-pulse { 50% { opacity: .7; } }
 
 .cap-foot .count { font-size: 11px; color: var(--meta); font-variant-numeric: tabular-nums; }
 
@@ -440,9 +594,9 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .cap-hint { font-size: 11px; color: var(--meta); margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.panel-error { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-left: 3px solid var(--ink-soft); border-radius: 0 10px 10px 0; padding: 7px 10px; margin-top: 8px; }
+.panel-error { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-left: 3px solid var(--ink-soft); border-radius: 0 8px 8px 0; padding: 7px 10px; margin-top: 8px; }
 
-.queue-status { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-top: 8px; font-size: 11.5px; }
+.queue-status { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 8px; font-size: 11.5px; }
 .queue-status strong { display: block; font-size: 12px; }
 .queue-status small { color: var(--meta); }
 .queue-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--meta); flex: none; }
@@ -489,7 +643,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   bottom: 0;
   height: 2px;
   background: var(--accent);
-  border-radius: 2px;
+  border-radius: 99px;
 }
 
 .post {
@@ -524,12 +678,13 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .post .content { flex: 1; min-width: 0; }
 
 .byline { font-size: 13px; display: flex; align-items: baseline; gap: 5px; }
+.byline .posttime { margin-left: auto; flex-shrink: 0; }
 .byline .name { font-weight: 700; color: var(--ink); }
 .byline .meta { color: var(--meta); font-size: 12px; }
 
 .post .note { font-size: 13px; line-height: 1.45; margin: 2px 0 8px; overflow-wrap: anywhere; }
 
-.srccard { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.srccard { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 
 .srchead {
   display: flex;
@@ -546,6 +701,10 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .srchead .chip { font-size: 10px; padding: 1px 6px; }
 .srchead .srcname { font-weight: 600; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; }
+
+/* the source wears its site's face — from Chrome's local cache only */
+.favicon { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+.cap-source .favicon { width: 14px; height: 14px; }
 
 .srccard blockquote {
   font-family: var(--serif);
@@ -572,6 +731,29 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: #E9EAEC; background: rgba(0, 0, 0, .55); border-radius: 3px; padding: 1px 6px; pointer-events: none;
 }
 .srcmedia-audio { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+
+/* a clip mid-transcode says so instead of showing nothing */
+.srcmedia-processing { display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--strip); }
+.srcmedia-processing .cliptag { position: static; }
+.srcmedia-processing .processing-note { color: var(--meta); font-size: 12px; animation: working-pulse 1.2s var(--e-hold) infinite; }
+
+.load-more {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 6px 14px 12px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+  min-height: 38px;
+  transition: background var(--t-hover) var(--e-ink), opacity var(--t-fade) var(--e-ink);
+}
+
+.load-more:hover { background: var(--hover-row); }
+.load-more[disabled] { opacity: .55; cursor: progress; }
 .srcmedia-audio .cliptag { position: static; }
 .srcmedia-audio audio { flex: 1; min-width: 0; height: 34px; }
 
@@ -594,6 +776,10 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .act.primary:hover { background: var(--accent-soft); color: var(--accent); }
 .act svg { width: 13px; height: 13px; }
 .act .n { font-variant-numeric: tabular-nums; }
+/* engagement left, outbound right: Open then share hold the row's right
+   corner; a given like fills its heart in ink */
+.actions .act.primary { margin-left: auto; }
+.act.is-liked svg { fill: var(--ink); stroke: var(--ink); }
 
 .timeline .empty { padding: 26px 16px; text-align: center; background: var(--card); }
 .timeline .empty .mark { width: 36px; height: 36px; border-radius: 8px; margin-bottom: 10px; opacity: .9; }
@@ -606,10 +792,10 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .timeline .state button { color: var(--link); padding: 0 2px; min-height: 0; }
 
 .post.skeleton { pointer-events: none; }
-.skeleton .sk { background: var(--soft); border-radius: 4px; animation: sk-pulse 1.2s ease-in-out infinite; }
+.skeleton .sk { background: var(--soft); border-radius: 3px; animation: sk-pulse 1.2s ease-in-out infinite; }
 .skeleton .sk-avatar { width: 30px; height: 30px; border-radius: 50%; flex: none; }
 .skeleton .sk-line { height: 10px; margin-bottom: 7px; }
-.skeleton .sk-card { height: 64px; border-radius: 10px; }
+.skeleton .sk-card { height: 64px; border-radius: 8px; }
 
 @keyframes sk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 
@@ -659,6 +845,125 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   }
   .chip.duration.is-over { background: #565D68; }
 }
+
+/* ── motion ─────────────────────────────────────────────────────────────
+   Entrances are from-only keyframes on resting base states, so the global
+   reduced-motion kill below makes every element simply appear at rest —
+   nothing is ever parked invisible waiting for an animation. ─────────── */
+
+/* pane switch: the new sheet settles; the old one is simply gone */
+.capture, .timeline { animation: pane-in var(--t-fade) var(--e-enter); }
+@keyframes pane-in { from { opacity: 0; transform: translateY(4px); } }
+
+/* the terracotta underline draws outward from center on tab change */
+.tab.is-active::after { animation: underline-in var(--t-fade) var(--e-enter); transform-origin: center; }
+@keyframes underline-in { from { transform: scaleX(0); } }
+
+/* first paint of a feed arrives composed, not dumped */
+.timeline.is-fresh .post { animation: post-in var(--t-move) var(--e-enter) backwards; }
+.timeline.is-fresh .post:nth-child(2) { animation-delay: 40ms; }
+.timeline.is-fresh .post:nth-child(n+3) { animation-delay: 80ms; }
+@keyframes post-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* skeletons breathe downward instead of blinking as a slab */
+.skeleton .sk-line + .sk-line { animation-delay: .12s; }
+.skeleton .sk-card { animation-delay: .24s; }
+
+/* a mark landing is the capture verb — acknowledge it instantly */
+.markbtn .t { transition: color var(--t-fade) var(--e-ink); }
+.markbtn.just-set { animation: mark-flash var(--t-move) var(--e-ink); }
+@keyframes mark-flash { from { background: var(--accent-soft); } }
+.markbtn.just-set .t { animation: mark-time-in var(--t-fade) var(--e-enter); }
+@keyframes mark-time-in { from { opacity: 0; transform: translateY(2px); } }
+.chip.duration { transition: background var(--t-fade) var(--e-ink), color var(--t-fade) var(--e-ink); }
+.chip.just-ticked { animation: chip-tick var(--t-fade) var(--e-enter); }
+@keyframes chip-tick { from { transform: scale(.94); } }
+
+/* the live dot swells once when the panel retunes to a new tab */
+.cap-source.is-retuned .livedot { animation: dot-retune var(--t-move) var(--e-ink); }
+@keyframes dot-retune { 0% { transform: scale(1); } 40% { transform: scale(1.45); } 100% { transform: scale(1); } }
+.cap-source.is-retuned .t { animation: title-swap var(--t-fade) var(--e-enter); }
+@keyframes title-swap { from { opacity: 0; } }
+
+/* captured passage / snip lands like a clipping laid on the desk */
+.passage { animation: card-in var(--t-move) var(--e-enter); }
+@keyframes card-in { from { opacity: 0; transform: translateY(4px); } }
+.shot-preview { animation: shot-develop var(--t-move) var(--e-enter); }
+@keyframes shot-develop { from { opacity: 0; } }
+.grabber { transition: background .12s ease, color .12s ease, opacity var(--t-fade) var(--e-ink); }
+.grabber[disabled] { opacity: .55; cursor: progress; }
+.grabber[disabled]:hover { background: var(--soft); color: var(--meta); }
+
+/* the last ten seconds of a take speak up; a review in flight says so */
+#audioStatus.rec-ending { color: var(--ink); font-weight: 700; }
+.rec-retry.is-playing { color: var(--ink); border-color: var(--ink-soft); }
+
+/* a like is a stamp pressed in, not a pop */
+.act svg { transition: fill var(--t-hover) var(--e-ink), stroke var(--t-hover) var(--e-ink); }
+.act.just-liked svg { animation: heart-press var(--t-fade) var(--e-enter); }
+@keyframes heart-press { from { transform: scale(.86); } }
+
+/* the toast rises in; exits are instant — nobody watches a toast go */
+.toast { animation: toast-up var(--t-fade) var(--e-enter); }
+@keyframes toast-up { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+/* doors close quicker than they open */
+@keyframes veil-out { to { opacity: 0; } }
+.signin-veil.is-closing { animation: veil-out var(--t-hover) var(--e-exit) forwards; }
+
+/* the screenshot at full size — verify the snip before it ships */
+.shot-preview, .srcmedia img { cursor: zoom-in; }
+
+.shot-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+  cursor: zoom-out;
+  animation: pub-fade var(--t-fade) var(--e-enter);
+}
+
+.shot-veil img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 3px;
+  background: var(--card);
+  animation: shot-develop var(--t-move) var(--e-enter);
+}
+
+.shot-veil-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shot-veil-close svg { width: 14px; height: 14px; }
+
+.shot-veil.is-closing { animation: veil-out var(--t-hover) var(--e-exit) forwards; }
+.signin-modal { animation: modal-rise var(--t-move) var(--e-enter); }
+@keyframes modal-rise { from { opacity: 0; transform: translateY(8px); } }
+
+/* the publish moment leaves with a breath, and under reduced motion it
+   stands still instead of vanishing entirely */
+.pub-moment.is-leaving { animation: veil-out var(--t-hover) var(--e-exit) forwards; }
+.pub-moment.is-static .ring, .pub-moment.is-static .tick { stroke-dashoffset: 0; animation: none; }
+
+/* the fresh note settles under the veil, then wears the celebration's tail */
+.timeline.is-inserting .post:first-child { animation: post-in var(--t-move) var(--e-enter); }
+.post.just-published { animation: post-wash 360ms var(--e-exit); }
+@keyframes post-wash { from { background: var(--accent-soft); } }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

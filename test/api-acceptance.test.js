@@ -458,7 +458,7 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.equal(honeypotted.status, 200, 'the honeypot gets a polite success');
   const formClaim = await postForm({ contact: 'rights@studio.example', reason: 'This clip is from our catalogue and exceeds fair use.' });
   assert.equal(formClaim.status, 200);
-  assert.match(await formClaim.text(), /Claim received/);
+  assert.match(await formClaim.text(), /Dispute received/);
   const duplicateFormClaim = await postForm({ contact: 'rights@studio.example', reason: 'Filing again by mistake.' });
   assert.equal(duplicateFormClaim.status, 200);
   const moderationQueue = await request(baseUrl, '/api/moderation/claims');

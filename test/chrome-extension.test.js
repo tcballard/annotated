@@ -150,6 +150,214 @@ test('side panel implements the v5 surface: live source strip, marks, note, time
   assert.match(styles, /--serif:\s*Georgia/);
 });
 
+test('the first seconds are honest: no false errors while the panel boots', async () => {
+  const runtime = await read('sidepanel.js');
+  // unknown tab ≠ unsupported tab: the error strip waits for the tab to be known
+  assert.match(runtime, /const known = Boolean\(currentTab\.url\);/);
+  assert.match(runtime, /capUnsupported\.hidden = !known \|\| supported;/);
+  // the backend check and the tab read race in parallel, then resolution catches up
+  assert.match(runtime, /await Promise\.all\(\[checkBackend\(\), loadCurrentTab\(\)\]\)/);
+  assert.match(runtime, /if \(backendOnline && !resolvedSource\) await loadCurrentTab\(\);/);
+  // a hanging origin fails into the styled offline state, never a stuck boot
+  assert.match(runtime, /setTimeout\(\(\) => timeoutController\.abort\(\), 8000\)/);
+  assert.match(runtime, /signal: timeoutController\.signal/);
+  // a never-signed-in publisher gets the door with context, capture intact
+  assert.match(runtime, /openSignin\('Sign in to publish — your capture stays right here\.'\)/);
+  const html = await read('sidepanel.html');
+  assert.match(html, /id="signinContext" hidden/);
+  // closing the OAuth window is a decision, not an error
+  assert.match(runtime, /clos\|cancel\|did not approve/);
+  // first run frames the loop once, dismissed forever via storage — and
+  // closes on the round-trip claim that separates this from a vault
+  assert.match(html, /id="introCard" hidden/);
+  assert.match(html, /on the public feed by default/);
+  assert.match(html, /class="intro-foot">The original stays the point/);
+  assert.match(runtime, /annotatedIntroSeen/);
+  // the Following empty state teaches instead of dead-ending
+  assert.match(runtime, /data-feed-tab-jump="recent">Browse Recent</);
+  // the grabber arms itself from a live selection instead of waiting to fail
+  assert.match(runtime, /function watchSelectionInPage\(\)/);
+  assert.match(runtime, /window\.__annotatedSelectionWatch/, 'the injected watcher self-guards against double injection');
+  assert.match(runtime, /type: 'ANNOTATED_SELECTION'/);
+  assert.match(runtime, /sender\?\.tab\?\.id !== currentTabId/, 'messages from other tabs never arm the grabber');
+  assert.match(html, /id="grabLabel"/);
+  // capturing hands focus to the note — the next step of the loop
+  assert.match(runtime, /saveDraft\(\);\s*\n\s*note\.focus\(\);/);
+  // a keyboard and a right-click both reach the panel
+  const manifest = JSON.parse(await read('manifest.json'));
+  assert.equal(manifest.commands._execute_action.suggested_key.default, 'Alt+A');
+  assert.ok(manifest.permissions.includes('contextMenus'));
+  const background = await read('background.js');
+  assert.match(background, /contextMenus\.create\(\{ id: 'annotated-capture-selection', title: 'Annotate “%s”', contexts: \['selection'\] \}\)/);
+  assert.match(background, /chrome\.sidePanel\.open\(\{ tabId: tab\.id \}\)/, 'the context-menu click is the user gesture that opens the panel');
+  assert.match(runtime, /ANNOTATED_GRAB_SELECTION/);
+  assert.match(runtime, /const consumePendingGrab = /, 'a cold panel finds the stashed request at boot');
+});
+
+test('the panel moves on one clock: motion tokens and gated one-shot beats', async () => {
+  const styles = await read('sidepanel.css');
+  const runtime = await read('sidepanel.js');
+  // one set of timing/easing tokens governs every animation
+  for (const token of ['--t-press: 60ms', '--t-hover: 120ms', '--t-fade: 180ms', '--t-move: 240ms', '--e-enter: cubic-bezier(.2, .7, .3, 1)']) {
+    assert.ok(styles.includes(token), `motion token missing: ${token}`);
+  }
+  // entrances are from-only keyframes on resting base states, so the global
+  // reduced-motion kill makes elements simply appear — nothing parks invisible
+  for (const keyframe of ['pane-in', 'underline-in', 'post-in', 'mark-flash', 'chip-tick', 'dot-retune', 'card-in', 'shot-develop']) {
+    assert.ok(styles.includes(`@keyframes ${keyframe}`), `keyframe missing: ${keyframe}`);
+  }
+  // one-shot beats re-fire through the shared retrigger idiom
+  assert.match(runtime, /const retrigger = \(element, className\)/);
+  assert.match(runtime, /void element\.offsetWidth;/);
+  assert.match(runtime, /retrigger\(boundary === 'in' \? markIn : markOut, 'just-set'\)/);
+  assert.match(runtime, /retrigger\(durationChip, 'just-ticked'\)/);
+  assert.match(runtime, /'is-retuned'/);
+  // the stagger plays only on a feed's first paint, never on like re-renders
+  assert.match(runtime, /let freshFeedTab = null;/);
+  assert.match(runtime, /freshFeedTab = tab;/);
+  assert.match(runtime, /timeline\.classList\.add\('is-fresh'\)/);
+  // an optimistic like patches one button in place; only a failed round-trip rebuilds
+  assert.match(runtime, /patchLikeButton\(like, !liked, entries\[0\]\.likes\);/);
+  assert.match(runtime, /retrigger\(like, 'just-liked'\);/);
+  assert.match(runtime, /renderTimeline\(\); \/\/ a failed round-trip earns the rebuild/);
+  assert.match(styles, /@keyframes heart-press/);
+  // the finishing beats: toast rises, doors close faster than they open,
+  // the publish moment leaves with a breath and stands still under reduced motion
+  assert.match(styles, /@keyframes toast-up/);
+  assert.match(styles, /\.signin-veil\.is-closing \{ animation: veil-out var\(--t-hover\) var\(--e-exit\) forwards; \}/);
+  assert.match(styles, /@keyframes modal-rise/);
+  assert.match(styles, /\.pub-moment\.is-static \.ring, \.pub-moment\.is-static \.tick \{ stroke-dashoffset: 0; animation: none; \}/);
+  assert.match(runtime, /moment\.className = reduced \? 'pub-moment is-static' : 'pub-moment';/);
+  assert.match(runtime, /retrigger\(timeline\.querySelector\('\.post'\), 'just-published'\)/);
+  assert.match(runtime, /timeline\.classList\.add\('is-inserting'\)/);
+  assert.match(runtime, /publishButton\.classList\.add\('is-working'\)/);
+  assert.match(styles, /\.publish:not\(\[disabled\]\):hover/);
+});
+
+test('the badge keeps its promise: the digest shows before the watermark moves', async () => {
+  const runtime = await read('sidepanel.js');
+  const html = await read('sidepanel.html');
+  assert.match(html, /id="notifDigest" type="button" hidden/);
+  assert.match(runtime, /const digest = await apiRequest\('\/api\/notifications'\);/);
+  assert.match(runtime, /notifDigest\.hidden = false;/);
+  // the digest renders BEFORE the seen POST in the same function
+  const fn = runtime.match(/const markNotificationsSeen = [\s\S]*?\n\};/)[0];
+  assert.ok(fn.indexOf('notifDigest.hidden = false') < fn.indexOf('/api/notifications/seen'), 'digest first, watermark second');
+  assert.match(runtime, /responded to your annotation/);
+  // offline recovers: backoff retries, online listener, chip retry, human copy
+  assert.match(runtime, /const scheduleBackendRetry = /);
+  assert.match(runtime, /Math\.min\(backendRetryDelay \* 2, 30000\)/);
+  assert.match(runtime, /window\.addEventListener\('online'/);
+  assert.match(runtime, /Can’t reach annotated right now — retrying quietly\. Captures queue locally\./);
+  assert.doesNotMatch(runtime, /Check the extension API origin in settings\./, 'no developer-voiced dead ends');
+  // feeds: warm caches revalidate in the background, appends never clobber
+  assert.match(runtime, /background: Boolean\(feedCache\[mode\]\)/);
+  assert.match(runtime, /if \(!background && !append\) \{/);
+  assert.match(runtime, /params\.set\('cursor', feedCache\[tab\]\.nextCursor\)/);
+  assert.match(runtime, /data-load-more>Load more</);
+  // a clip mid-transcode explains itself
+  assert.match(runtime, /\['queued', 'processing'\]\.includes\(item\.mediaStatus\)/);
+  assert.match(runtime, /it appears here when ready/);
+  // a background queue publish closes the loop instead of inviting a duplicate
+  const background = await read('background.js');
+  assert.match(background, /annotatedQueuePublished/);
+  assert.match(runtime, /const consumeQueuePublished = /);
+  assert.match(runtime, /Queued capture published/);
+  // tab races: neutral reset, stale probes dropped, SPA url rebinds
+  assert.match(runtime, /currentTab = \{ url: '', title: '', host: '', sourceType: 'article', duration: 0 \};/);
+  assert.match(runtime, /if \(currentTabId !== tab\.id\) return; \/\/ a faster tab switch won the race/);
+  assert.match(runtime, /if \(currentTab\.url !== url\) return;/);
+  assert.match(runtime, /changeInfo\.status === 'complete' \|\| changeInfo\.url/);
+  // voice notes are reviewable before publishing, and the cap warns first
+  assert.match(html, /id="audioReview" type="button" hidden>Review take</);
+  assert.match(runtime, /setReviewTake\(blob\); \/\/ hear it before you publish it/);
+  assert.match(runtime, /URL\.revokeObjectURL\(reviewUrl\)/, 'takes are revoked, never leaked');
+  assert.match(runtime, /s left — it stops itself at/);
+  // honest edges: an uncapturable page hides the writing tools instead of
+  // arming a composer that can only fail
+  const styles = await read('sidepanel.css');
+  assert.match(runtime, /captureSection\.classList\.toggle\('is-unsupported', known && !supported\)/);
+  assert.match(styles, /\.capture\.is-unsupported \.livedot \{ background: var\(--meta\); \}/);
+  assert.match(styles, /\.capture\.is-unsupported \.cap-foot/);
+  assert.match(runtime, /This page can’t be annotated\./);
+  // Esc clears but never destroys; Ctrl/Cmd+Z brings the capture back
+  assert.match(runtime, /lastCleared = \{ kind: 'selection', value: selection \}/);
+  assert.match(runtime, /lastCleared = \{ kind: 'marks', value: marks \}/);
+  assert.match(runtime, /Selection cleared — Ctrl\/Cmd\+Z restores it/);
+  assert.match(runtime, /Marks cleared — Ctrl\/Cmd\+Z restores them/);
+  // the tablist speaks ARIA: roving tabindex, arrows walk and activate
+  assert.match(runtime, /tabButton\.tabIndex = active \? 0 : -1;/);
+  assert.match(runtime, /event\.key !== 'ArrowRight' && event\.key !== 'ArrowLeft'/);
+  assert.match(runtime, /setPanelMode\(next\.dataset\.feedTab\);/);
+  // the sign-in door holds focus while it is open
+  assert.match(runtime, /signinVeil\.querySelectorAll\('button, a\[href\]'\)/);
+});
+
+test('details that read expensive: sources wear their faces', async () => {
+  const runtime = await read('sidepanel.js');
+  const html = await read('sidepanel.html');
+  const manifest = JSON.parse(await read('manifest.json'));
+  // favicons come from Chrome's local cache — a permission, not a network call
+  assert.ok(manifest.permissions.includes('favicon'));
+  assert.match(runtime, /chrome\.runtime\.getURL\('\/_favicon\/'\)/);
+  assert.match(runtime, /url\.searchParams\.set\('pageUrl', pageUrl\)/);
+  // every source line carries one: timeline cards and the live capture strip
+  assert.match(runtime, /const favicon = faviconUrl\(item\.canonicalUrl \|\| item\.sourceUrl\)/);
+  assert.match(html, /id="sourceFavicon"/);
+  // a missing icon disappears instead of showing the broken-image glyph
+  assert.match(runtime, /document\.addEventListener\('error'/);
+  assert.match(runtime, /classList\?\.contains\('favicon'\)/);
+  // the radius law the header comment promises — 3/6/8/99 (plus circles),
+  // no stray 2/4/10/12px survivors
+  const styles = await read('sidepanel.css');
+  assert.doesNotMatch(styles, /border-radius: (?:2|4|10|12)px/);
+  assert.doesNotMatch(styles, /border-radius: 0 10px/);
+  // focus is ink everywhere, paper on the dark header — never the accent
+  assert.match(styles, /:focus-visible \{ outline: 2px solid var\(--ink\)/);
+  assert.match(styles, /\.phead :focus-visible \{ outline-color: #F5F4F0; \}/);
+  // the scrollbar belongs to the design, and disabled controls all say so
+  assert.match(styles, /::-webkit-scrollbar-thumb \{ background: var\(--border\); border-radius: 99px; \}/);
+  assert.match(styles, /\.rec-button\[disabled\] \{ opacity: \.55; cursor: progress; \}/);
+  // micro-copy: no transcode jargon in the panel, the chip says connected,
+  // the hint speaks to the capture type and names the keyboard path
+  assert.doesNotMatch(runtime, /240p/);
+  assert.match(runtime, /textContent = 'connected'/);
+  assert.match(runtime, /const defaultPublishHint = /);
+  assert.match(runtime, /Highlights and snips stay right here\./);
+  assert.match(runtime, /<kbd>Ctrl<\/kbd>\/<kbd>⌘<\/kbd> <kbd>Enter<\/kbd>/);
+  // a panel left open keeps telling the truth: times re-derive from stamps
+  assert.match(runtime, /data-created=/);
+  assert.match(runtime, /\.posttime\[data-created\]/);
+  // the avatar is a menu, not a sign-out landmine: profile, settings, then
+  // sign out — with real menu semantics (aria-haspopup, arrows, Esc)
+  assert.match(html, /id="meButton"[^>]*aria-haspopup="menu"/);
+  assert.match(html, /id="meMenu" role="menu"/);
+  assert.ok(html.indexOf('id="menuProfile"') < html.indexOf('id="menuSignOut"'), 'sign out comes last');
+  assert.match(runtime, /chrome\.runtime\.openOptionsPage\?\.\(\)/);
+  assert.match(runtime, /\/u\/\$\{encodeURIComponent\(handle\)\}/);
+  assert.match(runtime, /const setMenuOpen = /);
+  assert.match(runtime, /setMenuOpen\(false\); meButton\.focus\(\);/);
+  // the settings page is the same product: shared palette, no second
+  // terracotta, and Save actually checks the origin answers as annotated
+  const optionsStyles = await read('options.css');
+  assert.match(optionsStyles, /--accent: #B0674D/);
+  assert.match(optionsStyles, /--paper: #F5F4F0/);
+  assert.doesNotMatch(optionsStyles, /#c15a45|#174f68/i, 'the old second-product palette is gone');
+  assert.match(optionsStyles, /:focus-visible \{ outline: 2px solid var\(--ink\)/);
+  const options = await read('options.js');
+  assert.match(options, /const verifyConnection = /);
+  assert.match(options, /Connected ✓ — this origin answers as annotated\./);
+  assert.match(options, /chrome\.runtime\.getManifest\(\)\.version/);
+  // the snip you took can be verified at full size — preview and timeline
+  // screenshots open a veil with the standard exits (click, button, Esc)
+  assert.match(html, /id="shotVeil" role="dialog" aria-modal="true"/);
+  assert.match(runtime, /openShotVeil\(shotPreview\.src, shotPreview\)/);
+  assert.match(runtime, /closest\('\.srcmedia img'\)/);
+  assert.match(runtime, /shotVeilImg\.removeAttribute\('src'\)/, 'the veil forgets the image when closed');
+  assert.match(styles, /\.shot-preview, \.srcmedia img \{ cursor: zoom-in; \}/);
+  assert.match(styles, /\.shot-veil\.is-closing \{ animation: veil-out var\(--t-hover\) var\(--e-exit\) forwards; \}/);
+});
+
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {
   const html = await read('sidepanel.html');
   const runtime = await read('sidepanel.js');

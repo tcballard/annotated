@@ -5,14 +5,14 @@ import test from 'node:test';
 // Identity law §1.1: terracotta means THE MOMENT. The accent may appear only
 // on moment chips, the live source dot, mark-selection state, the CLIP tag,
 // active-tab underlines, the primary "Open original" action, the pull-quote
-// rule, section-header full stops, focus rings, the claim hover (mockup), and
-// the logo dot. Never on generic buttons, links, alerts, or decoration.
+// rule, section-header full stops, the claim hover (mockup), and the logo
+// dot. Never on generic buttons, links, alerts, focus rings, or decoration —
+// focus is navigation, not a moment, so its ring is ink.
 
 const ACCENT_PATTERN = /var\(--accent(?:-soft)?\)|#B0674D/i;
 
 const ALLOWED_SELECTORS = [
   /^:root$/,
-  /^:focus-visible$/,
   /\.chip\b/,
   /\.livedot\b/,
   /\.markbtn\.is-set \.t$/,
@@ -26,8 +26,13 @@ const ALLOWED_SELECTORS = [
   /::after$/, // section-header full stops (h1/h2-level only)
   /\.pull$/,  // the pull-quote's terracotta rule
   /\.bell \.n$/, // the unseen-notifications dot — new activity IS a moment
+  /\.notif-digest \.n$/, // the panel's digest count — same law, same moment
   /\.pub-check \.(ring|tick)$/, // the publish celebration — publishing IS the moment
   /\.pub-moment \.dot$/, // its full stop
+  // keyframe stops carry accent values only on behalf of animations that are
+  // themselves applied via whitelisted selectors (mark-flash on .just-set,
+  // the publish wash) — the accent still lands only where the law allows
+  /^(from|to|\d+%)$/,
 ];
 
 const auditStylesheet = (rawCss, file) => {

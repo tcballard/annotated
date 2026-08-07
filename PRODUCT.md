@@ -11,7 +11,7 @@ The product is not ready until these are real end-to-end flows, not local UI sim
 3. Articles resolve to title, author, selected passage, metadata, and canonical source URL.
 4. YouTube and podcast sources produce a playable clip no longer than 90 seconds and store the required 240p video/audio asset.
 5. A user can add text or recorded audio commentary and publish a public, stable annotation URL.
-6. Every public annotation visibly links to its source and exposes “File a claim”.
+6. Every public annotation visibly links to its source and exposes “Dispute fair use”.
 7. The feed, follows, likes, comments, and claims are persisted server-side and have basic abuse controls.
 8. The extension, web app, worker, storage, database, and auth are deployable from documented environment configuration.
 9. Critical flows have automated API tests and a browser smoke test.

@@ -49,9 +49,10 @@ Chrome behavior, microphone capture, or production traffic.
   `#:~:text=` deep links, timestamped media deep links, and 90-second media
   boundaries enforced at the UI, the API, and the transcode probe.
 - Hosted 240p clips and audio segments with the visible `CLIP` tag and
-  duration · 240p badge; a **File a claim** action above the fold on every
-  annotation page, with a moderation pipeline that can resolve a claim into a
-  real takedown (public tombstone, media deleted).
+  duration badge; a **Dispute fair use** button clearly visible on every
+  annotation page (plus a no-JS dispute form at `/a/:slug/claim`), with a
+  moderation pipeline that can resolve a dispute into a real takedown
+  (public tombstone, media deleted).
 - Text and browser-recorded audio commentary; public · unlisted · private
   visibility; author controls (delete outright, edit the note within 30
   minutes, change visibility anytime).
@@ -73,7 +74,7 @@ Judging against the brief? Each requirement maps to a place you can click:
 | Brief requirement | Where to verify |
 | --- | --- |
 | Sidebar extension as primary surface | Load [`extension/`](extension/) unpacked (`chrome://extensions` → Load unpacked). Open any YouTube page → Mark in/out read the player (`I`/`O` keys) |
-| File a claim on every annotation page | Any `/a/:slug` page — right-aligned in the action bar, above the fold |
+| Dispute fair use on every annotation page | Any `/a/:slug` page — the bordered **Dispute fair use** button in the action bar; `/a/:slug/claim` works with no JS and no account |
 | Clips link back to the original | "Open original at 0:14 ↗" on media pages; "Open original at ¶ n ↗" deep-links article passages via `#:~:text=` |
 | Max 90-second clips, server-side | `POST /api/annotations` with a 91-second range → 422; audio uploads are ffprobe-checked too |
 | 240p video / audio segments | The `0:48 · 240p` badge on every player state; transcode output is probe-verified ≤240p/≤90s before it can publish |

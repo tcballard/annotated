@@ -18,6 +18,22 @@ const setBusy = (busy) => {
   saveButton.textContent = busy ? 'Saving…' : 'Save connection';
 };
 
+// Saving is not the same as working: after every save the page actually
+// asks the origin whether it answers as annotated, and says which.
+const verifyConnection = async (origin) => {
+  setStatus('Saved. Checking the connection…', 'idle');
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+    const response = await fetch(`${origin}/api/health`, { credentials: 'omit', signal: controller.signal });
+    clearTimeout(timer);
+    if (!response.ok) throw new Error();
+    setStatus('Connected ✓ — this origin answers as annotated.', 'success');
+  } catch {
+    setStatus('Saved, but nothing answered at this origin. The panel will keep retrying quietly.', 'error');
+  }
+};
+
 const loadSettings = async () => {
   try {
     input.value = await extensionStorage.getApiOrigin();
@@ -27,6 +43,9 @@ const loadSettings = async () => {
   }
 };
 void loadSettings();
+
+const versionStamp = document.querySelector('#versionStamp');
+if (versionStamp && chrome.runtime?.getManifest) versionStamp.textContent = `v${chrome.runtime.getManifest().version}`;
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -39,7 +58,7 @@ form.addEventListener('submit', async (event) => {
   try {
     await extensionStorage.saveApiOrigin(input.value);
     input.value = await extensionStorage.getApiOrigin();
-    setStatus('Connection saved.', 'success');
+    await verifyConnection(input.value);
   } catch (error) {
     setStatus(error.message || 'Could not save settings.', 'error');
   } finally {
@@ -52,7 +71,7 @@ resetButton.addEventListener('click', async () => {
   try {
     await extensionStorage.saveApiOrigin(DEFAULT_API_ORIGIN);
     input.value = DEFAULT_API_ORIGIN;
-    setStatus('Annotated staging restored.', 'success');
+    await verifyConnection(DEFAULT_API_ORIGIN);
   } catch (error) {
     setStatus(error.message || 'Could not restore the local origin.', 'error');
   } finally {

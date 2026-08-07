@@ -10,6 +10,7 @@ import { avatarColor, avatarInitial } from './avatar.js';
 const $ = (selector) => document.querySelector(selector);
 
 const sourceTitle = $('#sourceTitle');
+const sourceFavicon = $('#sourceFavicon');
 const typeSelect = $('#typeSelect');
 const capUnsupported = $('#capUnsupported');
 const mediaSelection = $('#mediaSelection');
@@ -47,7 +48,9 @@ const authActions = $('#authActions');
 const signInOpen = $('#signInOpen');
 const signinVeil = $('#signinVeil');
 const signinCancel = $('#signinCancel');
-const signOutButton = $('#signOut');
+const meButton = $('#meButton');
+const meMenu = $('#meMenu');
+const meName = $('#meName');
 const queueStatus = $('#queueStatus');
 const queueStatusTitle = $('#queueStatusTitle');
 const queueStatusDetail = $('#queueStatusDetail');
@@ -60,6 +63,9 @@ const shotButton = $('#shotButton');
 const shotCard = $('#shotCard');
 const shotPreview = $('#shotPreview');
 const shotClear = $('#shotClear');
+const shotVeil = $('#shotVeil');
+const shotVeilImg = $('#shotVeilImg');
+const shotVeilClose = $('#shotVeilClose');
 const toast = $('#toast');
 const toastText = $('#toastText');
 const toastLink = $('#toastLink');
@@ -96,6 +102,8 @@ let toastTimer;
 // it (a timeline). Capture is the default so the sidebar stays the primary
 // capture surface; each mode gets the full panel height.
 let panelMode = 'capture';
+let freshFeedTab = null;
+let lastCleared = null;
 const feedCache = { recent: null, following: null, page: null };
 
 const format = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
@@ -117,6 +125,36 @@ const relTime = (iso) => {
   if (seconds < 7 * 86_400) return `${Math.floor(seconds / 86_400)}d`;
   return new Date(stamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
+
+// Chrome keeps a favicon cache for every page you visit; the _favicon
+// endpoint reads it locally — no network, no tracking — so every source
+// in the margin can wear its site's face.
+const faviconUrl = (pageUrl) => {
+  try {
+    if (!chrome.runtime?.getURL || !/^https?:/.test(pageUrl || '')) return '';
+    const url = new URL(chrome.runtime.getURL('/_favicon/'));
+    url.searchParams.set('pageUrl', pageUrl);
+    url.searchParams.set('size', '16');
+    return url.href;
+  } catch {
+    return '';
+  }
+};
+
+// A site without a cached icon fails the img load; it disappears instead
+// of showing the broken-image glyph. Capture phase — error does not bubble.
+document.addEventListener('error', (event) => {
+  if (event.target?.classList?.contains('favicon')) event.target.hidden = true;
+}, true);
+
+// A panel left open keeps telling the truth: relative times re-derive
+// from their stamps every half-minute, so "just now" grows up.
+setInterval(() => {
+  document.querySelectorAll('.posttime[data-created]').forEach((el) => {
+    const fresh = relTime(el.dataset.created);
+    if (el.textContent !== fresh) el.textContent = fresh;
+  });
+}, 30_000);
 
 // Accepts "62" or "1:02" and returns whole seconds.
 const parseTimeInput = (value) => {
@@ -156,14 +194,25 @@ const showToast = (message, link = null) => {
 let publishMomentTimer;
 const dismissPublishMoment = () => {
   clearTimeout(publishMomentTimer);
-  document.querySelector('.pub-moment')?.remove();
+  const moment = document.querySelector('.pub-moment');
+  if (!moment || moment.classList.contains('is-leaving')) return;
+  const finish = () => {
+    moment.remove();
+    // the fresh note underneath wears the celebration's tail — a soft wash
+    if (panelMode === 'page') retrigger(timeline.querySelector('.post'), 'just-published');
+  };
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { finish(); return; }
+  moment.classList.add('is-leaving');
+  setTimeout(finish, 160);
 };
 
 const showPublishMoment = (title) => {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  // Reduced motion gets the same confirmation, standing still: ring and tick
+  // pre-drawn, no choreography — not the silence it used to get.
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   dismissPublishMoment();
   const moment = document.createElement('div');
-  moment.className = 'pub-moment';
+  moment.className = reduced ? 'pub-moment is-static' : 'pub-moment';
   moment.setAttribute('role', 'status');
   moment.title = 'Continue';
   moment.innerHTML = `
@@ -273,11 +322,17 @@ const readPageSelection = async () => {
 
 const apiRequest = async (path, options = {}) => {
   let response;
+  // A hanging origin must fail into the styled offline state, not park the
+  // panel on "connecting" at the browser's mercy.
+  const timeoutController = new AbortController();
+  const timeout = setTimeout(() => timeoutController.abort(), 8000);
   try {
-    response = await fetch(`${await apiOrigin()}${path}`, { credentials: 'omit', headers: { 'content-type': 'application/json', ...(await authHeaders()), ...(options.headers || {}) }, ...options });
+    response = await fetch(`${await apiOrigin()}${path}`, { credentials: 'omit', signal: timeoutController.signal, headers: { 'content-type': 'application/json', ...(await authHeaders()), ...(options.headers || {}) }, ...options });
   } catch (requestError) {
     requestError.retryable = true;
     throw requestError;
+  } finally {
+    clearTimeout(timeout);
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -361,10 +416,24 @@ const publishBlocker = () => {
   return '';
 };
 
+// The resting hint speaks to the capture you are actually making, and
+// names the keyboard path once the mouse path is obvious.
+const defaultPublishHint = () => `${isMediaType() ? 'Marks follow the player.' : 'Highlights and snips stay right here.'} Nothing is published until you publish — <kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>Enter</kbd> when ready.`;
+
 const syncPublishGate = () => {
   const blocker = publishBlocker();
   publishButton.disabled = Boolean(blocker);
-  publishHint.textContent = blocker || 'Marks follow the player. Nothing is published until you publish.';
+  if (blocker) publishHint.textContent = blocker;
+  else publishHint.innerHTML = defaultPublishHint();
+};
+
+// Re-fires a one-shot animation class even when it is already present.
+// Under reduced motion the class is inert, so no guard is needed.
+const retrigger = (element, className) => {
+  if (!element) return;
+  element.classList.remove(className);
+  void element.offsetWidth;
+  element.classList.add(className);
 };
 
 const syncMarks = () => {
@@ -373,7 +442,11 @@ const syncMarks = () => {
   markOutTime.textContent = format(marks.end);
   markIn.classList.toggle('is-set', marks.inSet);
   markOut.classList.toggle('is-set', marks.outSet);
-  durationChip.textContent = format(length);
+  const nextDuration = format(length);
+  if (durationChip.textContent !== nextDuration) {
+    durationChip.textContent = nextDuration;
+    retrigger(durationChip, 'just-ticked');
+  }
   const over = length > MAX_CLIP_SECONDS;
   durationChip.classList.toggle('is-over', over);
   overReason.hidden = !over;
@@ -543,6 +616,36 @@ shotClear.addEventListener('click', () => {
   shotButton.focus();
 });
 
+// You can verify what you snipped: the small preview — and any screenshot
+// in the timeline — opens at full size. Same door out as every veil:
+// click anywhere, the close button, or Esc.
+let shotVeilReturnFocus = null;
+
+const openShotVeil = (src, opener = null) => {
+  if (!src) return;
+  shotVeilImg.src = src;
+  shotVeil.hidden = false;
+  shotVeilReturnFocus = opener;
+  shotVeilClose.focus();
+};
+
+const closeShotVeil = () => {
+  if (shotVeil.hidden || shotVeil.classList.contains('is-closing')) return;
+  const finish = () => {
+    shotVeil.classList.remove('is-closing');
+    shotVeil.hidden = true;
+    shotVeilImg.removeAttribute('src');
+    if (shotVeilReturnFocus?.isConnected) shotVeilReturnFocus.focus();
+    shotVeilReturnFocus = null;
+  };
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { finish(); return; }
+  shotVeil.classList.add('is-closing');
+  setTimeout(finish, 140);
+};
+
+shotPreview.addEventListener('click', () => openShotVeil(shotPreview.src, shotPreview));
+shotVeil.addEventListener('click', closeShotVeil);
+
 visibilitySelect.addEventListener('change', () => {
   visibility = ['public', 'unlisted', 'private'].includes(visibilitySelect.value) ? visibilitySelect.value : 'public';
   saveDraft();
@@ -561,9 +664,19 @@ topicSelect.addEventListener('change', () => {
 
 const syncSource = () => {
   sourceTitle.textContent = currentTab.title || 'Reading this tab…';
+  const icon = faviconUrl(currentTab.url);
+  sourceFavicon.hidden = !icon;
+  if (icon && sourceFavicon.src !== icon) sourceFavicon.src = icon;
   typeSelect.value = currentTab.sourceType;
+  // Three states, not two: until the tab is actually known the panel is
+  // "reading", never "unsupported" — the old boot order flashed a false
+  // error on every open while the first network round-trips settled.
+  const known = Boolean(currentTab.url);
   const supported = /^https?:/.test(currentTab.url || '');
-  capUnsupported.hidden = supported;
+  capUnsupported.hidden = !known || supported;
+  // On chrome:// and friends the composer stops pretending: no note box, no
+  // publish row, no live dot — just the one honest sentence.
+  captureSection.classList.toggle('is-unsupported', known && !supported);
   mediaSelection.hidden = !supported || !isMediaType();
   textSelection.hidden = !supported || isMediaType();
   document.querySelector('#shotRow').hidden = !supported;
@@ -656,6 +769,7 @@ const restoreDraft = (draft) => {
 const resetCaptureState = () => {
   recordingToken += 1;
   clearInterval(recordingTimer);
+  setReviewTake(null);
   if (mediaRecorder?.state === 'recording') mediaRecorder.stop();
   recordingStream?.getTracks().forEach((track) => track.stop());
   recordingStream = null;
@@ -696,12 +810,22 @@ const loadCurrentTab = async () => {
     currentTabId = tab.id ?? null;
     feedCache.page = null;
     if (panelMode === 'page') renderTimeline();
+    // Never show the previous tab's identity while the probes run: reset to
+    // the neutral reading state instantly, fill in as answers arrive.
+    currentTab = { url: '', title: '', host: '', sourceType: 'article', duration: 0 };
+    armGrabber('');
+    syncSource();
   }
   const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
   currentTab = { url, title: tab.title || host || 'This tab', host, sourceType: currentTab.sourceType || 'article', duration: 0 };
   currentTab.sourceType = await detectSourceType(tab.id, url);
+  if (currentTabId !== tab.id) return; // a faster tab switch won the race
+  void installSelectionWatcher(tab.id, url);
+  // The needle found a new station: the live dot swells once, the title fades in.
+  if (changed) retrigger(document.querySelector('.cap-source'), 'is-retuned');
   if (changed) {
     const draft = await extensionStorage.getTabDraft(currentTabId).catch(() => null);
+    if (currentTabId !== tab.id) return;
     if (draft && draft.sourceUrl === url) restoreDraft(draft);
   }
   resolvedSource = null;
@@ -711,7 +835,11 @@ const loadCurrentTab = async () => {
   draftReady = true;
   if (backendOnline && /^https?:/.test(url)) {
     try {
-      resolvedSource = await resolveSourceUrl(url, currentTab.title);
+      const resolved = await resolveSourceUrl(url, currentTab.title);
+      // A slow resolve for a tab we already left must never stamp its
+      // details onto the tab we are on now.
+      if (currentTab.url !== url) return;
+      resolvedSource = resolved;
       // The live tab title is the source of truth for the strip; the resolver
       // fills in what the tab cannot know (canonical URL, media URL, duration).
       if (!tab.title && resolvedSource.title) currentTab.title = resolvedSource.title;
@@ -726,7 +854,8 @@ const loadCurrentTab = async () => {
 
 chrome.tabs?.onActivated?.addListener(() => { void loadCurrentTab(); });
 chrome.tabs?.onUpdated?.addListener((_tabId, changeInfo) => {
-  if (changeInfo.status === 'complete') void loadCurrentTab();
+  // SPA navigations change the URL without a load cycle — rebind on both.
+  if (changeInfo.status === 'complete' || changeInfo.url) void loadCurrentTab();
 });
 
 /* ── marks ─────────────────────────────────────────────────────────── */
@@ -751,6 +880,7 @@ const captureMark = async (boundary) => {
     if (!marks.inSet || marks.start > marks.end) { marks.start = Math.max(0, marks.end); marks.inSet = true; }
   }
   syncMarks();
+  retrigger(boundary === 'in' ? markIn : markOut, 'just-set');
   saveDraft();
 };
 
@@ -775,6 +905,7 @@ const applyManualMark = (boundary, input) => {
     if (marks.start > parsed) marks.start = parsed;
   }
   syncMarks();
+  retrigger(boundary === 'in' ? markIn : markOut, 'just-set');
   saveDraft();
 };
 
@@ -782,6 +913,65 @@ manualIn.addEventListener('change', () => applyManualMark('in', manualIn));
 manualOut.addEventListener('change', () => applyManualMark('out', manualOut));
 
 /* ── article selection ─────────────────────────────────────────────── */
+
+// The grabber arms itself: a debounced selectionchange watcher lives in the
+// page (self-guarding, injected once per document) and messages the panel,
+// so the button reads "Capture 'The first few words…'" the moment a
+// selection exists instead of waiting to fail.
+function watchSelectionInPage() {
+  if (window.__annotatedSelectionWatch) return true;
+  window.__annotatedSelectionWatch = true;
+  let timer;
+  document.addEventListener('selectionchange', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const text = String(window.getSelection()?.toString() || '').replace(/\s+/g, ' ').trim();
+      try { chrome.runtime.sendMessage({ type: 'ANNOTATED_SELECTION', preview: text.slice(0, 80) }); } catch { /* extension reloaded */ }
+    }, 250);
+  });
+  return true;
+}
+
+const grabLabel = $('#grabLabel');
+const GRAB_IDLE_LABEL = 'Highlight a passage on the page, then capture it';
+
+const armGrabber = (preview) => {
+  const armed = Boolean(preview);
+  grabSelection.classList.toggle('is-armed', armed);
+  grabLabel.textContent = armed
+    ? `Capture “${preview.length > 42 ? `${preview.slice(0, 42).trimEnd()}…` : preview}”`
+    : GRAB_IDLE_LABEL;
+};
+
+chrome.runtime?.onMessage?.addListener((message, sender) => {
+  if (message?.type === 'ANNOTATED_SELECTION') {
+    if (sender?.tab?.id !== currentTabId) return;
+    armGrabber(message.preview || '');
+    return;
+  }
+  // Right-click "Annotate" while the panel is already open: capture now.
+  if (message?.type === 'ANNOTATED_GRAB_SELECTION' && message.tabId === currentTabId) {
+    void captureSelection();
+  }
+});
+
+// Right-click "Annotate" on a cold panel: the background stashed the request
+// before opening us; consume it once the tab is known.
+const consumePendingGrab = async () => {
+  try {
+    const { annotatedPendingGrab } = await chrome.storage.session.get('annotatedPendingGrab');
+    if (!annotatedPendingGrab) return;
+    await chrome.storage.session.remove('annotatedPendingGrab');
+    if (annotatedPendingGrab.tabId === currentTabId) await captureSelection();
+  } catch { /* nothing pending */ }
+};
+
+const installSelectionWatcher = async (tabId, url) => {
+  if (!Number.isInteger(tabId) || !/^https?:/.test(url || '')) return;
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, func: watchSelectionInPage });
+  } catch { /* pages that refuse injection simply keep the un-armed grabber */ }
+};
 
 const captureSelection = async () => {
   const grabbed = await readPageSelection();
@@ -793,6 +983,7 @@ const captureSelection = async () => {
   selection = grabbed;
   syncSelectionCard();
   saveDraft();
+  note.focus();
 };
 
 grabSelection.addEventListener('click', () => { void captureSelection(); });
@@ -856,6 +1047,45 @@ const stopAudioRecording = () => {
   mediaRecorder.stop();
 };
 
+// Voice notes were published unheard. The staged take stays reviewable —
+// one button, play or stop, revoked whenever the take changes.
+let reviewAudio = null;
+let reviewUrl = '';
+const audioReview = $('#audioReview');
+
+const setReviewTake = (blob) => {
+  if (reviewAudio) { reviewAudio.pause(); reviewAudio = null; }
+  if (reviewUrl) { URL.revokeObjectURL(reviewUrl); reviewUrl = ''; }
+  audioStatus.classList.remove('rec-ending');
+  audioReview.hidden = !blob;
+  audioReview.classList.remove('is-playing');
+  audioReview.textContent = 'Review take';
+  if (blob) reviewUrl = URL.createObjectURL(blob);
+};
+
+audioReview.addEventListener('click', () => {
+  if (!reviewUrl) return;
+  if (reviewAudio && !reviewAudio.paused) {
+    reviewAudio.pause();
+    reviewAudio.currentTime = 0;
+    audioReview.classList.remove('is-playing');
+    audioReview.textContent = 'Review take';
+    return;
+  }
+  if (!reviewAudio) reviewAudio = new Audio(reviewUrl);
+  reviewAudio.currentTime = 0;
+  audioReview.classList.add('is-playing');
+  audioReview.textContent = 'Stop review';
+  reviewAudio.addEventListener('ended', () => {
+    audioReview.classList.remove('is-playing');
+    audioReview.textContent = 'Review take';
+  }, { once: true });
+  void reviewAudio.play().catch(() => {
+    audioReview.classList.remove('is-playing');
+    audioReview.textContent = 'Review take';
+  });
+});
+
 const startAudioRecording = async () => {
   if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
     showError('Audio recording is not supported in this browser.');
@@ -889,6 +1119,7 @@ const startAudioRecording = async () => {
       recordingChunks = [];
       if (mediaRecorder === recorder) mediaRecorder = null;
       if (token !== recordingToken || currentTab.url !== sourceUrl) return;
+      setReviewTake(blob); // hear it before you publish it
       try {
         const stagedId = await stageAudioDraft(blob, { duration: audioDurationSeconds, mimeType: recordedMimeType });
         if (token !== recordingToken || currentTab.url !== sourceUrl) {
@@ -905,10 +1136,14 @@ const startAudioRecording = async () => {
       syncComposer();
     });
     recorder.start(250);
+    setReviewTake(null);
     setAudioStatus('Recording your take…', `Press to stop · max ${format(MAX_AUDIO_SECONDS)}`);
     recordingTimer = setInterval(() => {
       audioDurationSeconds = clampAudioDuration((Date.now() - recordingStartedAt) / 1000);
-      setAudioStatus('Recording your take…', `Press to stop · max ${format(MAX_AUDIO_SECONDS)}`);
+      const remaining = Math.max(0, Math.ceil(MAX_AUDIO_SECONDS - audioDurationSeconds));
+      // the last ten seconds speak up instead of cutting off by surprise
+      audioStatus.classList.toggle('rec-ending', remaining <= 10);
+      setAudioStatus('Recording your take…', remaining <= 10 ? `${remaining}s left — it stops itself at ${format(MAX_AUDIO_SECONDS)}` : `Press to stop · max ${format(MAX_AUDIO_SECONDS)}`);
       if (audioDurationSeconds >= MAX_AUDIO_SECONDS) stopAudioRecording();
     }, 250);
   } catch (recordingError) {
@@ -963,13 +1198,22 @@ const annotationToItem = (annotation) => ({
   anchorSuffix: annotation.anchorSuffix || '',
   opens: Number(annotation.opens) || 0,
   comments: Array.isArray(annotation.comments) ? annotation.comments.length : 0,
+  likes: Number(annotation.likes) || 0,
+  likedByMe: Boolean(annotation.likedByMe),
   editedAt: annotation.editedAt || '',
+  createdAt: annotation.createdAt || '',
 });
 
 publishButton.addEventListener('click', async () => {
   clearError();
   const blocker = publishBlocker();
   if (blocker) { publishHint.textContent = blocker; return; }
+  // A reader who has never signed in gets the door, not a false 'session
+  // expired' after a doomed round-trip. The capture stays exactly where it is.
+  if (!(await extensionStorage.getAuthToken().catch(() => null))) {
+    openSignin('Sign in to publish — your capture stays right here.');
+    return;
+  }
   if (commentaryMode === 'audio' && !audioAssetId && audioDraftId) {
     try { await uploadStagedAudio(); } catch (uploadError) {
       showError(uploadError.retryable ? 'Audio note saved locally. It will retry when the backend is available.' : uploadError.message || 'Finish uploading the audio note before publishing.');
@@ -1002,6 +1246,7 @@ publishButton.addEventListener('click', async () => {
     } : {}),
   };
   publishButton.disabled = true;
+  publishButton.classList.add('is-working');
   publishHint.textContent = 'Publishing…';
   try {
     const { annotation } = await apiRequest('/api/annotations', { method: 'POST', body: JSON.stringify(payload) });
@@ -1021,6 +1266,9 @@ publishButton.addEventListener('click', async () => {
       }
       if (!feedCache.page) feedCache.page = { items: [item] };
       setPanelMode('page');
+      // the fresh note settles behind the veil, at rest before it lifts
+      timeline.classList.add('is-inserting');
+      setTimeout(() => timeline.classList.remove('is-inserting'), 300);
     }
     showToast('Published', { href: annotation.url, label: 'View page' });
   } catch (publishError) {
@@ -1037,6 +1285,7 @@ publishButton.addEventListener('click', async () => {
       showError(publishError.message || 'Annotation could not be published.');
     }
   } finally {
+    publishButton.classList.remove('is-working');
     syncPublishGate();
   }
 });
@@ -1046,13 +1295,18 @@ publishButton.addEventListener('click', async () => {
 const timelineMedia = (item) => {
   const clipSeconds = Math.max(0, item.clipEnd - item.clipStart);
   if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'video') {
-    return `<div class="srcmedia"><video controls preload="metadata" src="${escapeHTML(item.clipUrl)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(format(clipSeconds))} · 240p</span></div>`;
+    return `<div class="srcmedia"><video controls preload="metadata" src="${escapeHTML(item.clipUrl)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(format(clipSeconds))}</span></div>`;
   }
   if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'podcast') {
     return `<div class="srcmedia srcmedia-audio"><span class="cliptag">CLIP</span><audio controls preload="none" src="${escapeHTML(item.clipUrl)}"></audio></div>`;
   }
   if (item.screenshotUrl) {
     return `<div class="srcmedia"><img loading="lazy" src="${escapeHTML(item.screenshotUrl)}" alt="Screenshot of ${escapeHTML(item.sourceTitle)}" /></div>`;
+  }
+  // A clip that exists but is not ready yet says so — a just-published post
+  // no longer shows an inexplicable nothing where its media will be.
+  if ((item.type === 'video' || item.type === 'podcast') && ['queued', 'processing'].includes(item.mediaStatus)) {
+    return `<div class="srcmedia srcmedia-processing"><span class="cliptag">CLIP</span><span class="processing-note">Processing ${escapeHTML(format(clipSeconds))} clip — it appears here when ready</span></div>`;
   }
   return '';
 };
@@ -1186,33 +1440,37 @@ const timelinePost = (item) => {
   // The quote below carries the passage; only media moments need a chip.
   const chip = item.type === 'article' ? '' : `${format(item.clipStart)}–${format(item.clipEnd)}`;
   const quote = item.quote ? `<blockquote>&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
+  const favicon = faviconUrl(item.canonicalUrl || item.sourceUrl);
   return `
   <article class="post">
     ${item.avatarUrl
       ? `<span class="avatar has-photo" aria-hidden="true"><img src="${escapeHTML(item.avatarUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" /></span>`
       : `<span class="avatar" aria-hidden="true" style="background:${avatarColor(item.handle || item.displayName)};color:#fff">${escapeHTML(avatarInitial(item))}</span>`}
     <div class="content">
-      <div class="byline"><span class="name">@${escapeHTML(item.handle)}</span><span class="meta">· ${escapeHTML(item.time)}${item.editedAt ? ' · edited' : ''}</span></div>
+      <div class="byline"><span class="name">@${escapeHTML(item.handle)}</span>${item.editedAt ? '<span class="meta">· edited</span>' : ''}<span class="meta posttime"${item.createdAt ? ` data-created="${escapeHTML(item.createdAt)}"` : ''}>${escapeHTML(item.time)}</span></div>
       ${noteLine}
       <div class="srccard">
-        <div class="srchead">${chip ? `<span class="chip">${escapeHTML(chip)}</span>` : ''}<span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(item.type)}</span></div>
+        <div class="srchead">${chip ? `<span class="chip">${escapeHTML(chip)}</span>` : ''}${favicon ? `<img class="favicon" src="${escapeHTML(favicon)}" alt="" loading="lazy" />` : ''}<span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(item.type)}</span></div>
         ${timelineMedia(item)}
         ${quote}
       </div>
       <div class="actions">
-        <a class="act primary" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-open-slug="${escapeHTML(item.slug)}" title="${escapeHTML(openOriginalLabel(item))}">
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg>
-          Open${item.opens ? ` <span class="n">${item.opens}</span>` : ''}
-        </a>
-        <a class="act" href="${escapeHTML(item.url)}" target="_blank" rel="noreferrer" title="Open responses">
+        <a class="act" href="${escapeHTML(item.url)}" target="_blank" rel="noreferrer" title="Open responses" aria-label="Open responses">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 12a8 8 0 0 1-8 8H4l3-3a8 8 0 1 1 14-5z"/></svg>
-          ${item.comments ? `<span class="n">${item.comments}</span>` : 'Respond'}
+          ${item.comments ? `<span class="n">${item.comments}</span>` : ''}
         </a>
-        ${item.type === 'article' && item.quote && (panelMode === 'page' || matchesCurrentTab(item)) ? `<button class="act" type="button" data-highlight-slug="${escapeHTML(item.slug)}" title="Highlight this passage on the page">
+        <button class="act${item.likedByMe ? ' is-liked' : ''}" type="button" data-like-slug="${escapeHTML(item.slug)}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+          ${item.likes ? `<span class="n">${item.likes}</span>` : ''}
+        </button>
+        ${item.type === 'article' && item.quote && (panelMode === 'page' || matchesCurrentTab(item)) ? `<button class="act" type="button" data-highlight-slug="${escapeHTML(item.slug)}" title="Highlight this passage on the page" aria-label="Highlight this passage on the page">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
-          On page
         </button>` : ''}
-        <button class="act" type="button" data-share-url="${escapeHTML(item.url)}" title="Copy the page link">
+        <a class="act primary" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-open-slug="${escapeHTML(item.slug)}" title="${escapeHTML(openOriginalLabel(item))}${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}" aria-label="${escapeHTML(openOriginalLabel(item))}${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg>
+          ${item.opens ? `<span class="n">${item.opens}</span>` : ''}
+        </a>
+        <button class="act share" type="button" data-share-url="${escapeHTML(item.url)}" title="Copy the page link" aria-label="Copy the page link">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12M8 7l4-4 4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg>
         </button>
       </div>
@@ -1235,10 +1493,23 @@ const syncTabs = () => {
     const active = tabButton.dataset.feedTab === panelMode;
     tabButton.classList.toggle('is-active', active);
     tabButton.setAttribute('aria-selected', String(active));
+    tabButton.tabIndex = active ? 0 : -1; // roving tabindex, arrows move between tabs
   });
   captureSection.hidden = panelMode !== 'capture';
   timeline.hidden = panelMode === 'capture';
 };
+
+// The real ARIA tabs pattern: arrow keys walk and activate the modes.
+document.querySelector('.tabs')?.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+  const tabs = [...document.querySelectorAll('.tabs [data-feed-tab]')];
+  const index = tabs.indexOf(document.activeElement);
+  if (index === -1) return;
+  event.preventDefault();
+  const next = tabs[(index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+  setPanelMode(next.dataset.feedTab);
+  next.focus();
+});
 
 const renderTimeline = () => {
   syncTabs();
@@ -1252,35 +1523,68 @@ const renderTimeline = () => {
     timeline.innerHTML = `<div class="empty"><h2>Sign in to see the people you follow.</h2><p>One account across the extension, the web, and the app.</p><button type="button" data-open-signin>Sign in</button></div>`;
     return;
   }
+  if (cache.error === 'offline') {
+    timeline.innerHTML = `<div class="state">You’re offline. The timeline returns with the connection — reconnecting automatically.</div>`;
+    return;
+  }
   if (cache.error) {
     timeline.innerHTML = `<div class="state">The timeline could not be loaded. <button type="button" data-feed-retry>Try again</button></div>`;
     return;
   }
   if (!cache.items.length) {
     const mark = '<img class="mark" src="icons/icon-128.png" alt="" aria-hidden="true" />';
-    timeline.innerHTML = panelMode === 'page'
+    // "Yours would be the first" is a lie on chrome:// — nobody's can be.
+    const pageEmpty = /^https?:/.test(currentTab.url || '')
       ? `<div class="empty">${mark}<h2>No annotations on this page yet.</h2><p>Yours would be the first.</p><button type="button" data-focus-note>Write the first note</button></div>`
-      : `<div class="empty">${mark}<h2>${panelMode === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${panelMode === 'following' ? 'Follow someone from their page.' : 'Capture the first source-backed moment.'}</p></div>`;
+      : `<div class="empty">${mark}<h2>This page can’t be annotated.</h2><p>Open a video, article, or podcast and the margin opens with it.</p></div>`;
+    timeline.innerHTML = panelMode === 'page'
+      ? pageEmpty
+      : `<div class="empty">${mark}<h2>${panelMode === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${panelMode === 'following' ? 'Follow someone whose context you want to keep up with.' : 'Capture the first source-backed moment and it will appear here.'}</p>${panelMode === 'following' ? '<button type="button" data-feed-tab-jump="recent">Browse Recent</button>' : ''}</div>`;
     return;
   }
-  timeline.innerHTML = cache.items.map(timelinePost).join('');
+  timeline.innerHTML = `${cache.items.map(timelinePost).join('')}${cache.nextCursor ? '<button class="load-more" type="button" data-load-more>Load more</button>' : ''}`;
+  // The stagger plays only on a feed's first paint — never on the in-place
+  // re-renders a like or retry causes.
+  if (freshFeedTab === panelMode) {
+    freshFeedTab = null;
+    timeline.classList.add('is-fresh');
+    setTimeout(() => timeline.classList.remove('is-fresh'), 450);
+  }
+};
+
+const patchLikeButton = (button, liked, likes) => {
+  button.classList.toggle('is-liked', liked);
+  button.setAttribute('aria-label', `${liked ? 'Unlike' : 'Like'} this annotation`);
+  let count = button.querySelector('.n');
+  if (likes > 0) {
+    if (!count) { count = document.createElement('span'); count.className = 'n'; button.append(count); }
+    count.textContent = likes;
+  } else {
+    count?.remove();
+  }
 };
 
 const setPanelMode = (mode) => {
   panelMode = mode;
   renderTimeline();
-  if (mode !== 'capture' && !feedCache[mode]) void loadTimeline(mode);
+  // Warm caches render instantly and revalidate quietly in the background —
+  // returning to Recent never shows the first fetch forever, and a
+  // just-published clip picks up its processed media on re-entry.
+  if (mode !== 'capture') void loadTimeline(mode, { background: Boolean(feedCache[mode]) });
 };
 
-const loadTimeline = async (tab) => {
+const loadTimeline = async (tab, { background = false, append = false } = {}) => {
   if (tab === 'capture') return;
   if (!backendOnline) {
-    feedCache[tab] = { items: [], error: 'offline' };
-    if (tab === panelMode) renderTimeline();
+    if (!feedCache[tab]) {
+      feedCache[tab] = { items: [], error: 'offline' };
+      if (tab === panelMode) renderTimeline();
+    }
     return;
   }
-  if (!feedCache[tab]) {
+  if (!feedCache[tab] && !append) {
     feedCache[tab] = null;
+    freshFeedTab = tab; // first paint of this feed gets the staggered entrance
     if (tab === panelMode) renderTimeline();
   }
   try {
@@ -1294,10 +1598,17 @@ const loadTimeline = async (tab) => {
       }
       params.set('url', currentTab.url);
     }
+    if (append && feedCache[tab]?.nextCursor) params.set('cursor', feedCache[tab].nextCursor);
     const result = await apiRequest(`/api/feed?${params}`);
-    feedCache[tab] = { items: (result.annotations || []).map(annotationToItem) };
+    const items = (result.annotations || []).map(annotationToItem);
+    feedCache[tab] = append && feedCache[tab]?.items
+      ? { items: [...feedCache[tab].items, ...items], nextCursor: result.nextCursor || null }
+      : { items, nextCursor: result.nextCursor || null };
   } catch (feedError) {
-    feedCache[tab] = { items: [], error: feedError.authRequired ? 'auth' : 'load' };
+    // A failed background revalidate or append never clobbers a good cache.
+    if (!background && !append) {
+      feedCache[tab] = { items: [], error: feedError.authRequired ? 'auth' : (feedError.retryable ? 'offline' : 'load') };
+    }
   }
   if (tab === panelMode) renderTimeline();
 };
@@ -1308,6 +1619,16 @@ document.querySelectorAll('[data-feed-tab]').forEach((tabButton) => tabButton.ad
 
 timeline.addEventListener('click', async (event) => {
   if (event.target.closest('[data-open-signin]')) { openSignin(); return; }
+  const shot = event.target.closest('.srcmedia img');
+  if (shot) { openShotVeil(shot.src, shot); return; }
+  const jump = event.target.closest('[data-feed-tab-jump]');
+  if (jump) { setPanelMode(jump.dataset.feedTabJump); return; }
+  const more = event.target.closest('[data-load-more]');
+  if (more) {
+    more.disabled = true;
+    await loadTimeline(panelMode, { append: true });
+    return;
+  }
   const share = event.target.closest('[data-share-url]');
   if (share) {
     try {
@@ -1320,6 +1641,27 @@ timeline.addEventListener('click', async (event) => {
   }
   const open = event.target.closest('[data-open-slug]');
   if (open) { void recordOpen(open.dataset.openSlug); return; }
+  const like = event.target.closest('[data-like-slug]');
+  if (like) {
+    if (!(await extensionStorage.getAuthToken().catch(() => null))) { openSignin(); return; }
+    const slug = like.dataset.likeSlug;
+    const entries = Object.values(feedCache).flatMap((cache) => cache?.items || []).filter((entry) => entry.slug === slug);
+    if (!entries.length) return;
+    const liked = Boolean(entries[0].likedByMe);
+    for (const entry of entries) { entry.likedByMe = !liked; entry.likes = Math.max(0, (entry.likes || 0) + (liked ? -1 : 1)); }
+    // Patch the one button in place — a full re-render would destroy focus,
+    // hover, and any clip mid-play for the sake of one heart.
+    patchLikeButton(like, !liked, entries[0].likes);
+    retrigger(like, 'just-liked');
+    try {
+      await apiRequest(`/api/annotations/${encodeURIComponent(slug)}/${liked ? 'unlike' : 'like'}`, { method: 'POST' });
+    } catch (likeError) {
+      for (const entry of entries) { entry.likedByMe = liked; entry.likes = Math.max(0, (entry.likes || 0) + (liked ? 1 : -1)); }
+      renderTimeline(); // a failed round-trip earns the rebuild
+      if (likeError.authRequired) { setAuthState(false); openSignin(); } else showToast('Like could not be saved.');
+    }
+    return;
+  }
   const highlight = event.target.closest('[data-highlight-slug]');
   if (highlight) {
     const item = (feedCache[panelMode]?.items || []).find((entry) => entry.slug === highlight.dataset.highlightSlug);
@@ -1363,8 +1705,27 @@ queueRetry.addEventListener('click', async () => {
   await refreshQueueStatus();
 });
 
+// A queued capture the background published quietly: clear the matching
+// draft so nobody double-publishes, and say what happened with the link.
+const consumeQueuePublished = async () => {
+  try {
+    const { annotatedQueuePublished } = await chrome.storage.local.get('annotatedQueuePublished');
+    if (!annotatedQueuePublished) return;
+    await chrome.storage.local.remove('annotatedQueuePublished');
+    if (annotatedQueuePublished.sourceUrl && annotatedQueuePublished.sourceUrl === currentTab.url) {
+      resetCaptureState();
+      await extensionStorage.clearTabDraft(currentTabId).catch(() => {});
+      syncSource();
+      syncNote();
+      syncComposer();
+    }
+    showToast('Queued capture published', annotatedQueuePublished.url ? { href: annotatedQueuePublished.url, label: 'View page' } : null);
+  } catch { /* nothing recorded */ }
+};
+
 chrome.storage?.onChanged?.addListener((changes, areaName) => {
   if (areaName === 'local' && changes[PENDING_KEY]) void refreshQueueStatus();
+  if (areaName === 'local' && changes.annotatedQueuePublished?.newValue) void consumeQueuePublished();
 });
 
 /* ── auth ──────────────────────────────────────────────────────────── */
@@ -1375,26 +1736,43 @@ const anyProviderAvailable = () => Object.keys(availableProviders).some((provide
 
 const setAuthState = (signedIn, user = panelUser) => {
   panelUser = signedIn ? user : null;
-  signOutButton.hidden = !signedIn;
-  if (signedIn) signOutButton.textContent = String(user?.handle || user?.displayName || 'A').slice(0, 1).toUpperCase();
+  meButton.hidden = !signedIn;
+  if (signedIn) {
+    meButton.textContent = String(user?.handle || user?.displayName || 'A').slice(0, 1).toUpperCase();
+    meName.textContent = `@${user?.handle || 'you'}`;
+  } else {
+    meMenu.hidden = true;
+    meButton.setAttribute('aria-expanded', 'false');
+  }
   signInOpen.hidden = signedIn || !anyProviderAvailable();
   signinVeil.querySelectorAll('[data-auth]').forEach((button) => { button.hidden = !availableProviders[button.dataset.auth]; });
   if (signedIn) closeSignin();
 };
 
 let signinReturnFocus = null;
-const openSignin = () => {
+const signinContext = $('#signinContext');
+const openSignin = (context = '') => {
   if (!anyProviderAvailable()) { showError('Sign-in is not configured on this backend.'); return; }
+  signinVeil.classList.remove('is-closing');
+  signinContext.textContent = context;
+  signinContext.hidden = !context;
   signinReturnFocus = document.activeElement;
   signinVeil.hidden = false;
   signinVeil.querySelector('[data-auth]:not([hidden])')?.focus();
 };
 
 const closeSignin = () => {
-  if (signinVeil.hidden) return;
-  signinVeil.hidden = true;
-  if (signinReturnFocus?.isConnected && !signinReturnFocus.hidden) signinReturnFocus.focus();
-  signinReturnFocus = null;
+  if (signinVeil.hidden || signinVeil.classList.contains('is-closing')) return;
+  const finish = () => {
+    signinVeil.classList.remove('is-closing');
+    signinVeil.hidden = true;
+    signinContext.hidden = true;
+    if (signinReturnFocus?.isConnected && !signinReturnFocus.hidden) signinReturnFocus.focus();
+    signinReturnFocus = null;
+  };
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { finish(); return; }
+  signinVeil.classList.add('is-closing');
+  setTimeout(finish, 140);
 };
 
 signInOpen.addEventListener('click', openSignin);
@@ -1412,11 +1790,41 @@ signinVeil.querySelectorAll('[data-auth]').forEach((button) => button.addEventLi
     feedCache.following = null;
     if (panelMode === 'following') await loadTimeline('following');
   } catch (authError) {
+    // Closing the OAuth window is a decision, not a failure — stay quiet.
+    if (/clos|cancel|did not approve/i.test(authError?.message || '')) return;
     showError(authError.message || 'Sign-in failed.');
   }
 }));
 
-signOutButton.addEventListener('click', async () => {
+// The avatar opens a small menu instead of being a one-click sign-out
+// landmine: who you are, your public page, the settings the panel never
+// linked to before, and sign out — deliberately last.
+const setMenuOpen = (open) => {
+  meMenu.hidden = !open;
+  meButton.setAttribute('aria-expanded', String(open));
+  if (open) meMenu.querySelector('[role="menuitem"]')?.focus();
+};
+
+meButton.addEventListener('click', () => setMenuOpen(meMenu.hidden));
+
+document.addEventListener('click', (event) => {
+  if (!meMenu.hidden && !event.target.closest('#authActions')) setMenuOpen(false);
+});
+
+document.querySelector('#menuProfile').addEventListener('click', async () => {
+  setMenuOpen(false);
+  const origin = await apiOrigin();
+  const handle = panelUser?.handle || '';
+  await chrome.tabs.create({ url: `${origin}/u/${encodeURIComponent(handle)}` }).catch(() => {});
+});
+
+document.querySelector('#menuSettings').addEventListener('click', () => {
+  setMenuOpen(false);
+  chrome.runtime.openOptionsPage?.();
+});
+
+document.querySelector('#menuSignOut').addEventListener('click', async () => {
+  setMenuOpen(false);
   try {
     await signOut();
     setAuthState(false);
@@ -1428,14 +1836,30 @@ signOutButton.addEventListener('click', async () => {
 
 /* ── backend ───────────────────────────────────────────────────────── */
 
+// Offline is a state to recover from, not a verdict: retries back off
+// 5s → 30s, the OS 'online' signal short-circuits the wait, and the header
+// chip doubles as a click-to-retry. On recovery, errored feeds reload and
+// the source resolves — the panel picks itself back up.
+let backendRetryTimer;
+let backendRetryDelay = 5000;
+const scheduleBackendRetry = () => {
+  clearTimeout(backendRetryTimer);
+  backendRetryTimer = setTimeout(() => { void checkBackend(); }, backendRetryDelay);
+  backendRetryDelay = Math.min(backendRetryDelay * 2, 30000);
+};
+
 const checkBackend = async () => {
   const origin = await apiOrigin();
   apiOriginCache = origin;
+  const wasOnline = backendOnline;
+  clearTimeout(backendRetryTimer);
   try {
     await apiRequest('/api/health');
     backendOnline = true;
+    backendRetryDelay = 5000;
     backendStatus.classList.add('is-live');
-    backendStatus.querySelector('.backend-label').textContent = 'live';
+    backendStatus.querySelector('.backend-label').textContent = 'connected';
+    backendStatus.removeAttribute('title');
     const auth = await apiRequest('/api/auth/providers').catch(() => ({ providers: {} }));
     availableProviders = auth.providers || {};
     let signedIn = Boolean(await extensionStorage.getAuthToken().catch(() => null));
@@ -1455,17 +1879,66 @@ const checkBackend = async () => {
     }
     setAuthState(signedIn, user);
     await refreshQueueStatus();
+    if (wasOnline === false) {
+      clearError();
+      for (const key of Object.keys(feedCache)) { if (feedCache[key]?.error) feedCache[key] = null; }
+      renderTimeline();
+      if (panelMode !== 'capture') void loadTimeline(panelMode);
+      if (!resolvedSource) void loadCurrentTab();
+    }
   } catch {
     backendOnline = false;
     backendStatus.classList.remove('is-live');
     backendStatus.querySelector('.backend-label').textContent = 'offline';
-    showError(`Annotated backend unavailable at ${origin}. Check the extension API origin in settings.`);
+    backendStatus.setAttribute('title', 'Retry now');
+    if (wasOnline !== false) showError('Can’t reach annotated right now — retrying quietly. Captures queue locally.');
+    scheduleBackendRetry();
   }
 };
+
+backendStatus.addEventListener('click', () => {
+  if (backendOnline) return;
+  backendRetryDelay = 5000;
+  void checkBackend();
+});
+
+window.addEventListener('online', () => {
+  if (backendOnline) return;
+  backendRetryDelay = 5000;
+  void checkBackend();
+});
 
 /* ── keyboard: I/O marks, Ctrl/Cmd+Enter publish, Esc clears ───────── */
 
 document.addEventListener('keydown', (event) => {
+  // The account menu is a real menu: arrows walk it, Esc puts it away.
+  if (!meMenu.hidden) {
+    if (event.key === 'Escape') { event.preventDefault(); setMenuOpen(false); meButton.focus(); return; }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const items = [...meMenu.querySelectorAll('[role="menuitem"]')];
+      const index = items.indexOf(document.activeElement);
+      const next = index === -1 ? 0 : (index + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+      items[next].focus();
+      return;
+    }
+  }
+  // The screenshot veil has one control; Tab stays on it, Esc closes.
+  if (!shotVeil.hidden) {
+    if (event.key === 'Tab') { event.preventDefault(); shotVeilClose.focus(); return; }
+    if (event.key === 'Escape') { event.preventDefault(); closeShotVeil(); return; }
+  }
+  // The sign-in door holds focus: Tab cycles inside it, never behind the veil.
+  if (!signinVeil.hidden && event.key === 'Tab') {
+    const focusables = [...signinVeil.querySelectorAll('button, a[href]')].filter((el) => !el.hidden);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    else if (!signinVeil.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
+    return;
+  }
   const inField = event.target.closest('input, textarea, select');
   if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
     event.preventDefault();
@@ -1485,15 +1958,29 @@ document.addEventListener('keydown', (event) => {
   }
   if (event.key === 'Escape') {
     if (!signinVeil.hidden) { closeSignin(); return; }
+    // Esc clears, but never destroys: the cleared capture waits behind
+    // Ctrl/Cmd+Z until the next capture replaces it.
     if (currentTab.sourceType === 'article' && selection.text) {
+      lastCleared = { kind: 'selection', value: selection };
       selection = { text: '', paragraph: 0, prefix: '', suffix: '' };
       syncSelectionCard();
       saveDraft();
+      showToast('Selection cleared — Ctrl/Cmd+Z restores it');
     } else if (isMediaType() && (marks.inSet || marks.outSet)) {
+      lastCleared = { kind: 'marks', value: marks };
       marks = { start: 0, end: 0, inSet: false, outSet: false };
       syncMarks();
       saveDraft();
+      showToast('Marks cleared — Ctrl/Cmd+Z restores them');
     }
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && (event.key === 'z' || event.key === 'Z') && lastCleared && !event.target.closest('input, textarea')) {
+    event.preventDefault();
+    if (lastCleared.kind === 'selection') { selection = lastCleared.value; syncSelectionCard(); }
+    if (lastCleared.kind === 'marks') { marks = lastCleared.value; syncMarks(); }
+    lastCleared = null;
+    saveDraft();
   }
 });
 
@@ -1501,22 +1988,76 @@ document.addEventListener('keydown', (event) => {
 
 // Opening the panel counts as seeing your notifications: the server-side
 // watermark moves, and the background worker drops the toolbar badge.
+// The toolbar badge made a promise; keep it. Before the watermark moves,
+// show what arrived — a digest strip naming the count and the latest event,
+// opening the full notifications page on the web.
+const notifDigest = $('#notifDigest');
+const notifDigestCount = $('#notifDigestCount');
+const notifDigestDetail = $('#notifDigestDetail');
+
+const notificationSentence = (item) => {
+  const actor = item?.actor?.displayName || (item?.actor?.handle ? `@${item.actor.handle}` : 'Someone');
+  if (item?.type === 'response') return `${actor} responded to your annotation`;
+  if (item?.type === 'like') return `${actor} liked your annotation`;
+  if (item?.type === 'follow') return `${actor} followed you`;
+  return `${actor} — new activity`;
+};
+
+notifDigest.addEventListener('click', async () => {
+  notifDigest.hidden = true;
+  const origin = await apiOrigin();
+  window.open(`${origin}/notifications`, '_blank', 'noreferrer');
+});
+
 const markNotificationsSeen = async () => {
   try {
     const headers = await authHeaders();
     if (!headers.authorization) return;
+    try {
+      const digest = await apiRequest('/api/notifications');
+      const unseen = Number(digest.unseenCount) || 0;
+      if (unseen > 0) {
+        notifDigestCount.textContent = unseen > 9 ? '9+' : String(unseen);
+        notifDigestDetail.textContent = notificationSentence((digest.notifications || [])[0]);
+        notifDigest.hidden = false;
+      }
+    } catch { /* the digest is a courtesy; the watermark still moves below */ }
     await fetch(`${await apiOrigin()}/api/notifications/seen`, { method: 'POST', headers });
     await chrome.runtime.sendMessage({ type: 'NOTIFICATIONS_SEEN' });
   } catch { /* offline or signed out — the badge keeps its count */ }
 };
 
+// First run only: frame the loop once (capture → your take → a public page
+// with the source attached), then never speak of it again.
+const introCard = $('#introCard');
+const introGot = $('#introGot');
+introGot.addEventListener('click', async () => {
+  introCard.hidden = true;
+  await chrome.storage.local.set({ annotatedIntroSeen: true }).catch(() => {});
+});
+
+const showIntroIfFirstRun = async () => {
+  try {
+    const { annotatedIntroSeen } = await chrome.storage.local.get('annotatedIntroSeen');
+    introCard.hidden = Boolean(annotatedIntroSeen);
+  } catch { /* stays hidden — the intro is a courtesy, not a gate */ }
+};
+
 const boot = async () => {
+  await showIntroIfFirstRun();
   syncSource();
   syncNote();
   syncComposer();
   renderTimeline();
-  await checkBackend();
-  await loadCurrentTab();
+  // The tab and the backend are independent — read them in parallel so the
+  // capture strip is truthful immediately instead of waiting out a cold
+  // backend round-trip.
+  await Promise.all([checkBackend(), loadCurrentTab()]);
+  // Source resolution is gated on the backend being online; if the tab won
+  // the race, run the light same-tab pass now that the backend answered.
+  if (backendOnline && !resolvedSource) await loadCurrentTab();
+  await consumePendingGrab();
+  await consumeQueuePublished();
   await loadTimeline('recent');
   await refreshQueueStatus();
   await markNotificationsSeen();

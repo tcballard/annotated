@@ -55,5 +55,5 @@ export const injectAnnotationMeta = (html, annotation, author, publicOrigin, { i
     .replace('</head>', `    ${tags}\n  </head>`)
     // Readers without JavaScript still get the source link and the claim
     // form — the rights path never depends on the app booting.
-    .replace(/(<body[^>]*>)/, `$1<noscript><p>This page needs JavaScript to render. The source is <a href="${escapeHtml(annotation.sourceUrl || meta.url)}">${escapeHtml(annotation.sourceHost || 'the original')}</a>; rights holders can <a href="/a/${encodeURIComponent(annotation.slug)}/claim">file a claim without JavaScript</a>.</p></noscript>`);
+    .replace(/(<body[^>]*>)/, `$1<noscript><p>This page needs JavaScript to render. The source is <a href="${escapeHtml(annotation.sourceUrl || meta.url)}">${escapeHtml(annotation.sourceHost || 'the original')}</a>; rights holders can <a href="/a/${encodeURIComponent(annotation.slug)}/claim">dispute fair use on this annotation</a> without it.</p></noscript>`);
 };
