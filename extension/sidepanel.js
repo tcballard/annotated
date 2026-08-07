@@ -63,6 +63,9 @@ const shotButton = $('#shotButton');
 const shotCard = $('#shotCard');
 const shotPreview = $('#shotPreview');
 const shotClear = $('#shotClear');
+const shotVeil = $('#shotVeil');
+const shotVeilImg = $('#shotVeilImg');
+const shotVeilClose = $('#shotVeilClose');
 const toast = $('#toast');
 const toastText = $('#toastText');
 const toastLink = $('#toastLink');
@@ -612,6 +615,36 @@ shotClear.addEventListener('click', () => {
   saveDraft();
   shotButton.focus();
 });
+
+// You can verify what you snipped: the small preview — and any screenshot
+// in the timeline — opens at full size. Same door out as every veil:
+// click anywhere, the close button, or Esc.
+let shotVeilReturnFocus = null;
+
+const openShotVeil = (src, opener = null) => {
+  if (!src) return;
+  shotVeilImg.src = src;
+  shotVeil.hidden = false;
+  shotVeilReturnFocus = opener;
+  shotVeilClose.focus();
+};
+
+const closeShotVeil = () => {
+  if (shotVeil.hidden || shotVeil.classList.contains('is-closing')) return;
+  const finish = () => {
+    shotVeil.classList.remove('is-closing');
+    shotVeil.hidden = true;
+    shotVeilImg.removeAttribute('src');
+    if (shotVeilReturnFocus?.isConnected) shotVeilReturnFocus.focus();
+    shotVeilReturnFocus = null;
+  };
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { finish(); return; }
+  shotVeil.classList.add('is-closing');
+  setTimeout(finish, 140);
+};
+
+shotPreview.addEventListener('click', () => openShotVeil(shotPreview.src, shotPreview));
+shotVeil.addEventListener('click', closeShotVeil);
 
 visibilitySelect.addEventListener('change', () => {
   visibility = ['public', 'unlisted', 'private'].includes(visibilitySelect.value) ? visibilitySelect.value : 'public';
@@ -1586,6 +1619,8 @@ document.querySelectorAll('[data-feed-tab]').forEach((tabButton) => tabButton.ad
 
 timeline.addEventListener('click', async (event) => {
   if (event.target.closest('[data-open-signin]')) { openSignin(); return; }
+  const shot = event.target.closest('.srcmedia img');
+  if (shot) { openShotVeil(shot.src, shot); return; }
   const jump = event.target.closest('[data-feed-tab-jump]');
   if (jump) { setPanelMode(jump.dataset.feedTabJump); return; }
   const more = event.target.closest('[data-load-more]');
@@ -1887,6 +1922,11 @@ document.addEventListener('keydown', (event) => {
       items[next].focus();
       return;
     }
+  }
+  // The screenshot veil has one control; Tab stays on it, Esc closes.
+  if (!shotVeil.hidden) {
+    if (event.key === 'Tab') { event.preventDefault(); shotVeilClose.focus(); return; }
+    if (event.key === 'Escape') { event.preventDefault(); closeShotVeil(); return; }
   }
   // The sign-in door holds focus: Tab cycles inside it, never behind the veil.
   if (!signinVeil.hidden && event.key === 'Tab') {

@@ -909,6 +909,48 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 /* doors close quicker than they open */
 @keyframes veil-out { to { opacity: 0; } }
 .signin-veil.is-closing { animation: veil-out var(--t-hover) var(--e-exit) forwards; }
+
+/* the screenshot at full size — verify the snip before it ships */
+.shot-preview, .srcmedia img { cursor: zoom-in; }
+
+.shot-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--ink) 55%, transparent);
+  cursor: zoom-out;
+  animation: pub-fade var(--t-fade) var(--e-enter);
+}
+
+.shot-veil img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 3px;
+  background: var(--card);
+  animation: shot-develop var(--t-move) var(--e-enter);
+}
+
+.shot-veil-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.shot-veil-close svg { width: 14px; height: 14px; }
+
+.shot-veil.is-closing { animation: veil-out var(--t-hover) var(--e-exit) forwards; }
 .signin-modal { animation: modal-rise var(--t-move) var(--e-enter); }
 @keyframes modal-rise { from { opacity: 0; transform: translateY(8px); } }
 

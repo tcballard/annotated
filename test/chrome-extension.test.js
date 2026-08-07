@@ -346,6 +346,14 @@ test('details that read expensive: sources wear their faces', async () => {
   assert.match(options, /const verifyConnection = /);
   assert.match(options, /Connected ✓ — this origin answers as annotated\./);
   assert.match(options, /chrome\.runtime\.getManifest\(\)\.version/);
+  // the snip you took can be verified at full size — preview and timeline
+  // screenshots open a veil with the standard exits (click, button, Esc)
+  assert.match(html, /id="shotVeil" role="dialog" aria-modal="true"/);
+  assert.match(runtime, /openShotVeil\(shotPreview\.src, shotPreview\)/);
+  assert.match(runtime, /closest\('\.srcmedia img'\)/);
+  assert.match(runtime, /shotVeilImg\.removeAttribute\('src'\)/, 'the veil forgets the image when closed');
+  assert.match(styles, /\.shot-preview, \.srcmedia img \{ cursor: zoom-in; \}/);
+  assert.match(styles, /\.shot-veil\.is-closing \{ animation: veil-out var\(--t-hover\) var\(--e-exit\) forwards; \}/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {

@@ -178,6 +178,14 @@
       </div>
     </div>
 
+    <!-- the screenshot at full size: verify what you snipped before it ships -->
+    <div class="shot-veil" id="shotVeil" role="dialog" aria-modal="true" aria-label="Screenshot at full size" hidden>
+      <img id="shotVeilImg" alt="Captured screenshot at full size" />
+      <button class="shot-veil-close" id="shotVeilClose" type="button" aria-label="Close the screenshot">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" /></svg>
+      </button>
+    </div>
+
     <div class="toast" id="toast" role="status" hidden><span id="toastText"></span><a id="toastLink" target="_blank" rel="noreferrer" hidden></a></div>
 
     <script type="module" src="sidepanel.js"></script>
