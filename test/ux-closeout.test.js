@@ -52,7 +52,9 @@ test('sign-in is one door: every affordance opens the shared modal, both provide
 });
 
 test('interactive targets keep at least 40px and focus stays visible everywhere', () => {
-  assert.match(styles, /:focus-visible \{ outline: 2px solid var\(--accent\)/u);
+  // focus is navigation, not the moment: ink ring, paper ring on dark chrome
+  assert.match(styles, /:focus-visible \{ outline: 2px solid var\(--ink\)/u);
+  assert.match(styles, /\.chrome :focus-visible \{ outline-color: #F5F4F0; \}/u);
   for (const selector of ['.act', '.btn', '.tabs .tab', '.markfield', '.signin-modal .continue']) {
     const block = styles.split(`${selector} {`).slice(1, 2).join('');
     assert.match(block.slice(0, 400), /min-height: (?:3[6-9]|4[0-9])px/u, `${selector} needs a ≥36px target`);

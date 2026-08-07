@@ -5,14 +5,14 @@ import test from 'node:test';
 // Identity law §1.1: terracotta means THE MOMENT. The accent may appear only
 // on moment chips, the live source dot, mark-selection state, the CLIP tag,
 // active-tab underlines, the primary "Open original" action, the pull-quote
-// rule, section-header full stops, focus rings, the claim hover (mockup), and
-// the logo dot. Never on generic buttons, links, alerts, or decoration.
+// rule, section-header full stops, the claim hover (mockup), and the logo
+// dot. Never on generic buttons, links, alerts, focus rings, or decoration —
+// focus is navigation, not a moment, so its ring is ink.
 
 const ACCENT_PATTERN = /var\(--accent(?:-soft)?\)|#B0674D/i;
 
 const ALLOWED_SELECTORS = [
   /^:root$/,
-  /^:focus-visible$/,
   /\.chip\b/,
   /\.livedot\b/,
   /\.markbtn\.is-set \.t$/,

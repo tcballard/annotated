@@ -305,6 +305,17 @@ test('details that read expensive: sources wear their faces', async () => {
   // a missing icon disappears instead of showing the broken-image glyph
   assert.match(runtime, /document\.addEventListener\('error'/);
   assert.match(runtime, /classList\?\.contains\('favicon'\)/);
+  // the radius law the header comment promises — 3/6/8/99 (plus circles),
+  // no stray 2/4/10/12px survivors
+  const styles = await read('sidepanel.css');
+  assert.doesNotMatch(styles, /border-radius: (?:2|4|10|12)px/);
+  assert.doesNotMatch(styles, /border-radius: 0 10px/);
+  // focus is ink everywhere, paper on the dark header — never the accent
+  assert.match(styles, /:focus-visible \{ outline: 2px solid var\(--ink\)/);
+  assert.match(styles, /\.phead :focus-visible \{ outline-color: #F5F4F0; \}/);
+  // the scrollbar belongs to the design, and disabled controls all say so
+  assert.match(styles, /::-webkit-scrollbar-thumb \{ background: var\(--border\); border-radius: 99px; \}/);
+  assert.match(styles, /\.rec-button\[disabled\] \{ opacity: \.55; cursor: progress; \}/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {

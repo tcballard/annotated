@@ -56,7 +56,10 @@ a:hover { text-decoration: underline; }
 
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+/* Focus is navigation, not the moment: the ring is ink, per the accent law.
+   On the permanently dark header the ring flips to paper so it stays visible. */
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 3px; }
+.phead :focus-visible { outline-color: #F5F4F0; }
 
 kbd {
   font-family: var(--mono);
@@ -199,7 +202,13 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .signin-cancel:hover { color: var(--ink-soft); }
 
-.scroll { overflow-y: auto; flex: 1; }
+.scroll { overflow-y: auto; flex: 1; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+/* the scrollbar matches the paper it slides on */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--meta); }
+::-webkit-scrollbar-track { background: transparent; }
 
 /* ── capture widget ─────────────────────────────────────────────────── */
 
@@ -292,13 +301,13 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--meta);
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 4px 6px;
   min-height: 30px;
   cursor: pointer;
 }
 
-.cap-unsupported { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-radius: 10px; padding: 8px 10px; margin-bottom: 10px; }
+.cap-unsupported { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
 
 /* Honest edges: on a page that can't be captured, the composer doesn't
    pretend. The dot goes gray and the writing tools leave entirely. */
@@ -319,7 +328,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--ink);
   background: var(--soft);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 0 8px;
   min-height: 40px;
   display: inline-flex;
@@ -376,7 +385,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--ink);
   background: var(--soft);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 3px 4px 3px 10px;
   min-height: 36px;
 }
@@ -402,7 +411,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--ink-soft);
   background: var(--soft);
   border-left: 3px solid var(--ink-soft);
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 8px 8px 0;
   padding: 7px 10px;
   margin-bottom: 10px;
 }
@@ -418,7 +427,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: var(--meta);
   background: var(--soft);
   border: 1px dashed var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 10px;
   min-height: 40px;
   margin-bottom: 10px;
@@ -434,7 +443,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .grabber.is-armed:hover { background: var(--hover-row); }
 .grabber svg { width: 14px; height: 14px; flex: none; }
 
-.passage { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 10px; }
+.passage { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
 
 .passage-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 11.5px; color: var(--meta); background: var(--strip); border-bottom: 1px solid var(--hair); }
 
@@ -462,7 +471,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   font-size: 13.5px;
   color: var(--ink);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--card);
   padding: 9px 10px;
   height: 64px;
@@ -472,7 +481,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .cap-note::placeholder { color: #9AA0A8; }
 
-.recorder { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; }
+.recorder { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; }
 
 .rec-button {
   width: 44px;
@@ -488,6 +497,8 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   transition: background .12s ease, color .12s ease;
 }
 
+.rec-button[disabled] { opacity: .55; cursor: progress; }
+
 .rec-button:hover { background: var(--hair); }
 .rec-button.is-recording { background: var(--ink); color: var(--card); border-color: var(--ink); }
 .rec-button svg { width: 18px; height: 18px; }
@@ -497,7 +508,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .rec-copy small { font-size: 11px; color: var(--meta); }
 
 .rec-wave { display: flex; align-items: center; gap: 2px; height: 22px; flex: none; }
-.rec-wave i { width: 3px; height: 100%; border-radius: 2px; background: var(--border); transform: scaleY(.55); }
+.rec-wave i { width: 3px; height: 100%; border-radius: 99px; background: var(--border); transform: scaleY(.55); }
 .recorder.is-recording .rec-wave i { background: var(--ink-soft); animation: wave 1s ease-in-out infinite; }
 .recorder.is-recording .rec-wave i:nth-child(2n) { animation-delay: .18s; }
 .recorder.is-recording .rec-wave i:nth-child(3n) { animation-delay: .32s; }
@@ -542,9 +553,9 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .cap-hint { font-size: 11px; color: var(--meta); margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.panel-error { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-left: 3px solid var(--ink-soft); border-radius: 0 10px 10px 0; padding: 7px 10px; margin-top: 8px; }
+.panel-error { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-left: 3px solid var(--ink-soft); border-radius: 0 8px 8px 0; padding: 7px 10px; margin-top: 8px; }
 
-.queue-status { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; margin-top: 8px; font-size: 11.5px; }
+.queue-status { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 8px; font-size: 11.5px; }
 .queue-status strong { display: block; font-size: 12px; }
 .queue-status small { color: var(--meta); }
 .queue-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--meta); flex: none; }
@@ -591,7 +602,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   bottom: 0;
   height: 2px;
   background: var(--accent);
-  border-radius: 2px;
+  border-radius: 99px;
 }
 
 .post {
@@ -632,7 +643,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .post .note { font-size: 13px; line-height: 1.45; margin: 2px 0 8px; overflow-wrap: anywhere; }
 
-.srccard { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.srccard { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 
 .srchead {
   display: flex;
@@ -740,10 +751,10 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .timeline .state button { color: var(--link); padding: 0 2px; min-height: 0; }
 
 .post.skeleton { pointer-events: none; }
-.skeleton .sk { background: var(--soft); border-radius: 4px; animation: sk-pulse 1.2s ease-in-out infinite; }
+.skeleton .sk { background: var(--soft); border-radius: 3px; animation: sk-pulse 1.2s ease-in-out infinite; }
 .skeleton .sk-avatar { width: 30px; height: 30px; border-radius: 50%; flex: none; }
 .skeleton .sk-line { height: 10px; margin-bottom: 7px; }
-.skeleton .sk-card { height: 64px; border-radius: 10px; }
+.skeleton .sk-card { height: 64px; border-radius: 8px; }
 
 @keyframes sk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 
