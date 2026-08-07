@@ -1,12 +1,14 @@
 // Notifications: responses, likes, and follows aimed at you, derived on
 // read by the server. Opening the tab marks everything seen and clears
-// the bell badge.
+// the bell badge. Rendered X-style: a kind glyph in the gutter, events
+// aggregated per annotation ("Mara and Sam liked your annotation of …")
+// with a facepile of the actors, the sentence in bold where the people
+// and sources are, and the response text quoted underneath.
 
 import { useCallback, useContext, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Feather from '@expo/vector-icons/Feather';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { relTime } from '../lib/core/feed-item';
 import { avatarColor, avatarInitial } from '../lib/core/avatar';
 import { api } from '../lib/api';
@@ -15,22 +17,44 @@ import { AccountContext } from './AccountContext';
 import { SessionEpochContext } from './WebScreen';
 import { card, ink, meta, tokens } from '../lib/tokens';
 
+type Actor = { handle?: string; displayName?: string; avatarUrl?: string | null };
+
 type Notification = {
   type: 'response' | 'like' | 'follow';
-  actor: { handle?: string; displayName?: string; avatarUrl?: string | null };
+  actor: Actor;
   body?: string;
   annotation?: { slug: string; sourceTitle: string };
   createdAt: string;
 };
 
+type Group = {
+  key: string;
+  type: Notification['type'];
+  annotation?: { slug: string; sourceTitle: string };
+  actors: Actor[];
+  count: number;
+  latest: string;
+  body?: string;
+};
+
 const ICONS = { response: 'message-circle', like: 'heart', follow: 'user-plus' } as const;
 
-const sentence = (item: Notification): string => {
-  const name = item.actor.displayName || `@${item.actor.handle}`;
-  if (item.type === 'response') return `${name} responded to your annotation of ${item.annotation?.sourceTitle}`;
-  if (item.type === 'like') return `${name} liked your annotation of ${item.annotation?.sourceTitle}`;
-  return `${name} followed you`;
+// X's aggregation, ours: the same event on the same annotation collapses
+// into one row — actors pile up, the newest body and time win.
+export const groupNotifications = (items: Notification[]): Group[] => {
+  const map = new Map<string, Group>();
+  for (const item of items) {
+    const key = `${item.type}|${item.annotation?.slug || ''}`;
+    const entry = map.get(key) || { key, type: item.type, annotation: item.annotation, actors: [], count: 0, latest: item.createdAt, body: item.body };
+    entry.count += 1;
+    if (entry.actors.length < 3 && !entry.actors.some((actor) => actor.handle === item.actor.handle)) entry.actors.push(item.actor);
+    if (String(item.createdAt) > String(entry.latest)) { entry.latest = item.createdAt; entry.body = item.body || entry.body; }
+    map.set(key, entry);
+  }
+  return [...map.values()].sort((a, b) => String(b.latest).localeCompare(String(a.latest)));
 };
+
+const nameOf = (actor: Actor) => actor.displayName || `@${actor.handle}`;
 
 export default function NotificationsScreen() {
   const router = useRouter();
@@ -38,7 +62,6 @@ export default function NotificationsScreen() {
   const { bump } = useContext(SessionEpochContext);
   const [items, setItems] = useState<Notification[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const insets = useSafeAreaInsets();
 
   const load = useCallback(async () => {
     try {
@@ -58,6 +81,36 @@ export default function NotificationsScreen() {
     return () => {};
   }, [me, load]));
 
+  // The people are the bold part of the sentence, X-style.
+  const actorNames = (group: Group) => {
+    const [first, second] = group.actors;
+    if (group.count === 1 || !second) return <Text style={styles.bold}>{nameOf(first)}</Text>;
+    if (group.count === 2) return <Text><Text style={styles.bold}>{nameOf(first)}</Text> and <Text style={styles.bold}>{nameOf(second)}</Text></Text>;
+    return <Text><Text style={styles.bold}>{nameOf(first)}</Text> and {group.count - 1} others</Text>;
+  };
+
+  const sentence = (group: Group) => {
+    if (group.type === 'follow') return <Text style={styles.text}>{actorNames(group)} followed you <Text style={styles.time}>· {relTime(group.latest)}</Text></Text>;
+    const verb = group.type === 'response' ? 'responded to your annotation of' : 'liked your annotation of';
+    return (
+      <Text style={styles.text}>
+        {actorNames(group)} {verb} <Text style={styles.bold}>{group.annotation?.sourceTitle}</Text> <Text style={styles.time}>· {relTime(group.latest)}</Text>
+      </Text>
+    );
+  };
+
+  const facepile = (actors: Actor[]) => (
+    <View style={styles.facepile}>
+      {actors.map((actor, index) => actor.avatarUrl ? (
+        <Image key={actor.handle || String(index)} source={{ uri: actor.avatarUrl }} style={[styles.face, index > 0 && styles.faceOverlap]} />
+      ) : (
+        <View key={actor.handle || String(index)} style={[styles.face, styles.faceFallback, index > 0 && styles.faceOverlap, { backgroundColor: avatarColor(actor.handle || actor.displayName) }]}>
+          <Text style={styles.faceInitial}>{avatarInitial(actor)}</Text>
+        </View>
+      ))}
+    </View>
+  );
+
   if (!me) {
     return (
       <View style={styles.frame}>
@@ -76,30 +129,24 @@ export default function NotificationsScreen() {
 
   return (
     <FlatList
-      data={items}
-      keyExtractor={(item, index) => `${item.type}-${item.createdAt}-${index}`}
+      data={groupNotifications(items)}
+      keyExtractor={(group) => group.key}
       style={styles.frame}
       contentContainerStyle={[styles.list, { paddingBottom: 24 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={meta} />}
-      renderItem={({ item }) => (
+      renderItem={({ item: group }) => (
         <Pressable
           style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           onPress={() => {
-            if (item.annotation?.slug) router.push(`/web/a/${encodeURIComponent(item.annotation.slug)}`);
-            else if (item.actor.handle) router.push(`/web/u/${encodeURIComponent(item.actor.handle)}`);
+            if (group.annotation?.slug) router.push(`/web/a/${encodeURIComponent(group.annotation.slug)}`);
+            else if (group.actors[0]?.handle) router.push(`/web/u/${encodeURIComponent(group.actors[0].handle)}`);
           }}
         >
-          <Feather name={ICONS[item.type] || 'bell'} size={17} color={tokens['ink-soft']} style={styles.typeIcon} />
-          {item.actor.avatarUrl
-            ? <Image source={{ uri: item.actor.avatarUrl }} style={styles.avatarImage} />
-            : (
-              <View style={[styles.avatar, { backgroundColor: avatarColor(item.actor.handle || item.actor.displayName) }]}>
-                <Text style={styles.avatarText}>{avatarInitial(item.actor)}</Text>
-              </View>
-            )}
+          <Feather name={ICONS[group.type] || 'bell'} size={19} color={tokens['ink-soft']} style={styles.typeIcon} />
           <View style={styles.main}>
-            <Text style={styles.text}>{sentence(item)} <Text style={styles.time}>· {relTime(item.createdAt)}</Text></Text>
-            {item.body ? <Text style={styles.quoteText} numberOfLines={2}>&ldquo;{item.body}&rdquo;</Text> : null}
+            {facepile(group.actors)}
+            {sentence(group)}
+            {group.type === 'response' && group.body ? <Text style={styles.quoteText} numberOfLines={2}>&ldquo;{group.body}&rdquo;</Text> : null}
           </View>
         </Pressable>
       )}
@@ -116,26 +163,28 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   frame: { flex: 1 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  list: { padding: 14 },
+  list: { padding: 14, paddingTop: 6 },
   row: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 10,
-    backgroundColor: card,
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 8,
+    gap: 12,
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.border,
   },
   rowPressed: { opacity: 0.92 },
-  typeIcon: { marginTop: 6 },
-  avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  avatarImage: { width: 34, height: 34, borderRadius: 17, backgroundColor: tokens.soft },
-  avatarText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  typeIcon: { marginTop: 2, width: 22 },
   main: { flex: 1, minWidth: 0 },
-  text: { color: ink, fontSize: 14, lineHeight: 19 },
-  time: { color: meta, fontSize: 12.5 },
-  quoteText: { color: tokens['ink-soft'], fontSize: 13, lineHeight: 18, marginTop: 3, fontStyle: 'italic' },
-  cardBox: { backgroundColor: card, borderRadius: 18, padding: 22, alignItems: 'center' },
+  facepile: { flexDirection: 'row', marginBottom: 7 },
+  face: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: card, backgroundColor: tokens.soft },
+  faceOverlap: { marginLeft: -9 },
+  faceFallback: { alignItems: 'center', justifyContent: 'center' },
+  faceInitial: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  text: { color: ink, fontSize: 14.5, lineHeight: 20 },
+  bold: { fontWeight: '800', color: ink },
+  time: { color: meta, fontSize: 13, fontWeight: '400' },
+  quoteText: { color: tokens['ink-soft'], fontSize: 13.5, lineHeight: 19, marginTop: 4 },
+  cardBox: { backgroundColor: card, borderRadius: 18, padding: 22, alignItems: 'center', marginTop: 8 },
   title: { color: ink, fontWeight: '700', fontSize: 16 },
   body: { color: meta, fontSize: 13.5, marginTop: 6, textAlign: 'center', lineHeight: 19 },
   signIn: { marginTop: 14, backgroundColor: tokens.chrome, borderRadius: 99, paddingVertical: 10, paddingHorizontal: 26 },

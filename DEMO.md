@@ -10,6 +10,18 @@ take if you can — the product's pacing is part of the pitch.
 - Chrome with the extension loaded and pinned, side panel closed.
 - Signed in as your demo account; staging seeded with the personas
   (`npm run seed:personas`) so the feed, follows, and responses are alive.
+- The personas aimed at YOUR account, so notifications and the bell badge
+  read lived-in. Sign in on staging once, publish at least one
+  annotation, then run against staging's database (your drawer shows
+  your handle):
+
+  ```sh
+  ANNOTATED_STORAGE=postgres DATABASE_URL=… ANNOTATED_SEED_PERSONAS=allow \
+  ANNOTATED_SEED_TARGET=<your-handle> npm run seed:personas
+  ```
+
+  Idempotent — safe to re-run after publishing more. Follows land even
+  with no annotations; likes and responses need at least one.
 - Three tabs ready, in order:
   1. A YouTube video with a strong claim mid-video (know your in/out
      points in advance).

@@ -83,6 +83,22 @@ test('the drawer carries account, library, and the public pages — session acti
   assert.ok(drawerPanel.indexOf('styles.spacer') < drawerPanel.indexOf('styles.signIn'), 'sign in renders below the spacer');
 });
 
+test('notifications aggregate X-style and the personas can aim at a real account', async () => {
+  // same event on the same annotation collapses into one row with a
+  // facepile; the people and the source are the bold parts
+  assert.match(notifications, /export const groupNotifications = /);
+  assert.match(notifications, /and \{group\.count - 1\} others/);
+  assert.match(notifications, /styles\.facepile/);
+  assert.match(notifications, /borderBottomWidth: StyleSheet\.hairlineWidth/, 'flat rows, not cards');
+  // the seeder can turn the personas toward a target account so the
+  // screen is recordable: follows always, likes and responses once the
+  // target has published
+  const seeder = await readFile(new URL('../scripts/seed-personas.mjs', import.meta.url), 'utf8');
+  assert.match(seeder, /ANNOTATED_SEED_TARGET/);
+  assert.match(seeder, /followingId: target\.id/);
+  assert.match(seeder, /targetAnnotations\[0\]/);
+});
+
 test('notifications: derived server-side, badge cleared by the seen watermark', () => {
   assert.ok(server.includes("pathname === '/api/notifications'"));
   assert.ok(server.includes("pathname === '/api/notifications/seen'"));
