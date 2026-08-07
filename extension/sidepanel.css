@@ -311,6 +311,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .intro ol { margin: 0 0 6px 16px; padding: 0; display: flex; flex-direction: column; gap: 5px; }
 .intro li { font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
 .intro li b { color: var(--ink); }
+.intro-foot { font-size: 11.5px; color: var(--meta); margin: 2px 0 8px; line-height: 1.5; }
 
 .intro-got {
   display: block;

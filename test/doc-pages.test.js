@@ -32,3 +32,18 @@ test('doc navigation stays in the SPA and old stub actions are gone', () => {
   assert.match(css, /\.docbody/);
   assert.match(css, /\.audit-table/);
 });
+
+// The five differentiation claims must survive a 90-second skim: named on
+// the About page in-product, and scripted beat-for-beat in the demo.
+test('the differentiation claims are legible on About and scripted in the demo', async () => {
+  const about = main.slice(main.indexOf('const aboutView'), main.indexOf('const extensionView'));
+  assert.match(about, /What makes this different/);
+  for (const claim of ['Real clip artifacts', 'Four capture modes', 'A public margin, not a private vault', 'Round-trip receipts', 'Rights as a surface']) {
+    assert.ok(about.includes(claim), `About is missing the "${claim}" claim`);
+  }
+  const demo = await readFile(new URL('../DEMO.md', import.meta.url), 'utf8');
+  for (const beat of ['Four capture modes', 'Real clip artifacts', 'A public margin', 'Round-trip receipts', 'Rights as a surface']) {
+    assert.ok(demo.includes(beat), `DEMO.md is missing the "${beat}" beat`);
+  }
+  assert.match(demo, /Dispute fair use/);
+});

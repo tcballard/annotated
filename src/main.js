@@ -1002,6 +1002,15 @@ const aboutView = () => docPage('What this is', 'source-first notes', `
     <p class="rulequote">&ldquo;A clip without its source is just a rumour.&rdquo;</p>
     <p>annotated keeps a specific moment from the web — a passage, a bounded clip, a screenshot — with your context and a live link back to the original. Every public page points at its source. Context travels with the moment.</p>
   </div>
+  <div class="card"><h2>What makes this different</h2>
+    <ul class="doc-list">
+      <li><strong>Real clip artifacts.</strong> The excerpt is transcoded and hosted here — at most 90 seconds, probe-verified before it can publish — and it plays right in the feed. Not an embed, not a link that rots.</li>
+      <li><strong>Four capture modes, one panel.</strong> Passage, video clip, podcast clip, or a snip of the page — captured beside the page you are reading, with the player&rsquo;s own timestamps.</li>
+      <li><strong>A public margin, not a private vault.</strong> Follow, respond, like. The social reading loop the read-later apps deleted is the point here, not an afterthought.</li>
+      <li><strong>Round-trip receipts.</strong> The prominent action on every page is <em>Open original</em>, deep-linked to the exact second or sentence — and opens of the original are the number we rank by.</li>
+      <li><strong>Rights as a surface, one identity everywhere.</strong> Dispute fair use on every annotation page, public takedown tombstones, a transparency report — with the same account across the extension, the web app, and the native mobile app.</li>
+    </ul>
+  </div>
   <div class="card"><h2>How it works</h2>
     <ol class="doc-steps">
       <li><strong>Clip the moment.</strong> Select a passage, mark in/out on the page&rsquo;s own player, or capture the visible tab — from the Chrome side panel or the web capture desk.</li>

@@ -19,13 +19,20 @@ Capture a moment from the page you are on, add context, and keep the source atta
 
 **Detailed Description**
 
-Keep the moment before it disappears. Annotated lets you capture a passage or a bounded moment from the page you are reading, add your own context, and publish a page that keeps the original source attached.
+Keep the moment before it disappears. Annotated lives in Chrome's side panel, beside the page you are reading: capture the exact moment — a passage, a bounded video or podcast clip, or a snip of the page — add your context, and publish a page that keeps the original source attached.
+
+WHAT MAKES IT DIFFERENT
+• Real clip artifacts: the excerpt is transcoded and hosted (at most 90 seconds), and it plays right in the feed — not an embed, not a link that rots.
+• Four capture modes in one panel: passage, video clip, podcast clip, screenshot — with the player's own timestamps.
+• A public margin, not a private vault: follow, respond, like — a reading feed, not a read-later pile.
+• Round-trip receipts: every published page's prominent action is Open original, deep-linked to the exact second or sentence, and opens of the original are the number that matters.
+• Rights as a surface: a clearly visible Dispute fair use button on every annotation page, with public takedown records.
 
 FEATURES
-• Capture selected text from the active page.
+• Capture selected text from the active page — or right-click any selection to annotate it.
 • Paste another source and resolve its canonical metadata through Annotated.
 • Choose a bounded video or podcast moment, with a 90-second maximum.
-• Add a short written note or a recorded audio note.
+• Add a short written note or a recorded audio note, and review the take before publishing.
 • Save a draft when the service is unavailable and retry it later.
 • Keep queued captures safe when a sign-in session expires, then retry after sign-in.
 • Open the published annotation page and share its source-backed link.
