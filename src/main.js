@@ -529,7 +529,7 @@ const waveform = (peaks) => {
 const srcCardMedia = (item) => {
   const clipSeconds = Math.max(0, item.clipEnd - item.clipStart);
   if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'video') {
-    return `<div class="srcmedia"><video controls preload="metadata" ${item.posterUrl ? `poster="${escapeHTML(item.posterUrl)}" ` : ''}src="${escapeHTML(item.clipUrl)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(formatTime(clipSeconds))} · 240p</span></div>`;
+    return `<div class="srcmedia"><video controls preload="metadata" ${item.posterUrl ? `poster="${escapeHTML(item.posterUrl)}" ` : ''}src="${escapeHTML(item.clipUrl)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(formatTime(clipSeconds))}</span></div>`;
   }
   if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'podcast') {
     return `<div class="srcmedia srcmedia-audio"><span class="cliptag">CLIP</span><div class="srcmedia-audio-main">${waveform(item.clipPeaks)}<audio controls preload="none" src="${escapeHTML(item.clipUrl)}"></audio></div><span class="badge">${escapeHTML(formatTime(clipSeconds))} · audio</span></div>`;
@@ -674,10 +674,10 @@ const playerBlock = (annotation) => {
   const media = mediaPresentation(annotation);
   const item = annotationToFeedItem(annotation);
   const clipSeconds = Math.max(0, item.clipEnd - item.clipStart);
-  const badgeText = annotation.sourceType === 'video' ? `${formatTime(clipSeconds)} · 240p` : `${formatTime(clipSeconds)} · audio`;
+  const badgeText = annotation.sourceType === 'video' ? formatTime(clipSeconds) : `${formatTime(clipSeconds)} · audio`;
   const status = state.mediaStatus === 'failed' ? 'The clip could not be prepared.'
     : state.mediaStatus === 'cancelled' ? 'Clip processing was cancelled.'
-    : state.mediaStatus === 'processing' ? 'Preparing the 240p clip…'
+    : state.mediaStatus === 'processing' ? 'Preparing the clip…'
     : 'Clip queued for processing…';
   const recovery = state.mediaStatus === 'failed' ? `<div class="media-recovery"><span>${escapeHTML(state.mediaError || 'The source could not be prepared.')}</span><button data-action="retry-media" ${state.isRetryingMedia ? 'disabled' : ''}>${state.isRetryingMedia ? 'Retrying…' : 'Retry clip'}</button></div>` : '';
   if (annotation.sourceType === 'video') {

@@ -316,6 +316,16 @@ test('details that read expensive: sources wear their faces', async () => {
   // the scrollbar belongs to the design, and disabled controls all say so
   assert.match(styles, /::-webkit-scrollbar-thumb \{ background: var\(--border\); border-radius: 99px; \}/);
   assert.match(styles, /\.rec-button\[disabled\] \{ opacity: \.55; cursor: progress; \}/);
+  // micro-copy: no transcode jargon in the panel, the chip says connected,
+  // the hint speaks to the capture type and names the keyboard path
+  assert.doesNotMatch(runtime, /240p/);
+  assert.match(runtime, /textContent = 'connected'/);
+  assert.match(runtime, /const defaultPublishHint = /);
+  assert.match(runtime, /Highlights and snips stay right here\./);
+  assert.match(runtime, /<kbd>Ctrl<\/kbd>\/<kbd>⌘<\/kbd> <kbd>Enter<\/kbd>/);
+  // a panel left open keeps telling the truth: times re-derive from stamps
+  assert.match(runtime, /data-created=/);
+  assert.match(runtime, /\.posttime\[data-created\]/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {

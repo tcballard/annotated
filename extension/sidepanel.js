@@ -142,6 +142,15 @@ document.addEventListener('error', (event) => {
   if (event.target?.classList?.contains('favicon')) event.target.hidden = true;
 }, true);
 
+// A panel left open keeps telling the truth: relative times re-derive
+// from their stamps every half-minute, so "just now" grows up.
+setInterval(() => {
+  document.querySelectorAll('.posttime[data-created]').forEach((el) => {
+    const fresh = relTime(el.dataset.created);
+    if (el.textContent !== fresh) el.textContent = fresh;
+  });
+}, 30_000);
+
 // Accepts "62" or "1:02" and returns whole seconds.
 const parseTimeInput = (value) => {
   const text = String(value ?? '').trim();
@@ -402,10 +411,15 @@ const publishBlocker = () => {
   return '';
 };
 
+// The resting hint speaks to the capture you are actually making, and
+// names the keyboard path once the mouse path is obvious.
+const defaultPublishHint = () => `${isMediaType() ? 'Marks follow the player.' : 'Highlights and snips stay right here.'} Nothing is published until you publish — <kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>Enter</kbd> when ready.`;
+
 const syncPublishGate = () => {
   const blocker = publishBlocker();
   publishButton.disabled = Boolean(blocker);
-  publishHint.textContent = blocker || 'Marks follow the player. Nothing is published until you publish.';
+  if (blocker) publishHint.textContent = blocker;
+  else publishHint.innerHTML = defaultPublishHint();
 };
 
 // Re-fires a one-shot animation class even when it is already present.
@@ -1152,6 +1166,7 @@ const annotationToItem = (annotation) => ({
   likes: Number(annotation.likes) || 0,
   likedByMe: Boolean(annotation.likedByMe),
   editedAt: annotation.editedAt || '',
+  createdAt: annotation.createdAt || '',
 });
 
 publishButton.addEventListener('click', async () => {
@@ -1245,7 +1260,7 @@ publishButton.addEventListener('click', async () => {
 const timelineMedia = (item) => {
   const clipSeconds = Math.max(0, item.clipEnd - item.clipStart);
   if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'video') {
-    return `<div class="srcmedia"><video controls preload="metadata" src="${escapeHTML(item.clipUrl)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(format(clipSeconds))} · 240p</span></div>`;
+    return `<div class="srcmedia"><video controls preload="metadata" src="${escapeHTML(item.clipUrl)}"></video><span class="cliptag">CLIP</span><span class="badge">${escapeHTML(format(clipSeconds))}</span></div>`;
   }
   if (item.clipUrl && item.mediaStatus === 'ready' && item.type === 'podcast') {
     return `<div class="srcmedia srcmedia-audio"><span class="cliptag">CLIP</span><audio controls preload="none" src="${escapeHTML(item.clipUrl)}"></audio></div>`;
@@ -1397,7 +1412,7 @@ const timelinePost = (item) => {
       ? `<span class="avatar has-photo" aria-hidden="true"><img src="${escapeHTML(item.avatarUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" /></span>`
       : `<span class="avatar" aria-hidden="true" style="background:${avatarColor(item.handle || item.displayName)};color:#fff">${escapeHTML(avatarInitial(item))}</span>`}
     <div class="content">
-      <div class="byline"><span class="name">@${escapeHTML(item.handle)}</span>${item.editedAt ? '<span class="meta">· edited</span>' : ''}<span class="meta posttime">${escapeHTML(item.time)}</span></div>
+      <div class="byline"><span class="name">@${escapeHTML(item.handle)}</span>${item.editedAt ? '<span class="meta">· edited</span>' : ''}<span class="meta posttime"${item.createdAt ? ` data-created="${escapeHTML(item.createdAt)}"` : ''}>${escapeHTML(item.time)}</span></div>
       ${noteLine}
       <div class="srccard">
         <div class="srchead">${chip ? `<span class="chip">${escapeHTML(chip)}</span>` : ''}${favicon ? `<img class="favicon" src="${escapeHTML(favicon)}" alt="" loading="lazy" />` : ''}<span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(item.type)}</span></div>
@@ -1772,7 +1787,7 @@ const checkBackend = async () => {
     backendOnline = true;
     backendRetryDelay = 5000;
     backendStatus.classList.add('is-live');
-    backendStatus.querySelector('.backend-label').textContent = 'live';
+    backendStatus.querySelector('.backend-label').textContent = 'connected';
     backendStatus.removeAttribute('title');
     const auth = await apiRequest('/api/auth/providers').catch(() => ({ providers: {} }));
     availableProviders = auth.providers || {};

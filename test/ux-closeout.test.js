@@ -16,13 +16,14 @@ test('contextual authentication prompts clear when the user changes views', () =
 
 test('unavailable media renders shipped status states, never a fake play button', () => {
   const player = mainSource.match(/const playerBlock = [\s\S]*?\n\};/u)?.[0] || '';
-  assert.match(player, /Preparing the 240p clip…/u);
+  assert.match(player, /Preparing the clip…/u);
   assert.match(player, /Clip queued for processing…/u);
   assert.match(player, /media-recovery/u);
   assert.match(player, /Retry clip/u);
-  // the CLIP tag and duration · 240p badge stay visible in every state
+  // the CLIP tag and duration badge stay visible in every state; the
+  // transcode spec (240p) lives on the audit page, not in player chrome
   assert.match(player, /class="cliptag">CLIP/u);
-  assert.match(player, /240p/u);
+  assert.doesNotMatch(player, /240p/u);
 });
 
 test('claim dialog has modal isolation, keyboard escape, focus trapping, and restoration', () => {
@@ -70,7 +71,8 @@ test('feed posts embed ready media like a social feed, never a dead frame', () =
   assert.match(media, /item\.screenshotUrl/u);
   assert.match(media, /class="srcmedia"/u);
   assert.match(media, /CLIP/u);
-  assert.match(media, /240p/u);
+  // transcode jargon stays on the audit page; the feed badge is just the duration
+  assert.doesNotMatch(media, /240p/u);
   // playing inline media must not navigate to the permalink
   assert.match(mainSource, /closest\('a, button:not\(\[data-action="open-annotation"\]\), video, audio, \.srcmedia'\)/u);
 });
