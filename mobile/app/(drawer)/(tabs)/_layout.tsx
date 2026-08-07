@@ -5,25 +5,30 @@
 // the home indicator, Substack-style — the same floating-pill language as
 // the web's mobile dock — and the feeds scroll behind it.
 
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Feather from '@expo/vector-icons/Feather';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HeaderAvatar from '../../../components/HeaderAvatar';
+import CaptureSheet from '../../../components/CaptureSheet';
 import { AccountContext } from '../../../components/AccountContext';
 import { card, ink, meta, paper, tokens } from '../../../lib/tokens';
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const { unseen } = useContext(AccountContext);
+  // The pen is not a destination: it summons the capture sheet over
+  // whatever you were reading, X-compose style.
+  const [captureOpen, setCaptureOpen] = useState(false);
   // The pill floats: inset from the edges, above the home indicator, and
   // the surfaces that cannot scroll behind it (the WebView tabs) end at
   // its clearance instead.
   const barBottom = Math.max(insets.bottom, 12) + 4;
   const webSceneStyle = { backgroundColor: paper, paddingBottom: barBottom + 60 };
   return (
+    <>
     <Tabs
       screenOptions={{
         headerShown: true,
@@ -86,6 +91,14 @@ export default function TabsLayout() {
           sceneStyle: webSceneStyle,
           tabBarIcon: ({ color, size }) => <Feather name="edit-3" color={color} size={size} />,
         }}
+        listeners={{
+          // The share sheet still lands on the tab screen (it arrives with
+          // params); a bare pen press opens the sheet instead of traveling.
+          tabPress: (event) => {
+            event.preventDefault();
+            setCaptureOpen(true);
+          },
+        }}
       />
       <Tabs.Screen
         name="notifications"
@@ -108,6 +121,8 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+    <CaptureSheet visible={captureOpen} onClose={() => setCaptureOpen(false)} />
+    </>
   );
 }
 
