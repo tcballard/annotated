@@ -63,7 +63,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SessionEpochContext.Provider value={session}>
         <AccountContext.Provider value={account}>
-          <StatusBar style="dark" />
+          <StatusBar style="auto" />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: paper } }}>
             <Stack.Screen name="(drawer)" />
             <Stack.Screen name="web/[...path]" options={webHeader} />

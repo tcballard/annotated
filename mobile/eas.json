@@ -16,6 +16,15 @@
         "EXPO_PUBLIC_ORIGIN": "https://annotated-staging.up.railway.app"
       }
     },
+    "simulator": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_ORIGIN": "https://annotated-staging.up.railway.app"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "env": {

@@ -10,13 +10,41 @@ take if you can — the product's pacing is part of the pitch.
 - Chrome with the extension loaded and pinned, side panel closed.
 - Signed in as your demo account; staging seeded with the personas
   (`npm run seed:personas`) so the feed, follows, and responses are alive.
+- The personas aimed at YOUR account, so notifications and the bell badge
+  read lived-in. Sign in on staging once, publish at least one
+  annotation, then run against staging's database (your drawer shows
+  your handle):
+
+  ```sh
+  ANNOTATED_STORAGE=postgres DATABASE_URL=… ANNOTATED_SEED_PERSONAS=allow \
+  ANNOTATED_SEED_TARGET=<your-handle> npm run seed:personas
+  ```
+
+  Idempotent — safe to re-run after publishing more. Follows land even
+  with no annotations; likes and responses need at least one.
 - Three tabs ready, in order:
   1. A YouTube video with a strong claim mid-video (know your in/out
      points in advance).
   2. A long-form article worth quoting.
   3. The annotated web timeline, signed in.
-- Phone with the dev build installed, timeline open, within reach for the
-  final beat (or a simulator window pre-arranged screen-right).
+- iOS Simulator pre-arranged screen-right with the native app on its
+  timeline, signed in as the same account. Easiest path is
+  [Expo Orbit](https://expo.dev/orbit): sign in, pick
+  **tcballard-oss / annotated**, and install the latest `simulator`
+  profile build straight into a simulator — one click, no Xcode build,
+  no dev server, no Apple credentials (simulator builds are unsigned by
+  design). The build runs standalone against staging with the JS
+  embedded.
+
+  Fallback if you'd rather build locally:
+
+  ```sh
+  cd mobile && npm ci
+  EXPO_PUBLIC_ORIGIN=https://annotated-staging.up.railway.app npx expo run:ios
+  ```
+
+  (A physical phone with the dev build works too, but on a screen
+  recording the simulator reads better anyway.)
 - OS in light mode, reduced motion off, notifications silenced.
 - One practice run for the marks: the demo lives or dies on beat 1's
   confidence.
@@ -84,7 +112,7 @@ native app."
 - On any annotation page, point at the bordered **Dispute fair use**
   button. Click it, show the form, close it.
 - Flash the /transparency page: dispute counts, the takedown record.
-- Lift the phone (or pan to the simulator): the same feed, native, same
+- Pan to the simulator sitting screen-right: the same feed, native, same
   account. Scroll one flick.
 - End on the wordmark. **VO:** "annotated. Keep the moment — with the
   source attached."
@@ -95,4 +123,6 @@ native app."
 - If a beat runs long, cut beat 3's response, then beat 4's hover — the
   clip artifact and the dispute button are non-negotiable.
 - No browser chrome besides the side panel; hide bookmarks bar.
-- 1280×800 capture window; the panel at its default width.
+- Capture the full screen with Chrome sized left and the simulator
+  screen-right, so beat 5 is a pan, not a cut; the panel at its default
+  width.

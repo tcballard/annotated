@@ -31,7 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { annotationToFeedItem, chipFor, formatTime } from '../lib/core/feed-item';
 import type { FeedItem } from '../lib/core/feed-item';
 import { avatarColor } from '../lib/core/avatar';
-import { TOPICS, topicLabel } from '../lib/core/topics';
+import { topicLabel } from '../lib/core/topics';
 import { openOriginalHref } from '../lib/core/deep-link';
 import { publicAnnotationUrl } from '../lib/core/share-links';
 import { api } from '../lib/api';
@@ -51,14 +51,14 @@ const serif = Platform.select({ ios: 'Georgia', default: 'serif' });
 // same-origin, so absolutize against the deployment.
 const absolute = (url: string): string => (/^https?:\/\//.test(url) ? url : `${ORIGIN}${url}`);
 
-// The scrollable feed menu: the three panes, then a feed per topic
-// (a topic feed is trending scoped to that topic).
+// The feed menu is the three panes — Recent · Trending · Following.
+// Topic feeds moved to Search's explore pills, X-style: Home is who and
+// when, Search is what about.
 type Selection = { pane: 'recent' | 'trending' | 'following'; topic: string | null };
 const MENU: { key: string; label: string; selection: Selection }[] = [
   { key: 'recent', label: 'Recent', selection: { pane: 'recent', topic: null } },
   { key: 'trending', label: 'Trending', selection: { pane: 'trending', topic: null } },
   { key: 'following', label: 'Following', selection: { pane: 'following', topic: null } },
-  ...TOPICS.map((topic) => ({ key: `topic:${topic.slug}`, label: topic.label, selection: { pane: 'trending' as const, topic: topic.slug } })),
 ];
 
 const feedQuery = (selection: Selection, cursor: string | null): string => {
@@ -333,7 +333,7 @@ const FeedPane = ({ selection, active, actions, ownId, chromePad, onChromeIntent
             onShare={actions.share}
           />
         )}
-        contentContainerStyle={[styles.list, { paddingTop: offline ? 10 : chromePad + 10, paddingBottom: 84 + Math.max(insets.bottom, 12) }]}
+        contentContainerStyle={[styles.list, { paddingTop: offline ? 10 : chromePad + 10, paddingBottom: 24 }]}
         onScroll={onScroll}
         scrollEventThrottle={16}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={meta} progressViewOffset={chromePad} />}
@@ -432,8 +432,8 @@ export default function Timeline() {
   );
 }
 
-const radiusCard = parseInt(tokens['radius-card'], 10) || 18;
-const radiusInner = parseInt(tokens['radius-inner'], 10) || 14;
+const radiusCard = parseInt(String(tokens['radius-card']), 10) || 18;
+const radiusInner = parseInt(String(tokens['radius-inner']), 10) || 14;
 
 const styles = StyleSheet.create({
   frame: { flex: 1, backgroundColor: paper },

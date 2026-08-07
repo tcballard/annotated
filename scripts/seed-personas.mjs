@@ -122,7 +122,20 @@ const LIKES = [
   ['sam-hypertext', 'mara'], ['jonas-greatwork', 'priya'], ['jonas-greatwork', 'mara'],
 ];
 
-const summary = { users: 0, annotations: 0, follows: 0, comments: 0, likes: 0 };
+// With ANNOTATED_SEED_TARGET=<handle>, the personas turn their attention
+// to a real account: they follow it, like its latest annotations, and
+// leave responses — so that account's notifications screen (and bell
+// badge) reads like a lived-in product instead of an empty room. This is
+// what makes the demo recordable: the personas act on YOU.
+const TARGET_HANDLE = (process.env.ANNOTATED_SEED_TARGET || '').replace(/^@/, '').trim() || null;
+
+const TARGET_RESPONSES = [
+  { author: 'mara', hoursAgo: 3, body: 'This is exactly what the margin was made for — the sourcing does the arguing.' },
+  { author: 'jonas', hoursAgo: 1, body: 'Bounded and sourced. Following for more of these.' },
+];
+
+const summary = { users: 0, annotations: 0, follows: 0, comments: 0, likes: 0, targetFollows: 0, targetLikes: 0, targetResponses: 0 };
+let targetFound = null;
 
 await updateStore((store) => {
   const users = [...(store.users || [])];
@@ -187,10 +200,53 @@ await updateStore((store) => {
     summary.likes += 1;
   }
 
+  if (TARGET_HANDLE) {
+    const target = users.find((user) => user.handle === TARGET_HANDLE);
+    if (target) {
+      targetFound = target;
+      // Everyone follows the target, at staggered recent times so the
+      // notifications read as a stream, not a batch.
+      PERSONAS.forEach((persona, index) => {
+        if (follows.some((edge) => edge.followerId === userIds[persona.key] && edge.followingId === target.id)) return;
+        follows.push({ followerId: userIds[persona.key], followingId: target.id, createdAt: hoursAgo(2 + index * 5) });
+        summary.targetFollows += 1;
+      });
+      const targetAnnotations = annotations
+        .filter((item) => item.authorId === target.id && item.status === 'published')
+        .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+        .slice(0, 3);
+      // Likes land on the latest few from different personas; responses on
+      // the newest one. Both only exist if the target has published.
+      targetAnnotations.forEach((annotation, index) => {
+        for (const persona of ['mara', 'sam', 'priya'].slice(0, 3 - index)) {
+          if (likes.some((like) => like.annotationId === annotation.id && like.userId === userIds[persona])) continue;
+          likes.push({ annotationId: annotation.id, userId: userIds[persona], createdAt: hoursAgo(1 + index * 4) });
+          summary.targetLikes += 1;
+        }
+      });
+      if (targetAnnotations[0]) {
+        for (const seed of TARGET_RESPONSES) {
+          if (comments.some((comment) => comment.annotationId === targetAnnotations[0].id && comment.authorId === userIds[seed.author] && comment.body === seed.body)) continue;
+          comments.push({ id: randomUUID(), annotationId: targetAnnotations[0].id, authorId: userIds[seed.author], body: seed.body, createdAt: hoursAgo(seed.hoursAgo) });
+          summary.targetResponses += 1;
+        }
+      }
+    }
+  }
+
   return { ...store, users, annotations, follows, comments, likes };
 });
 
 const store = await readStore();
 console.log(`Personas seeded: +${summary.users} users, +${summary.annotations} annotations, +${summary.follows} follows, +${summary.comments} responses, +${summary.likes} likes.`);
+if (TARGET_HANDLE && !targetFound) {
+  console.warn(`Target @${TARGET_HANDLE} not found — sign in once so the account exists, then re-run.`);
+} else if (targetFound) {
+  console.log(`Personas turned toward @${TARGET_HANDLE}: +${summary.targetFollows} follows, +${summary.targetLikes} likes, +${summary.targetResponses} responses.`);
+  if (!summary.targetLikes && !summary.targetResponses) {
+    const hasAnnotations = (store.annotations || []).some((item) => item.authorId === targetFound.id && item.status === 'published');
+    if (!hasAnnotations) console.log(`@${TARGET_HANDLE} has no published annotations yet — publish one and re-run for likes and responses.`);
+  }
+}
 console.log(`Store now holds ${store.users.length} users and ${store.annotations.length} annotations. Re-running changes nothing.`);
 await closeStore();

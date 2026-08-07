@@ -17,7 +17,7 @@ export const SessionEpochContext = createContext<{ epoch: number; bump: () => vo
 export default function WebScreen({ uri }: { uri: string; padTop?: boolean }) {
   return (
     <View style={styles.frame}>
-      <iframe src={uri} style={{ border: 0, width: '100%', height: '100%', backgroundColor: paper }} title="annotated" />
+      <iframe src={uri} style={{ border: 0, width: '100%', height: '100%', backgroundColor: paper as string }} title="annotated" />
     </View>
   );
 }
