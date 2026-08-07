@@ -1168,6 +1168,11 @@ const timelineMedia = (item) => {
   if (item.screenshotUrl) {
     return `<div class="srcmedia"><img loading="lazy" src="${escapeHTML(item.screenshotUrl)}" alt="Screenshot of ${escapeHTML(item.sourceTitle)}" /></div>`;
   }
+  // A clip that exists but is not ready yet says so — a just-published post
+  // no longer shows an inexplicable nothing where its media will be.
+  if ((item.type === 'video' || item.type === 'podcast') && ['queued', 'processing'].includes(item.mediaStatus)) {
+    return `<div class="srcmedia srcmedia-processing"><span class="cliptag">CLIP</span><span class="processing-note">Processing ${escapeHTML(format(clipSeconds))} clip — it appears here when ready</span></div>`;
+  }
   return '';
 };
 
@@ -1384,7 +1389,7 @@ const renderTimeline = () => {
       : `<div class="empty">${mark}<h2>${panelMode === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${panelMode === 'following' ? 'Follow someone whose context you want to keep up with.' : 'Capture the first source-backed moment and it will appear here.'}</p>${panelMode === 'following' ? '<button type="button" data-feed-tab-jump="recent">Browse Recent</button>' : ''}</div>`;
     return;
   }
-  timeline.innerHTML = cache.items.map(timelinePost).join('');
+  timeline.innerHTML = `${cache.items.map(timelinePost).join('')}${cache.nextCursor ? '<button class="load-more" type="button" data-load-more>Load more</button>' : ''}`;
   // The stagger plays only on a feed's first paint — never on the in-place
   // re-renders a like or retry causes.
   if (freshFeedTab === panelMode) {
@@ -1409,17 +1414,22 @@ const patchLikeButton = (button, liked, likes) => {
 const setPanelMode = (mode) => {
   panelMode = mode;
   renderTimeline();
-  if (mode !== 'capture' && !feedCache[mode]) void loadTimeline(mode);
+  // Warm caches render instantly and revalidate quietly in the background —
+  // returning to Recent never shows the first fetch forever, and a
+  // just-published clip picks up its processed media on re-entry.
+  if (mode !== 'capture') void loadTimeline(mode, { background: Boolean(feedCache[mode]) });
 };
 
-const loadTimeline = async (tab) => {
+const loadTimeline = async (tab, { background = false, append = false } = {}) => {
   if (tab === 'capture') return;
   if (!backendOnline) {
-    feedCache[tab] = { items: [], error: 'offline' };
-    if (tab === panelMode) renderTimeline();
+    if (!feedCache[tab]) {
+      feedCache[tab] = { items: [], error: 'offline' };
+      if (tab === panelMode) renderTimeline();
+    }
     return;
   }
-  if (!feedCache[tab]) {
+  if (!feedCache[tab] && !append) {
     feedCache[tab] = null;
     freshFeedTab = tab; // first paint of this feed gets the staggered entrance
     if (tab === panelMode) renderTimeline();
@@ -1435,10 +1445,17 @@ const loadTimeline = async (tab) => {
       }
       params.set('url', currentTab.url);
     }
+    if (append && feedCache[tab]?.nextCursor) params.set('cursor', feedCache[tab].nextCursor);
     const result = await apiRequest(`/api/feed?${params}`);
-    feedCache[tab] = { items: (result.annotations || []).map(annotationToItem) };
+    const items = (result.annotations || []).map(annotationToItem);
+    feedCache[tab] = append && feedCache[tab]?.items
+      ? { items: [...feedCache[tab].items, ...items], nextCursor: result.nextCursor || null }
+      : { items, nextCursor: result.nextCursor || null };
   } catch (feedError) {
-    feedCache[tab] = { items: [], error: feedError.authRequired ? 'auth' : 'load' };
+    // A failed background revalidate or append never clobbers a good cache.
+    if (!background && !append) {
+      feedCache[tab] = { items: [], error: feedError.authRequired ? 'auth' : (feedError.retryable ? 'offline' : 'load') };
+    }
   }
   if (tab === panelMode) renderTimeline();
 };
@@ -1451,6 +1468,12 @@ timeline.addEventListener('click', async (event) => {
   if (event.target.closest('[data-open-signin]')) { openSignin(); return; }
   const jump = event.target.closest('[data-feed-tab-jump]');
   if (jump) { setPanelMode(jump.dataset.feedTabJump); return; }
+  const more = event.target.closest('[data-load-more]');
+  if (more) {
+    more.disabled = true;
+    await loadTimeline(panelMode, { append: true });
+    return;
+  }
   const share = event.target.closest('[data-share-url]');
   if (share) {
     try {

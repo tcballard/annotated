@@ -666,6 +666,29 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   color: #E9EAEC; background: rgba(0, 0, 0, .55); border-radius: 3px; padding: 1px 6px; pointer-events: none;
 }
 .srcmedia-audio { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+
+/* a clip mid-transcode says so instead of showing nothing */
+.srcmedia-processing { display: flex; align-items: center; gap: 10px; padding: 12px; background: var(--strip); }
+.srcmedia-processing .cliptag { position: static; }
+.srcmedia-processing .processing-note { color: var(--meta); font-size: 12px; animation: working-pulse 1.2s var(--e-hold) infinite; }
+
+.load-more {
+  display: block;
+  width: calc(100% - 28px);
+  margin: 6px 14px 12px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  font-weight: 600;
+  min-height: 38px;
+  transition: background var(--t-hover) var(--e-ink), opacity var(--t-fade) var(--e-ink);
+}
+
+.load-more:hover { background: var(--hover-row); }
+.load-more[disabled] { opacity: .55; cursor: progress; }
 .srcmedia-audio .cliptag { position: static; }
 .srcmedia-audio audio { flex: 1; min-width: 0; height: 34px; }
 

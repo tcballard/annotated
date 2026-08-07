@@ -242,6 +242,20 @@ test('the badge keeps its promise: the digest shows before the watermark moves',
   const fn = runtime.match(/const markNotificationsSeen = [\s\S]*?\n\};/)[0];
   assert.ok(fn.indexOf('notifDigest.hidden = false') < fn.indexOf('/api/notifications/seen'), 'digest first, watermark second');
   assert.match(runtime, /responded to your annotation/);
+  // offline recovers: backoff retries, online listener, chip retry, human copy
+  assert.match(runtime, /const scheduleBackendRetry = /);
+  assert.match(runtime, /Math\.min\(backendRetryDelay \* 2, 30000\)/);
+  assert.match(runtime, /window\.addEventListener\('online'/);
+  assert.match(runtime, /Can’t reach annotated right now — retrying quietly\. Captures queue locally\./);
+  assert.doesNotMatch(runtime, /Check the extension API origin in settings\./, 'no developer-voiced dead ends');
+  // feeds: warm caches revalidate in the background, appends never clobber
+  assert.match(runtime, /background: Boolean\(feedCache\[mode\]\)/);
+  assert.match(runtime, /if \(!background && !append\) \{/);
+  assert.match(runtime, /params\.set\('cursor', feedCache\[tab\]\.nextCursor\)/);
+  assert.match(runtime, /data-load-more>Load more</);
+  // a clip mid-transcode explains itself
+  assert.match(runtime, /\['queued', 'processing'\]\.includes\(item\.mediaStatus\)/);
+  assert.match(runtime, /it appears here when ready/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {
