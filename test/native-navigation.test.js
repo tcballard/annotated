@@ -96,6 +96,18 @@ test('notifications: derived server-side, badge cleared by the seen watermark', 
   assert.match(tabsLayout, /tabBarBadge/, 'the bell wears the unseen count');
 });
 
+test('search doubles as explore: topic pills scope summarized trending stories', () => {
+  // before a query: trending annotations grouped by source into X-style
+  // story rows — title, annotator facepile, counts — behind topic pills
+  assert.match(search, /export const groupStories = /);
+  assert.match(search, /sort: 'trending'/);
+  assert.match(search, /params\.set\('topic', topic\)/);
+  assert.match(search, /TOPICS\.map\(\(entry\)/, 'the topic pills live here now');
+  assert.match(search, /Trending in \$\{topicLabel\(topic\)\}/);
+  assert.match(search, /\/web\/s\/\$\{encodeURIComponent\(story\.host\)\}/, 'every story row lands on its source hub');
+  assert.match(search, /styles\.facepile/);
+});
+
 test('search reuses the shared card and the same endpoints as the web', () => {
   assert.match(search, /api\.people\(text\)/);
   assert.match(search, /api\.feed\(`q=\$\{encodeURIComponent\(text\)\}/);

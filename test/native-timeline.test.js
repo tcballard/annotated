@@ -32,10 +32,14 @@ test('the pane and topic contract matches the web feed exactly', () => {
   assert.match(timeline, /'No annotations from people you follow yet\.'/);
 });
 
-test('the top menu scrolls, X-style: panes then a feed per topic', () => {
+test('the home menu is the three panes; topic feeds live in explore', () => {
   assert.match(timeline, /<ScrollView[^>]*horizontal/);
-  assert.match(timeline, /\.\.\.TOPICS\.map\(\(topic\) => \(\{ key: `topic:\$\{topic\.slug\}`/, 'every topic is a feed in the menu');
-  assert.match(timeline, /pane: 'trending' as const, topic: topic\.slug/, 'a topic feed is trending scoped to the topic');
+  // X anatomy: Home is who and when; Search is what about. The topic
+  // pills moved to the explore screen.
+  assert.doesNotMatch(timeline, /\.\.\.TOPICS\.map/, 'topics no longer crowd the home menu');
+  assert.match(timeline, /key: 'recent'/);
+  assert.match(timeline, /key: 'trending'/);
+  assert.match(timeline, /key: 'following'/);
   assert.match(timeline, /export const FeedCard/, 'the card is shared with search');
   assert.match(timeline, /export const useFeedActions/, 'card actions are shared with search');
 });
