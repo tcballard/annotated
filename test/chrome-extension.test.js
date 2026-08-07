@@ -335,6 +335,17 @@ test('details that read expensive: sources wear their faces', async () => {
   assert.match(runtime, /\/u\/\$\{encodeURIComponent\(handle\)\}/);
   assert.match(runtime, /const setMenuOpen = /);
   assert.match(runtime, /setMenuOpen\(false\); meButton\.focus\(\);/);
+  // the settings page is the same product: shared palette, no second
+  // terracotta, and Save actually checks the origin answers as annotated
+  const optionsStyles = await read('options.css');
+  assert.match(optionsStyles, /--accent: #B0674D/);
+  assert.match(optionsStyles, /--paper: #F5F4F0/);
+  assert.doesNotMatch(optionsStyles, /#c15a45|#174f68/i, 'the old second-product palette is gone');
+  assert.match(optionsStyles, /:focus-visible \{ outline: 2px solid var\(--ink\)/);
+  const options = await read('options.js');
+  assert.match(options, /const verifyConnection = /);
+  assert.match(options, /Connected ✓ — this origin answers as annotated\./);
+  assert.match(options, /chrome\.runtime\.getManifest\(\)\.version/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {
