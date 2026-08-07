@@ -1281,7 +1281,7 @@ const renderTimeline = () => {
     const mark = '<img class="mark" src="icons/icon-128.png" alt="" aria-hidden="true" />';
     timeline.innerHTML = panelMode === 'page'
       ? `<div class="empty">${mark}<h2>No annotations on this page yet.</h2><p>Yours would be the first.</p><button type="button" data-focus-note>Write the first note</button></div>`
-      : `<div class="empty">${mark}<h2>${panelMode === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${panelMode === 'following' ? 'Follow someone whose context you want to keep up with.' : 'Capture the first source-backed moment and it will appear here.'}</p></div>`;
+      : `<div class="empty">${mark}<h2>${panelMode === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${panelMode === 'following' ? 'Follow someone whose context you want to keep up with.' : 'Capture the first source-backed moment and it will appear here.'}</p>${panelMode === 'following' ? '<button type="button" data-feed-tab-jump="recent">Browse Recent</button>' : ''}</div>`;
     return;
   }
   timeline.innerHTML = cache.items.map(timelinePost).join('');
@@ -1329,6 +1329,8 @@ document.querySelectorAll('[data-feed-tab]').forEach((tabButton) => tabButton.ad
 
 timeline.addEventListener('click', async (event) => {
   if (event.target.closest('[data-open-signin]')) { openSignin(); return; }
+  const jump = event.target.closest('[data-feed-tab-jump]');
+  if (jump) { setPanelMode(jump.dataset.feedTabJump); return; }
   const share = event.target.closest('[data-share-url]');
   if (share) {
     try {
@@ -1555,7 +1557,24 @@ const markNotificationsSeen = async () => {
   } catch { /* offline or signed out — the badge keeps its count */ }
 };
 
+// First run only: frame the loop once (capture → your take → a public page
+// with the source attached), then never speak of it again.
+const introCard = $('#introCard');
+const introGot = $('#introGot');
+introGot.addEventListener('click', async () => {
+  introCard.hidden = true;
+  await chrome.storage.local.set({ annotatedIntroSeen: true }).catch(() => {});
+});
+
+const showIntroIfFirstRun = async () => {
+  try {
+    const { annotatedIntroSeen } = await chrome.storage.local.get('annotatedIntroSeen');
+    introCard.hidden = Boolean(annotatedIntroSeen);
+  } catch { /* stays hidden — the intro is a courtesy, not a gate */ }
+};
+
 const boot = async () => {
+  await showIntroIfFirstRun();
   syncSource();
   syncNote();
   syncComposer();

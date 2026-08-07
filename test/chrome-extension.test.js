@@ -167,6 +167,12 @@ test('the first seconds are honest: no false errors while the panel boots', asyn
   assert.match(html, /id="signinContext" hidden/);
   // closing the OAuth window is a decision, not an error
   assert.match(runtime, /clos\|cancel\|did not approve/);
+  // first run frames the loop once, dismissed forever via storage
+  assert.match(html, /id="introCard" hidden/);
+  assert.match(html, /on the public feed by default/);
+  assert.match(runtime, /annotatedIntroSeen/);
+  // the Following empty state teaches instead of dead-ending
+  assert.match(runtime, /data-feed-tab-jump="recent">Browse Recent</);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {
