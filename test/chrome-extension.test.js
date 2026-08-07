@@ -256,6 +256,16 @@ test('the badge keeps its promise: the digest shows before the watermark moves',
   // a clip mid-transcode explains itself
   assert.match(runtime, /\['queued', 'processing'\]\.includes\(item\.mediaStatus\)/);
   assert.match(runtime, /it appears here when ready/);
+  // a background queue publish closes the loop instead of inviting a duplicate
+  const background = await read('background.js');
+  assert.match(background, /annotatedQueuePublished/);
+  assert.match(runtime, /const consumeQueuePublished = /);
+  assert.match(runtime, /Queued capture published/);
+  // tab races: neutral reset, stale probes dropped, SPA url rebinds
+  assert.match(runtime, /currentTab = \{ url: '', title: '', host: '', sourceType: 'article', duration: 0 \};/);
+  assert.match(runtime, /if \(currentTabId !== tab\.id\) return; \/\/ a faster tab switch won the race/);
+  assert.match(runtime, /if \(currentTab\.url !== url\) return;/);
+  assert.match(runtime, /changeInfo\.status === 'complete' \|\| changeInfo\.url/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {

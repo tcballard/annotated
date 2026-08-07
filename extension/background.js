@@ -102,6 +102,11 @@ const retryPendingCapturesOnce = async () => {
         if (payload.audioDraftId) await deleteAudioDraft(payload.audioDraftId).catch(() => {});
         await extensionStorage.removePendingCapture(capture.id);
         if (body.annotation) await extensionStorage.savePublished(body.annotation);
+        // Close the loop: a silent background success used to leave the
+        // composer holding the same draft, inviting a duplicate publish.
+        if (body.annotation) {
+          await chrome.storage.local.set({ annotatedQueuePublished: { url: body.annotation.url || '', sourceUrl: payload.sourceUrl || '', at: Date.now() } }).catch(() => {});
+        }
       } else {
         const error = await requestError(response, 'Publish failed');
         if (error.authRequired) token = null;

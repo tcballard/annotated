@@ -731,16 +731,22 @@ const loadCurrentTab = async () => {
     currentTabId = tab.id ?? null;
     feedCache.page = null;
     if (panelMode === 'page') renderTimeline();
+    // Never show the previous tab's identity while the probes run: reset to
+    // the neutral reading state instantly, fill in as answers arrive.
+    currentTab = { url: '', title: '', host: '', sourceType: 'article', duration: 0 };
+    armGrabber('');
+    syncSource();
   }
   const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
   currentTab = { url, title: tab.title || host || 'This tab', host, sourceType: currentTab.sourceType || 'article', duration: 0 };
-  if (changed) armGrabber('');
   currentTab.sourceType = await detectSourceType(tab.id, url);
+  if (currentTabId !== tab.id) return; // a faster tab switch won the race
   void installSelectionWatcher(tab.id, url);
   // The needle found a new station: the live dot swells once, the title fades in.
   if (changed) retrigger(document.querySelector('.cap-source'), 'is-retuned');
   if (changed) {
     const draft = await extensionStorage.getTabDraft(currentTabId).catch(() => null);
+    if (currentTabId !== tab.id) return;
     if (draft && draft.sourceUrl === url) restoreDraft(draft);
   }
   resolvedSource = null;
@@ -750,7 +756,11 @@ const loadCurrentTab = async () => {
   draftReady = true;
   if (backendOnline && /^https?:/.test(url)) {
     try {
-      resolvedSource = await resolveSourceUrl(url, currentTab.title);
+      const resolved = await resolveSourceUrl(url, currentTab.title);
+      // A slow resolve for a tab we already left must never stamp its
+      // details onto the tab we are on now.
+      if (currentTab.url !== url) return;
+      resolvedSource = resolved;
       // The live tab title is the source of truth for the strip; the resolver
       // fills in what the tab cannot know (canonical URL, media URL, duration).
       if (!tab.title && resolvedSource.title) currentTab.title = resolvedSource.title;
@@ -765,7 +775,8 @@ const loadCurrentTab = async () => {
 
 chrome.tabs?.onActivated?.addListener(() => { void loadCurrentTab(); });
 chrome.tabs?.onUpdated?.addListener((_tabId, changeInfo) => {
-  if (changeInfo.status === 'complete') void loadCurrentTab();
+  // SPA navigations change the URL without a load cycle — rebind on both.
+  if (changeInfo.status === 'complete' || changeInfo.url) void loadCurrentTab();
 });
 
 /* ── marks ─────────────────────────────────────────────────────────── */
@@ -1550,8 +1561,27 @@ queueRetry.addEventListener('click', async () => {
   await refreshQueueStatus();
 });
 
+// A queued capture the background published quietly: clear the matching
+// draft so nobody double-publishes, and say what happened with the link.
+const consumeQueuePublished = async () => {
+  try {
+    const { annotatedQueuePublished } = await chrome.storage.local.get('annotatedQueuePublished');
+    if (!annotatedQueuePublished) return;
+    await chrome.storage.local.remove('annotatedQueuePublished');
+    if (annotatedQueuePublished.sourceUrl && annotatedQueuePublished.sourceUrl === currentTab.url) {
+      resetCaptureState();
+      await extensionStorage.clearTabDraft(currentTabId).catch(() => {});
+      syncSource();
+      syncNote();
+      syncComposer();
+    }
+    showToast('Queued capture published', annotatedQueuePublished.url ? { href: annotatedQueuePublished.url, label: 'View page' } : null);
+  } catch { /* nothing recorded */ }
+};
+
 chrome.storage?.onChanged?.addListener((changes, areaName) => {
   if (areaName === 'local' && changes[PENDING_KEY]) void refreshQueueStatus();
+  if (areaName === 'local' && changes.annotatedQueuePublished?.newValue) void consumeQueuePublished();
 });
 
 /* ── auth ──────────────────────────────────────────────────────────── */
@@ -1807,6 +1837,7 @@ const boot = async () => {
   // the race, run the light same-tab pass now that the backend answered.
   if (backendOnline && !resolvedSource) await loadCurrentTab();
   await consumePendingGrab();
+  await consumeQueuePublished();
   await loadTimeline('recent');
   await refreshQueueStatus();
   await markNotificationsSeen();
