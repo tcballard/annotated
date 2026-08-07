@@ -22,6 +22,23 @@ test('capture is resolve-first with a polymorphic selection row and no fake prev
   assert.doesNotMatch(source, /class="browser-frame"/u);
 });
 
+// The desk is staged, not dumped: before a source resolves it is one
+// question (the URL), and the composer — note, publish row, hint — only
+// exists once it can compose. In the app shell the native chrome owns the
+// title, and the sheet copy teaches the share-sheet path.
+test('capture stages itself and speaks shell when framed by the app', () => {
+  const view = source.slice(source.indexOf('const captureView'), source.indexOf('const libraryView'));
+  const stageOne = view.slice(view.indexOf('if (!resolved)'), view.indexOf('const sourceLine'));
+  assert.ok(stageOne.includes('urlForm'), 'stage one carries the URL form');
+  for (const composerBit of ['cap-note', 'cap-foot', 'cap-hint', 'data-action="publish"']) {
+    assert.ok(!stageOne.includes(composerBit), `stage one must not render ${composerBit}`);
+  }
+  assert.match(view, /SHELL_MODE \? '' : '<h1>Capture<\/h1>'/u);
+  assert.match(view, /annotated is in the share sheet\./u);
+  const styles = fs.readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+  assert.match(styles, /\.shell-mode \.capcard \{ box-shadow: none; border-radius: 0;/u);
+});
+
 test('mark fields update the duration chip and publish gate without a full re-render', () => {
   assert.match(source, /const refreshCaptureBits = /u);
   assert.match(source, /data-duration-chip/u);

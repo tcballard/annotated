@@ -809,7 +809,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .capcard h1 { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
 .capcard .capdek { font-size: 13px; color: var(--meta); margin-bottom: 14px; }
 
-.cap-url { display: flex; gap: 8px; margin-bottom: 12px; }
+.cap-url { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 
 .cap-url input {
   flex: 1;
@@ -825,6 +825,20 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 }
 
 .cap-url input::placeholder { color: #9AA0A8; }
+
+/* On narrow screens the URL gets the whole first row; the buttons wrap
+   under it instead of squeezing it to a third of its own card. The mode
+   toggle joins the control row instead of floating alone on the right. */
+@media (max-width: 560px) {
+  .cap-url input { flex: 1 1 100%; }
+  .cap-url .btn { flex: 1; }
+  .cap-foot .mode { margin-left: 0; }
+}
+
+/* Inside the app's native sheet the web renders content only: the sheet
+   is the card, so the card goes flat. */
+.shell-mode .page.single:has(.capcard) { padding-top: 4px; }
+.shell-mode .capcard { box-shadow: none; border-radius: 0; background: transparent; padding: 10px 16px 16px; }
 
 .cap-error { font-size: 12.5px; color: var(--ink-soft); background: var(--soft); border-left: 3px solid var(--ink-soft); border-radius: 0 6px 6px 0; padding: 8px 12px; margin-bottom: 12px; }
 

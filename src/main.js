@@ -820,29 +820,44 @@ const publishBlocker = () => {
   return '';
 };
 
+// Staged, not dumped: until a source resolves, the desk is one question —
+// what are you keeping? The composer only exists once it can compose.
+// In shell mode the native chrome owns the title and the sheet owns the
+// card, so the web renders content only.
 const captureView = () => {
   const resolved = state.customSource;
   const blocker = publishBlocker();
-  const sourceLine = resolved
-    ? `<div class="cap-source"><span class="livedot" aria-hidden="true"></span><span class="t">${escapeHTML(resolved.title)}</span><span class="type-select"><select data-action="source-type" aria-label="Source type">${['video', 'article', 'podcast'].map((type) => `<option value="${type}" ${state.sourceType === type ? 'selected' : ''}>${type}</option>`).join('')}</select></span></div>`
-    : '';
-  const selection = resolved
-    ? (state.sourceType === 'article' ? passageRow() : marksRow())
-    : '';
+  const heading = SHELL_MODE ? '' : '<h1>Capture</h1>';
+  const dek = SHELL_MODE
+    ? 'Paste a link — or share straight from Safari or YouTube; annotated is in the share sheet.'
+    : 'Paste a link, mark the moment, leave your context. The sidebar does this from the page you are on.';
+  const urlForm = `
+      <form class="cap-url" data-action="resolve-form">
+        <input data-action="source-url" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://youtube.com/watch?v=… · article · podcast" aria-label="Source URL" value="${escapeHTML(state.sourceUrl)}" />
+        <button class="btn" type="submit" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Resolve'}</button>
+        ${navigator.clipboard?.readText && !resolved ? `<button class="ghost" type="button" data-action="paste-link" title="Read a copied link from the clipboard">Paste link</button>` : ''}
+      </form>
+      ${state.sourceError ? `<div class="cap-error" role="alert">${escapeHTML(state.sourceError)}</div>` : ''}`;
+  if (!resolved) {
+    return `
+  <div class="page single">
+    <section class="capcard">
+      ${heading}
+      <p class="capdek">${dek}</p>
+      ${urlForm}
+    </section>
+  </div>`;
+  }
+  const sourceLine = `<div class="cap-source"><span class="livedot" aria-hidden="true"></span><span class="t">${escapeHTML(resolved.title)}</span><span class="type-select"><select data-action="source-type" aria-label="Source type">${['video', 'article', 'podcast'].map((type) => `<option value="${type}" ${state.sourceType === type ? 'selected' : ''}>${type}</option>`).join('')}</select></span></div>`;
+  const selection = state.sourceType === 'article' ? passageRow() : marksRow();
   const noteArea = state.commentaryMode === 'text'
     ? `<textarea class="cap-note" data-action="commentary" maxlength="280" aria-label="Your note" placeholder="What did you notice?">${escapeHTML(state.commentary)}</textarea>`
     : recorderRow();
   return `
   <div class="page single">
     <section class="capcard">
-      <h1>Capture</h1>
-      <p class="capdek">Paste a link, mark the moment, leave your context. The sidebar does this from the page you are on.</p>
-      <form class="cap-url" data-action="resolve-form">
-        <input data-action="source-url" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://youtube.com/watch?v=… · article · podcast" aria-label="Source URL" value="${escapeHTML(state.sourceUrl)}" />
-        <button class="btn" type="submit" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Resolve'}</button>
-        ${navigator.clipboard?.readText && !state.customSource ? `<button class="ghost" type="button" data-action="paste-link" title="Read a copied link from the clipboard">Paste link</button>` : ''}
-      </form>
-      ${state.sourceError ? `<div class="cap-error" role="alert">${escapeHTML(state.sourceError)}</div>` : ''}
+      ${heading}
+      ${urlForm}
       ${sourceLine}
       ${selection}
       ${noteArea}
