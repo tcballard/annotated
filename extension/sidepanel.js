@@ -1374,6 +1374,18 @@ const renderTimeline = () => {
   }
 };
 
+const patchLikeButton = (button, liked, likes) => {
+  button.classList.toggle('is-liked', liked);
+  button.setAttribute('aria-label', `${liked ? 'Unlike' : 'Like'} this annotation`);
+  let count = button.querySelector('.n');
+  if (likes > 0) {
+    if (!count) { count = document.createElement('span'); count.className = 'n'; button.append(count); }
+    count.textContent = likes;
+  } else {
+    count?.remove();
+  }
+};
+
 const setPanelMode = (mode) => {
   panelMode = mode;
   renderTimeline();
@@ -1439,12 +1451,15 @@ timeline.addEventListener('click', async (event) => {
     if (!entries.length) return;
     const liked = Boolean(entries[0].likedByMe);
     for (const entry of entries) { entry.likedByMe = !liked; entry.likes = Math.max(0, (entry.likes || 0) + (liked ? -1 : 1)); }
-    renderTimeline();
+    // Patch the one button in place — a full re-render would destroy focus,
+    // hover, and any clip mid-play for the sake of one heart.
+    patchLikeButton(like, !liked, entries[0].likes);
+    retrigger(like, 'just-liked');
     try {
       await apiRequest(`/api/annotations/${encodeURIComponent(slug)}/${liked ? 'unlike' : 'like'}`, { method: 'POST' });
     } catch (likeError) {
       for (const entry of entries) { entry.likedByMe = liked; entry.likes = Math.max(0, (entry.likes || 0) + (liked ? 1 : -1)); }
-      renderTimeline();
+      renderTimeline(); // a failed round-trip earns the rebuild
       if (likeError.authRequired) { setAuthState(false); openSignin(); } else showToast('Like could not be saved.');
     }
     return;

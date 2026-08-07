@@ -214,6 +214,11 @@ test('the panel moves on one clock: motion tokens and gated one-shot beats', asy
   assert.match(runtime, /let freshFeedTab = null;/);
   assert.match(runtime, /freshFeedTab = tab;/);
   assert.match(runtime, /timeline\.classList\.add\('is-fresh'\)/);
+  // an optimistic like patches one button in place; only a failed round-trip rebuilds
+  assert.match(runtime, /patchLikeButton\(like, !liked, entries\[0\]\.likes\);/);
+  assert.match(runtime, /retrigger\(like, 'just-liked'\);/);
+  assert.match(runtime, /renderTimeline\(\); \/\/ a failed round-trip earns the rebuild/);
+  assert.match(styles, /@keyframes heart-press/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {

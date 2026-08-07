@@ -762,6 +762,11 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .grabber[disabled] { opacity: .55; cursor: progress; }
 .grabber[disabled]:hover { background: var(--soft); color: var(--meta); }
 
+/* a like is a stamp pressed in, not a pop */
+.act svg { transition: fill var(--t-hover) var(--e-ink), stroke var(--t-hover) var(--e-ink); }
+.act.just-liked svg { animation: heart-press var(--t-fade) var(--e-enter); }
+@keyframes heart-press { from { transform: scale(.86); } }
+
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
