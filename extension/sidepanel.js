@@ -97,6 +97,7 @@ let toastTimer;
 // capture surface; each mode gets the full panel height.
 let panelMode = 'capture';
 let freshFeedTab = null;
+let lastCleared = null;
 const feedCache = { recent: null, following: null, page: null };
 
 const format = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
@@ -599,6 +600,9 @@ const syncSource = () => {
   const known = Boolean(currentTab.url);
   const supported = /^https?:/.test(currentTab.url || '');
   capUnsupported.hidden = !known || supported;
+  // On chrome:// and friends the composer stops pretending: no note box, no
+  // publish row, no live dot — just the one honest sentence.
+  captureSection.classList.toggle('is-unsupported', known && !supported);
   mediaSelection.hidden = !supported || !isMediaType();
   textSelection.hidden = !supported || isMediaType();
   document.querySelector('#shotRow').hidden = !supported;
@@ -1413,10 +1417,23 @@ const syncTabs = () => {
     const active = tabButton.dataset.feedTab === panelMode;
     tabButton.classList.toggle('is-active', active);
     tabButton.setAttribute('aria-selected', String(active));
+    tabButton.tabIndex = active ? 0 : -1; // roving tabindex, arrows move between tabs
   });
   captureSection.hidden = panelMode !== 'capture';
   timeline.hidden = panelMode === 'capture';
 };
+
+// The real ARIA tabs pattern: arrow keys walk and activate the modes.
+document.querySelector('.tabs')?.addEventListener('keydown', (event) => {
+  if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+  const tabs = [...document.querySelectorAll('.tabs [data-feed-tab]')];
+  const index = tabs.indexOf(document.activeElement);
+  if (index === -1) return;
+  event.preventDefault();
+  const next = tabs[(index + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+  setPanelMode(next.dataset.feedTab);
+  next.focus();
+});
 
 const renderTimeline = () => {
   syncTabs();
@@ -1440,8 +1457,12 @@ const renderTimeline = () => {
   }
   if (!cache.items.length) {
     const mark = '<img class="mark" src="icons/icon-128.png" alt="" aria-hidden="true" />';
-    timeline.innerHTML = panelMode === 'page'
+    // "Yours would be the first" is a lie on chrome:// — nobody's can be.
+    const pageEmpty = /^https?:/.test(currentTab.url || '')
       ? `<div class="empty">${mark}<h2>No annotations on this page yet.</h2><p>Yours would be the first.</p><button type="button" data-focus-note>Write the first note</button></div>`
+      : `<div class="empty">${mark}<h2>This page can’t be annotated.</h2><p>Open a video, article, or podcast and the margin opens with it.</p></div>`;
+    timeline.innerHTML = panelMode === 'page'
+      ? pageEmpty
       : `<div class="empty">${mark}<h2>${panelMode === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${panelMode === 'following' ? 'Follow someone whose context you want to keep up with.' : 'Capture the first source-backed moment and it will appear here.'}</p>${panelMode === 'following' ? '<button type="button" data-feed-tab-jump="recent">Browse Recent</button>' : ''}</div>`;
     return;
   }
@@ -1778,6 +1799,17 @@ window.addEventListener('online', () => {
 /* ── keyboard: I/O marks, Ctrl/Cmd+Enter publish, Esc clears ───────── */
 
 document.addEventListener('keydown', (event) => {
+  // The sign-in door holds focus: Tab cycles inside it, never behind the veil.
+  if (!signinVeil.hidden && event.key === 'Tab') {
+    const focusables = [...signinVeil.querySelectorAll('button, a[href]')].filter((el) => !el.hidden);
+    if (!focusables.length) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    else if (!signinVeil.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
+    return;
+  }
   const inField = event.target.closest('input, textarea, select');
   if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
     event.preventDefault();
@@ -1797,15 +1829,29 @@ document.addEventListener('keydown', (event) => {
   }
   if (event.key === 'Escape') {
     if (!signinVeil.hidden) { closeSignin(); return; }
+    // Esc clears, but never destroys: the cleared capture waits behind
+    // Ctrl/Cmd+Z until the next capture replaces it.
     if (currentTab.sourceType === 'article' && selection.text) {
+      lastCleared = { kind: 'selection', value: selection };
       selection = { text: '', paragraph: 0, prefix: '', suffix: '' };
       syncSelectionCard();
       saveDraft();
+      showToast('Selection cleared — Ctrl/Cmd+Z restores it');
     } else if (isMediaType() && (marks.inSet || marks.outSet)) {
+      lastCleared = { kind: 'marks', value: marks };
       marks = { start: 0, end: 0, inSet: false, outSet: false };
       syncMarks();
       saveDraft();
+      showToast('Marks cleared — Ctrl/Cmd+Z restores them');
     }
+    return;
+  }
+  if ((event.metaKey || event.ctrlKey) && (event.key === 'z' || event.key === 'Z') && lastCleared && !event.target.closest('input, textarea')) {
+    event.preventDefault();
+    if (lastCleared.kind === 'selection') { selection = lastCleared.value; syncSelectionCard(); }
+    if (lastCleared.kind === 'marks') { marks = lastCleared.value; syncMarks(); }
+    lastCleared = null;
+    saveDraft();
   }
 });
 

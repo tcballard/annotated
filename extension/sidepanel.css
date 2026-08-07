@@ -300,6 +300,15 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .cap-unsupported { font-size: 12px; color: var(--ink-soft); background: var(--soft); border-radius: 10px; padding: 8px 10px; margin-bottom: 10px; }
 
+/* Honest edges: on a page that can't be captured, the composer doesn't
+   pretend. The dot goes gray and the writing tools leave entirely. */
+.capture.is-unsupported .livedot { background: var(--meta); }
+.capture.is-unsupported .type-select,
+.capture.is-unsupported .cap-note,
+.capture.is-unsupported .cap-foot,
+.capture.is-unsupported .cap-hint,
+.capture.is-unsupported .recorder { display: none; }
+
 .marks { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 
 .markbtn {

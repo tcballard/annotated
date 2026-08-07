@@ -271,6 +271,24 @@ test('the badge keeps its promise: the digest shows before the watermark moves',
   assert.match(runtime, /setReviewTake\(blob\); \/\/ hear it before you publish it/);
   assert.match(runtime, /URL\.revokeObjectURL\(reviewUrl\)/, 'takes are revoked, never leaked');
   assert.match(runtime, /s left — it stops itself at/);
+  // honest edges: an uncapturable page hides the writing tools instead of
+  // arming a composer that can only fail
+  const styles = await read('sidepanel.css');
+  assert.match(runtime, /captureSection\.classList\.toggle\('is-unsupported', known && !supported\)/);
+  assert.match(styles, /\.capture\.is-unsupported \.livedot \{ background: var\(--meta\); \}/);
+  assert.match(styles, /\.capture\.is-unsupported \.cap-foot/);
+  assert.match(runtime, /This page can’t be annotated\./);
+  // Esc clears but never destroys; Ctrl/Cmd+Z brings the capture back
+  assert.match(runtime, /lastCleared = \{ kind: 'selection', value: selection \}/);
+  assert.match(runtime, /lastCleared = \{ kind: 'marks', value: marks \}/);
+  assert.match(runtime, /Selection cleared — Ctrl\/Cmd\+Z restores it/);
+  assert.match(runtime, /Marks cleared — Ctrl\/Cmd\+Z restores them/);
+  // the tablist speaks ARIA: roving tabindex, arrows walk and activate
+  assert.match(runtime, /tabButton\.tabIndex = active \? 0 : -1;/);
+  assert.match(runtime, /event\.key !== 'ArrowRight' && event\.key !== 'ArrowLeft'/);
+  assert.match(runtime, /setPanelMode\(next\.dataset\.feedTab\);/);
+  // the sign-in door holds focus while it is open
+  assert.match(runtime, /signinVeil\.querySelectorAll\('button, a\[href\]'\)/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {
