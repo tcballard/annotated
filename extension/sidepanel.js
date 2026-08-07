@@ -982,6 +982,12 @@ publishButton.addEventListener('click', async () => {
   clearError();
   const blocker = publishBlocker();
   if (blocker) { publishHint.textContent = blocker; return; }
+  // A reader who has never signed in gets the door, not a false 'session
+  // expired' after a doomed round-trip. The capture stays exactly where it is.
+  if (!(await extensionStorage.getAuthToken().catch(() => null))) {
+    openSignin('Sign in to publish — your capture stays right here.');
+    return;
+  }
   if (commentaryMode === 'audio' && !audioAssetId && audioDraftId) {
     try { await uploadStagedAudio(); } catch (uploadError) {
       showError(uploadError.retryable ? 'Audio note saved locally. It will retry when the backend is available.' : uploadError.message || 'Finish uploading the audio note before publishing.');
@@ -1416,8 +1422,11 @@ const setAuthState = (signedIn, user = panelUser) => {
 };
 
 let signinReturnFocus = null;
-const openSignin = () => {
+const signinContext = $('#signinContext');
+const openSignin = (context = '') => {
   if (!anyProviderAvailable()) { showError('Sign-in is not configured on this backend.'); return; }
+  signinContext.textContent = context;
+  signinContext.hidden = !context;
   signinReturnFocus = document.activeElement;
   signinVeil.hidden = false;
   signinVeil.querySelector('[data-auth]:not([hidden])')?.focus();
@@ -1426,6 +1435,7 @@ const openSignin = () => {
 const closeSignin = () => {
   if (signinVeil.hidden) return;
   signinVeil.hidden = true;
+  signinContext.hidden = true;
   if (signinReturnFocus?.isConnected && !signinReturnFocus.hidden) signinReturnFocus.focus();
   signinReturnFocus = null;
 };
@@ -1445,6 +1455,8 @@ signinVeil.querySelectorAll('[data-auth]').forEach((button) => button.addEventLi
     feedCache.following = null;
     if (panelMode === 'following') await loadTimeline('following');
   } catch (authError) {
+    // Closing the OAuth window is a decision, not a failure — stay quiet.
+    if (/clos|cancel|did not approve/i.test(authError?.message || '')) return;
     showError(authError.message || 'Sign-in failed.');
   }
 }));

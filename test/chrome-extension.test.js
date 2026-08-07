@@ -161,6 +161,12 @@ test('the first seconds are honest: no false errors while the panel boots', asyn
   // a hanging origin fails into the styled offline state, never a stuck boot
   assert.match(runtime, /setTimeout\(\(\) => timeoutController\.abort\(\), 8000\)/);
   assert.match(runtime, /signal: timeoutController\.signal/);
+  // a never-signed-in publisher gets the door with context, capture intact
+  assert.match(runtime, /openSignin\('Sign in to publish — your capture stays right here\.'\)/);
+  const html = await read('sidepanel.html');
+  assert.match(html, /id="signinContext" hidden/);
+  // closing the OAuth window is a decision, not an error
+  assert.match(runtime, /clos\|cancel\|did not approve/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {

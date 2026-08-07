@@ -145,6 +145,8 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .signin-sub { color: var(--meta); font-size: 12px; margin-bottom: 4px; }
 
+.signin-context { color: var(--ink-soft); font-size: 12px; border-left: 2px solid var(--border); padding-left: 10px; }
+
 .continue {
   display: flex;
   align-items: center;
