@@ -21,6 +21,16 @@
   --hover-row: #FBFAF8;
   --serif: Georgia, 'Times New Roman', serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* motion tokens — one clock for the whole panel */
+  --t-press: 60ms;   /* tactile ack */
+  --t-hover: 120ms;  /* hovers, fast exits */
+  --t-fade: 180ms;   /* fades and small reveals */
+  --t-move: 240ms;   /* anything that travels or lands */
+  --e-ink: cubic-bezier(.25, .1, .25, 1);
+  --e-enter: cubic-bezier(.2, .7, .3, 1);
+  --e-exit: cubic-bezier(.4, 0, .7, 1);
+  --e-hold: ease-in-out;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -703,6 +713,54 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   }
   .chip.duration.is-over { background: #565D68; }
 }
+
+/* ── motion ─────────────────────────────────────────────────────────────
+   Entrances are from-only keyframes on resting base states, so the global
+   reduced-motion kill below makes every element simply appear at rest —
+   nothing is ever parked invisible waiting for an animation. ─────────── */
+
+/* pane switch: the new sheet settles; the old one is simply gone */
+.capture, .timeline { animation: pane-in var(--t-fade) var(--e-enter); }
+@keyframes pane-in { from { opacity: 0; transform: translateY(4px); } }
+
+/* the terracotta underline draws outward from center on tab change */
+.tab.is-active::after { animation: underline-in var(--t-fade) var(--e-enter); transform-origin: center; }
+@keyframes underline-in { from { transform: scaleX(0); } }
+
+/* first paint of a feed arrives composed, not dumped */
+.timeline.is-fresh .post { animation: post-in var(--t-move) var(--e-enter) backwards; }
+.timeline.is-fresh .post:nth-child(2) { animation-delay: 40ms; }
+.timeline.is-fresh .post:nth-child(n+3) { animation-delay: 80ms; }
+@keyframes post-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* skeletons breathe downward instead of blinking as a slab */
+.skeleton .sk-line + .sk-line { animation-delay: .12s; }
+.skeleton .sk-card { animation-delay: .24s; }
+
+/* a mark landing is the capture verb — acknowledge it instantly */
+.markbtn .t { transition: color var(--t-fade) var(--e-ink); }
+.markbtn.just-set { animation: mark-flash var(--t-move) var(--e-ink); }
+@keyframes mark-flash { from { background: var(--accent-soft); } }
+.markbtn.just-set .t { animation: mark-time-in var(--t-fade) var(--e-enter); }
+@keyframes mark-time-in { from { opacity: 0; transform: translateY(2px); } }
+.chip.duration { transition: background var(--t-fade) var(--e-ink), color var(--t-fade) var(--e-ink); }
+.chip.just-ticked { animation: chip-tick var(--t-fade) var(--e-enter); }
+@keyframes chip-tick { from { transform: scale(.94); } }
+
+/* the live dot swells once when the panel retunes to a new tab */
+.cap-source.is-retuned .livedot { animation: dot-retune var(--t-move) var(--e-ink); }
+@keyframes dot-retune { 0% { transform: scale(1); } 40% { transform: scale(1.45); } 100% { transform: scale(1); } }
+.cap-source.is-retuned .t { animation: title-swap var(--t-fade) var(--e-enter); }
+@keyframes title-swap { from { opacity: 0; } }
+
+/* captured passage / snip lands like a clipping laid on the desk */
+.passage { animation: card-in var(--t-move) var(--e-enter); }
+@keyframes card-in { from { opacity: 0; transform: translateY(4px); } }
+.shot-preview { animation: shot-develop var(--t-move) var(--e-enter); }
+@keyframes shot-develop { from { opacity: 0; } }
+.grabber { transition: background .12s ease, color .12s ease, opacity var(--t-fade) var(--e-ink); }
+.grabber[disabled] { opacity: .55; cursor: progress; }
+.grabber[disabled]:hover { background: var(--soft); color: var(--meta); }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

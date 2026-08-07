@@ -28,6 +28,10 @@ const ALLOWED_SELECTORS = [
   /\.bell \.n$/, // the unseen-notifications dot — new activity IS a moment
   /\.pub-check \.(ring|tick)$/, // the publish celebration — publishing IS the moment
   /\.pub-moment \.dot$/, // its full stop
+  // keyframe stops carry accent values only on behalf of animations that are
+  // themselves applied via whitelisted selectors (mark-flash on .just-set,
+  // the publish wash) — the accent still lands only where the law allows
+  /^(from|to|\d+%)$/,
 ];
 
 const auditStylesheet = (rawCss, file) => {

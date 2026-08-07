@@ -192,6 +192,30 @@ test('the first seconds are honest: no false errors while the panel boots', asyn
   assert.match(runtime, /const consumePendingGrab = /, 'a cold panel finds the stashed request at boot');
 });
 
+test('the panel moves on one clock: motion tokens and gated one-shot beats', async () => {
+  const styles = await read('sidepanel.css');
+  const runtime = await read('sidepanel.js');
+  // one set of timing/easing tokens governs every animation
+  for (const token of ['--t-press: 60ms', '--t-hover: 120ms', '--t-fade: 180ms', '--t-move: 240ms', '--e-enter: cubic-bezier(.2, .7, .3, 1)']) {
+    assert.ok(styles.includes(token), `motion token missing: ${token}`);
+  }
+  // entrances are from-only keyframes on resting base states, so the global
+  // reduced-motion kill makes elements simply appear — nothing parks invisible
+  for (const keyframe of ['pane-in', 'underline-in', 'post-in', 'mark-flash', 'chip-tick', 'dot-retune', 'card-in', 'shot-develop']) {
+    assert.ok(styles.includes(`@keyframes ${keyframe}`), `keyframe missing: ${keyframe}`);
+  }
+  // one-shot beats re-fire through the shared retrigger idiom
+  assert.match(runtime, /const retrigger = \(element, className\)/);
+  assert.match(runtime, /void element\.offsetWidth;/);
+  assert.match(runtime, /retrigger\(boundary === 'in' \? markIn : markOut, 'just-set'\)/);
+  assert.match(runtime, /retrigger\(durationChip, 'just-ticked'\)/);
+  assert.match(runtime, /'is-retuned'/);
+  // the stagger plays only on a feed's first paint, never on like re-renders
+  assert.match(runtime, /let freshFeedTab = null;/);
+  assert.match(runtime, /freshFeedTab = tab;/);
+  assert.match(runtime, /timeline\.classList\.add\('is-fresh'\)/);
+});
+
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {
   const html = await read('sidepanel.html');
   const runtime = await read('sidepanel.js');

@@ -96,6 +96,7 @@ let toastTimer;
 // it (a timeline). Capture is the default so the sidebar stays the primary
 // capture surface; each mode gets the full panel height.
 let panelMode = 'capture';
+let freshFeedTab = null;
 const feedCache = { recent: null, following: null, page: null };
 
 const format = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
@@ -373,13 +374,26 @@ const syncPublishGate = () => {
   publishHint.textContent = blocker || 'Marks follow the player. Nothing is published until you publish.';
 };
 
+// Re-fires a one-shot animation class even when it is already present.
+// Under reduced motion the class is inert, so no guard is needed.
+const retrigger = (element, className) => {
+  if (!element) return;
+  element.classList.remove(className);
+  void element.offsetWidth;
+  element.classList.add(className);
+};
+
 const syncMarks = () => {
   const length = Math.max(0, marks.end - marks.start);
   markInTime.textContent = format(marks.start);
   markOutTime.textContent = format(marks.end);
   markIn.classList.toggle('is-set', marks.inSet);
   markOut.classList.toggle('is-set', marks.outSet);
-  durationChip.textContent = format(length);
+  const nextDuration = format(length);
+  if (durationChip.textContent !== nextDuration) {
+    durationChip.textContent = nextDuration;
+    retrigger(durationChip, 'just-ticked');
+  }
   const over = length > MAX_CLIP_SECONDS;
   durationChip.classList.toggle('is-over', over);
   overReason.hidden = !over;
@@ -712,6 +726,8 @@ const loadCurrentTab = async () => {
   if (changed) armGrabber('');
   currentTab.sourceType = await detectSourceType(tab.id, url);
   void installSelectionWatcher(tab.id, url);
+  // The needle found a new station: the live dot swells once, the title fades in.
+  if (changed) retrigger(document.querySelector('.cap-source'), 'is-retuned');
   if (changed) {
     const draft = await extensionStorage.getTabDraft(currentTabId).catch(() => null);
     if (draft && draft.sourceUrl === url) restoreDraft(draft);
@@ -763,6 +779,7 @@ const captureMark = async (boundary) => {
     if (!marks.inSet || marks.start > marks.end) { marks.start = Math.max(0, marks.end); marks.inSet = true; }
   }
   syncMarks();
+  retrigger(boundary === 'in' ? markIn : markOut, 'just-set');
   saveDraft();
 };
 
@@ -787,6 +804,7 @@ const applyManualMark = (boundary, input) => {
     if (marks.start > parsed) marks.start = parsed;
   }
   syncMarks();
+  retrigger(boundary === 'in' ? markIn : markOut, 'just-set');
   saveDraft();
 };
 
@@ -1347,6 +1365,13 @@ const renderTimeline = () => {
     return;
   }
   timeline.innerHTML = cache.items.map(timelinePost).join('');
+  // The stagger plays only on a feed's first paint — never on the in-place
+  // re-renders a like or retry causes.
+  if (freshFeedTab === panelMode) {
+    freshFeedTab = null;
+    timeline.classList.add('is-fresh');
+    setTimeout(() => timeline.classList.remove('is-fresh'), 450);
+  }
 };
 
 const setPanelMode = (mode) => {
@@ -1364,6 +1389,7 @@ const loadTimeline = async (tab) => {
   }
   if (!feedCache[tab]) {
     feedCache[tab] = null;
+    freshFeedTab = tab; // first paint of this feed gets the staggered entrance
     if (tab === panelMode) renderTimeline();
   }
   try {
