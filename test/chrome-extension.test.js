@@ -219,6 +219,17 @@ test('the panel moves on one clock: motion tokens and gated one-shot beats', asy
   assert.match(runtime, /retrigger\(like, 'just-liked'\);/);
   assert.match(runtime, /renderTimeline\(\); \/\/ a failed round-trip earns the rebuild/);
   assert.match(styles, /@keyframes heart-press/);
+  // the finishing beats: toast rises, doors close faster than they open,
+  // the publish moment leaves with a breath and stands still under reduced motion
+  assert.match(styles, /@keyframes toast-up/);
+  assert.match(styles, /\.signin-veil\.is-closing \{ animation: veil-out var\(--t-hover\) var\(--e-exit\) forwards; \}/);
+  assert.match(styles, /@keyframes modal-rise/);
+  assert.match(styles, /\.pub-moment\.is-static \.ring, \.pub-moment\.is-static \.tick \{ stroke-dashoffset: 0; animation: none; \}/);
+  assert.match(runtime, /moment\.className = reduced \? 'pub-moment is-static' : 'pub-moment';/);
+  assert.match(runtime, /retrigger\(timeline\.querySelector\('\.post'\), 'just-published'\)/);
+  assert.match(runtime, /timeline\.classList\.add\('is-inserting'\)/);
+  assert.match(runtime, /publishButton\.classList\.add\('is-working'\)/);
+  assert.match(styles, /\.publish:not\(\[disabled\]\):hover/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {

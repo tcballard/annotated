@@ -157,14 +157,25 @@ const showToast = (message, link = null) => {
 let publishMomentTimer;
 const dismissPublishMoment = () => {
   clearTimeout(publishMomentTimer);
-  document.querySelector('.pub-moment')?.remove();
+  const moment = document.querySelector('.pub-moment');
+  if (!moment || moment.classList.contains('is-leaving')) return;
+  const finish = () => {
+    moment.remove();
+    // the fresh note underneath wears the celebration's tail — a soft wash
+    if (panelMode === 'page') retrigger(timeline.querySelector('.post'), 'just-published');
+  };
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { finish(); return; }
+  moment.classList.add('is-leaving');
+  setTimeout(finish, 160);
 };
 
 const showPublishMoment = (title) => {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  // Reduced motion gets the same confirmation, standing still: ring and tick
+  // pre-drawn, no choreography — not the silence it used to get.
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   dismissPublishMoment();
   const moment = document.createElement('div');
-  moment.className = 'pub-moment';
+  moment.className = reduced ? 'pub-moment is-static' : 'pub-moment';
   moment.setAttribute('role', 'status');
   moment.title = 'Continue';
   moment.innerHTML = `
@@ -1100,6 +1111,7 @@ publishButton.addEventListener('click', async () => {
     } : {}),
   };
   publishButton.disabled = true;
+  publishButton.classList.add('is-working');
   publishHint.textContent = 'Publishing…';
   try {
     const { annotation } = await apiRequest('/api/annotations', { method: 'POST', body: JSON.stringify(payload) });
@@ -1119,6 +1131,9 @@ publishButton.addEventListener('click', async () => {
       }
       if (!feedCache.page) feedCache.page = { items: [item] };
       setPanelMode('page');
+      // the fresh note settles behind the veil, at rest before it lifts
+      timeline.classList.add('is-inserting');
+      setTimeout(() => timeline.classList.remove('is-inserting'), 300);
     }
     showToast('Published', { href: annotation.url, label: 'View page' });
   } catch (publishError) {
@@ -1135,6 +1150,7 @@ publishButton.addEventListener('click', async () => {
       showError(publishError.message || 'Annotation could not be published.');
     }
   } finally {
+    publishButton.classList.remove('is-working');
     syncPublishGate();
   }
 });
@@ -1530,6 +1546,7 @@ let signinReturnFocus = null;
 const signinContext = $('#signinContext');
 const openSignin = (context = '') => {
   if (!anyProviderAvailable()) { showError('Sign-in is not configured on this backend.'); return; }
+  signinVeil.classList.remove('is-closing');
   signinContext.textContent = context;
   signinContext.hidden = !context;
   signinReturnFocus = document.activeElement;
@@ -1538,11 +1555,17 @@ const openSignin = (context = '') => {
 };
 
 const closeSignin = () => {
-  if (signinVeil.hidden) return;
-  signinVeil.hidden = true;
-  signinContext.hidden = true;
-  if (signinReturnFocus?.isConnected && !signinReturnFocus.hidden) signinReturnFocus.focus();
-  signinReturnFocus = null;
+  if (signinVeil.hidden || signinVeil.classList.contains('is-closing')) return;
+  const finish = () => {
+    signinVeil.classList.remove('is-closing');
+    signinVeil.hidden = true;
+    signinContext.hidden = true;
+    if (signinReturnFocus?.isConnected && !signinReturnFocus.hidden) signinReturnFocus.focus();
+    signinReturnFocus = null;
+  };
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { finish(); return; }
+  signinVeil.classList.add('is-closing');
+  setTimeout(finish, 140);
 };
 
 signInOpen.addEventListener('click', openSignin);

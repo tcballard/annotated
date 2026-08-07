@@ -472,12 +472,14 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   border-radius: 99px;
   padding: 8px 16px;
   min-height: 40px;
-  transition: background .12s ease, transform .06s ease;
+  transition: background var(--t-hover) var(--e-ink), transform var(--t-press) var(--e-ink), opacity var(--t-fade) var(--e-ink);
 }
 
-.publish:hover { background: var(--chrome-dark); }
+.publish:not([disabled]):hover { background: var(--chrome-dark); }
 .publish:active { transform: translateY(1px); }
 .publish[disabled] { opacity: .55; cursor: not-allowed; transform: none; }
+.publish.is-working { animation: working-pulse 1.2s var(--e-hold) infinite; }
+@keyframes working-pulse { 50% { opacity: .7; } }
 
 .cap-foot .count { font-size: 11px; color: var(--meta); font-variant-numeric: tabular-nums; }
 
@@ -766,6 +768,26 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .act svg { transition: fill var(--t-hover) var(--e-ink), stroke var(--t-hover) var(--e-ink); }
 .act.just-liked svg { animation: heart-press var(--t-fade) var(--e-enter); }
 @keyframes heart-press { from { transform: scale(.86); } }
+
+/* the toast rises in; exits are instant — nobody watches a toast go */
+.toast { animation: toast-up var(--t-fade) var(--e-enter); }
+@keyframes toast-up { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+/* doors close quicker than they open */
+@keyframes veil-out { to { opacity: 0; } }
+.signin-veil.is-closing { animation: veil-out var(--t-hover) var(--e-exit) forwards; }
+.signin-modal { animation: modal-rise var(--t-move) var(--e-enter); }
+@keyframes modal-rise { from { opacity: 0; transform: translateY(8px); } }
+
+/* the publish moment leaves with a breath, and under reduced motion it
+   stands still instead of vanishing entirely */
+.pub-moment.is-leaving { animation: veil-out var(--t-hover) var(--e-exit) forwards; }
+.pub-moment.is-static .ring, .pub-moment.is-static .tick { stroke-dashoffset: 0; animation: none; }
+
+/* the fresh note settles under the veil, then wears the celebration's tail */
+.timeline.is-inserting .post:first-child { animation: post-in var(--t-move) var(--e-enter); }
+.post.just-published { animation: post-wash 360ms var(--e-exit); }
+@keyframes post-wash { from { background: var(--accent-soft); } }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
