@@ -97,10 +97,6 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 }
 
 .chrome .logo {
-  color: #fff;
-  font-weight: 700;
-  font-size: 17px;
-  letter-spacing: -.02em;
   padding: 0;
   min-height: 44px;
   min-width: 44px;
@@ -108,7 +104,11 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   align-items: center;
 }
 
-.chrome .logo .dot { color: #E0A48E; }
+.chrome .logo img {
+  display: block;
+  width: 88px;
+  height: 24px;
+}
 
 .chrome nav { display: flex; gap: 4px; height: 100%; }
 

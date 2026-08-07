@@ -493,7 +493,7 @@ const chromeBar = () => {
   ];
   return `
   <header class="chrome${state.activeView === 'feed' ? ' has-rail' : ''}">
-    <button class="logo" data-action="set-view" data-view="feed" aria-label="annotated home">annotated<span class="dot">.</span></button>
+    <button class="logo" data-action="set-view" data-view="feed" aria-label="annotated home"><img src="/brand/logo-inverse.svg" alt="" aria-hidden="true" /></button>
     <nav aria-label="Primary">
       ${links.map(([view, label]) => `<button class="nav-link ${state.activeView === view ? 'is-active' : ''}" data-action="set-view" data-view="${view}">${label}</button>`).join('')}
     </nav>
