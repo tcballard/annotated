@@ -95,6 +95,7 @@ production integrations are available.
 | `identity` | permissions | Opens the configured X sign-in handoff and receives the one-time extension callback; the Google adapter remains available for a future release. |
 | `alarms` | permissions | Wakes the extension periodically to retry queued captures without relying on a persistent background page. |
 | `contextMenus` | permissions | Adds a single right-click item on selected text — "Annotate …" — that opens the side panel with that selection captured. Created once at install; no other menu surfaces are touched. |
+| `favicon` | permissions | Reads Chrome's local favicon cache (the `_favicon/` extension endpoint) so each source in the panel's timeline shows its site icon. No network requests are made and no browsing data leaves the browser — the icons come from Chrome's own cache. |
 | `<all_urls>` | host_permissions | The product is intentionally source-agnostic: it must read the active page and selected passage on any site the user chooses, and the user-drawn snip screenshot uses `tabs.captureVisibleTab`, which Chrome only grants to the literal `<all_urls>` pattern (narrower http/https host patterns are rejected for capture). It does not inject code until the user opens the sidebar, captures nothing without an explicit user action, and does not publish without one either. Production API origins are separately restricted to HTTPS in settings. |
 
 ## Privacy & Data Use

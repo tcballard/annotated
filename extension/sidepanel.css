@@ -650,6 +650,10 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .srchead .chip { font-size: 10px; padding: 1px 6px; }
 .srchead .srcname { font-weight: 600; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; }
 
+/* the source wears its site's face — from Chrome's local cache only */
+.favicon { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+.cap-source .favicon { width: 14px; height: 14px; }
+
 .srccard blockquote {
   font-family: var(--serif);
   font-size: 13px;

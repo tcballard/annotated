@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "minimum_chrome_version": "114",
   "description": "Clip a moment from the page you are on, add your context, and keep the source attached.",
-  "permissions": ["sidePanel", "tabs", "scripting", "storage", "identity", "alarms", "contextMenus"],
+  "permissions": ["sidePanel", "tabs", "scripting", "storage", "identity", "alarms", "contextMenus", "favicon"],
   "commands": {
     "_execute_action": {
       "suggested_key": { "default": "Alt+A", "mac": "Alt+A" },

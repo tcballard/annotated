@@ -291,6 +291,22 @@ test('the badge keeps its promise: the digest shows before the watermark moves',
   assert.match(runtime, /signinVeil\.querySelectorAll\('button, a\[href\]'\)/);
 });
 
+test('details that read expensive: sources wear their faces', async () => {
+  const runtime = await read('sidepanel.js');
+  const html = await read('sidepanel.html');
+  const manifest = JSON.parse(await read('manifest.json'));
+  // favicons come from Chrome's local cache — a permission, not a network call
+  assert.ok(manifest.permissions.includes('favicon'));
+  assert.match(runtime, /chrome\.runtime\.getURL\('\/_favicon\/'\)/);
+  assert.match(runtime, /url\.searchParams\.set\('pageUrl', pageUrl\)/);
+  // every source line carries one: timeline cards and the live capture strip
+  assert.match(runtime, /const favicon = faviconUrl\(item\.canonicalUrl \|\| item\.sourceUrl\)/);
+  assert.match(html, /id="sourceFavicon"/);
+  // a missing icon disappears instead of showing the broken-image glyph
+  assert.match(runtime, /document\.addEventListener\('error'/);
+  assert.match(runtime, /classList\?\.contains\('favicon'\)/);
+});
+
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {
   const html = await read('sidepanel.html');
   const runtime = await read('sidepanel.js');

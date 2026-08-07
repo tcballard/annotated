@@ -10,6 +10,7 @@ import { avatarColor, avatarInitial } from './avatar.js';
 const $ = (selector) => document.querySelector(selector);
 
 const sourceTitle = $('#sourceTitle');
+const sourceFavicon = $('#sourceFavicon');
 const typeSelect = $('#typeSelect');
 const capUnsupported = $('#capUnsupported');
 const mediaSelection = $('#mediaSelection');
@@ -119,6 +120,27 @@ const relTime = (iso) => {
   if (seconds < 7 * 86_400) return `${Math.floor(seconds / 86_400)}d`;
   return new Date(stamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
+
+// Chrome keeps a favicon cache for every page you visit; the _favicon
+// endpoint reads it locally — no network, no tracking — so every source
+// in the margin can wear its site's face.
+const faviconUrl = (pageUrl) => {
+  try {
+    if (!chrome.runtime?.getURL || !/^https?:/.test(pageUrl || '')) return '';
+    const url = new URL(chrome.runtime.getURL('/_favicon/'));
+    url.searchParams.set('pageUrl', pageUrl);
+    url.searchParams.set('size', '16');
+    return url.href;
+  } catch {
+    return '';
+  }
+};
+
+// A site without a cached icon fails the img load; it disappears instead
+// of showing the broken-image glyph. Capture phase — error does not bubble.
+document.addEventListener('error', (event) => {
+  if (event.target?.classList?.contains('favicon')) event.target.hidden = true;
+}, true);
 
 // Accepts "62" or "1:02" and returns whole seconds.
 const parseTimeInput = (value) => {
@@ -593,6 +615,9 @@ topicSelect.addEventListener('change', () => {
 
 const syncSource = () => {
   sourceTitle.textContent = currentTab.title || 'Reading this tab…';
+  const icon = faviconUrl(currentTab.url);
+  sourceFavicon.hidden = !icon;
+  if (icon && sourceFavicon.src !== icon) sourceFavicon.src = icon;
   typeSelect.value = currentTab.sourceType;
   // Three states, not two: until the tab is actually known the panel is
   // "reading", never "unsupported" — the old boot order flashed a false
@@ -1365,6 +1390,7 @@ const timelinePost = (item) => {
   // The quote below carries the passage; only media moments need a chip.
   const chip = item.type === 'article' ? '' : `${format(item.clipStart)}–${format(item.clipEnd)}`;
   const quote = item.quote ? `<blockquote>&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
+  const favicon = faviconUrl(item.canonicalUrl || item.sourceUrl);
   return `
   <article class="post">
     ${item.avatarUrl
@@ -1374,7 +1400,7 @@ const timelinePost = (item) => {
       <div class="byline"><span class="name">@${escapeHTML(item.handle)}</span>${item.editedAt ? '<span class="meta">· edited</span>' : ''}<span class="meta posttime">${escapeHTML(item.time)}</span></div>
       ${noteLine}
       <div class="srccard">
-        <div class="srchead">${chip ? `<span class="chip">${escapeHTML(chip)}</span>` : ''}<span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(item.type)}</span></div>
+        <div class="srchead">${chip ? `<span class="chip">${escapeHTML(chip)}</span>` : ''}${favicon ? `<img class="favicon" src="${escapeHTML(favicon)}" alt="" loading="lazy" />` : ''}<span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(item.type)}</span></div>
         ${timelineMedia(item)}
         ${quote}
       </div>
