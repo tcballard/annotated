@@ -15,8 +15,18 @@ take if you can — the product's pacing is part of the pitch.
      points in advance).
   2. A long-form article worth quoting.
   3. The annotated web timeline, signed in.
-- Phone with the dev build installed, timeline open, within reach for the
-  final beat (or a simulator window pre-arranged screen-right).
+- iOS Simulator pre-arranged screen-right with the native app on its
+  timeline, signed in as the same account. No Apple Developer membership
+  or device registration needed — simulators skip all of it:
+
+  ```sh
+  cd mobile && npm ci
+  EXPO_PUBLIC_ORIGIN=https://annotated-staging.up.railway.app npx expo run:ios
+  ```
+
+  (Needs Xcode with an iOS Simulator runtime installed. A physical phone
+  with the dev build works too, but on a screen recording the simulator
+  reads better anyway.)
 - OS in light mode, reduced motion off, notifications silenced.
 - One practice run for the marks: the demo lives or dies on beat 1's
   confidence.
@@ -84,7 +94,7 @@ native app."
 - On any annotation page, point at the bordered **Dispute fair use**
   button. Click it, show the form, close it.
 - Flash the /transparency page: dispute counts, the takedown record.
-- Lift the phone (or pan to the simulator): the same feed, native, same
+- Pan to the simulator sitting screen-right: the same feed, native, same
   account. Scroll one flick.
 - End on the wordmark. **VO:** "annotated. Keep the moment — with the
   source attached."
@@ -95,4 +105,6 @@ native app."
 - If a beat runs long, cut beat 3's response, then beat 4's hover — the
   clip artifact and the dispute button are non-negotiable.
 - No browser chrome besides the side panel; hide bookmarks bar.
-- 1280×800 capture window; the panel at its default width.
+- Capture the full screen with Chrome sized left and the simulator
+  screen-right, so beat 5 is a pan, not a cut; the panel at its default
+  width.
