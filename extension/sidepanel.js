@@ -1369,6 +1369,10 @@ const renderTimeline = () => {
     timeline.innerHTML = `<div class="empty"><h2>Sign in to see the people you follow.</h2><p>One account across the extension, the web, and the app.</p><button type="button" data-open-signin>Sign in</button></div>`;
     return;
   }
+  if (cache.error === 'offline') {
+    timeline.innerHTML = `<div class="state">You’re offline. The timeline returns with the connection — reconnecting automatically.</div>`;
+    return;
+  }
   if (cache.error) {
     timeline.innerHTML = `<div class="state">The timeline could not be loaded. <button type="button" data-feed-retry>Try again</button></div>`;
     return;
@@ -1601,14 +1605,30 @@ signOutButton.addEventListener('click', async () => {
 
 /* ── backend ───────────────────────────────────────────────────────── */
 
+// Offline is a state to recover from, not a verdict: retries back off
+// 5s → 30s, the OS 'online' signal short-circuits the wait, and the header
+// chip doubles as a click-to-retry. On recovery, errored feeds reload and
+// the source resolves — the panel picks itself back up.
+let backendRetryTimer;
+let backendRetryDelay = 5000;
+const scheduleBackendRetry = () => {
+  clearTimeout(backendRetryTimer);
+  backendRetryTimer = setTimeout(() => { void checkBackend(); }, backendRetryDelay);
+  backendRetryDelay = Math.min(backendRetryDelay * 2, 30000);
+};
+
 const checkBackend = async () => {
   const origin = await apiOrigin();
   apiOriginCache = origin;
+  const wasOnline = backendOnline;
+  clearTimeout(backendRetryTimer);
   try {
     await apiRequest('/api/health');
     backendOnline = true;
+    backendRetryDelay = 5000;
     backendStatus.classList.add('is-live');
     backendStatus.querySelector('.backend-label').textContent = 'live';
+    backendStatus.removeAttribute('title');
     const auth = await apiRequest('/api/auth/providers').catch(() => ({ providers: {} }));
     availableProviders = auth.providers || {};
     let signedIn = Boolean(await extensionStorage.getAuthToken().catch(() => null));
@@ -1628,13 +1648,34 @@ const checkBackend = async () => {
     }
     setAuthState(signedIn, user);
     await refreshQueueStatus();
+    if (wasOnline === false) {
+      clearError();
+      for (const key of Object.keys(feedCache)) { if (feedCache[key]?.error) feedCache[key] = null; }
+      renderTimeline();
+      if (panelMode !== 'capture') void loadTimeline(panelMode);
+      if (!resolvedSource) void loadCurrentTab();
+    }
   } catch {
     backendOnline = false;
     backendStatus.classList.remove('is-live');
     backendStatus.querySelector('.backend-label').textContent = 'offline';
-    showError(`Annotated backend unavailable at ${origin}. Check the extension API origin in settings.`);
+    backendStatus.setAttribute('title', 'Retry now');
+    if (wasOnline !== false) showError('Can’t reach annotated right now — retrying quietly. Captures queue locally.');
+    scheduleBackendRetry();
   }
 };
+
+backendStatus.addEventListener('click', () => {
+  if (backendOnline) return;
+  backendRetryDelay = 5000;
+  void checkBackend();
+});
+
+window.addEventListener('online', () => {
+  if (backendOnline) return;
+  backendRetryDelay = 5000;
+  void checkBackend();
+});
 
 /* ── keyboard: I/O marks, Ctrl/Cmd+Enter publish, Esc clears ───────── */
 

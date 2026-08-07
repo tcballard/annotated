@@ -94,6 +94,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .backend i { width: 6px; height: 6px; border-radius: 50%; background: #8B919A; }
 .backend.is-live i { background: #E0A48E; }
 .backend.is-live .backend-label { color: #B9BEC6; }
+.backend:not(.is-live) { cursor: pointer; }
 
 .auth { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 
