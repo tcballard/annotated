@@ -14,7 +14,13 @@
       <span class="backend" id="backendStatus" aria-live="polite" title="Backend connection"><i aria-hidden="true"></i><span class="backend-label">connecting</span></span>
       <div class="auth" id="authActions">
         <button type="button" class="auth-btn" id="signInOpen" hidden>Sign in</button>
-        <button type="button" class="me" id="signOut" hidden aria-label="Sign out">A</button>
+        <button type="button" class="me" id="meButton" hidden aria-haspopup="menu" aria-expanded="false" aria-label="Account menu">A</button>
+        <div class="me-menu" id="meMenu" role="menu" aria-label="Account" hidden>
+          <span class="me-name" id="meName" aria-hidden="true"></span>
+          <button type="button" role="menuitem" id="menuProfile">View profile</button>
+          <button type="button" role="menuitem" id="menuSettings">Settings</button>
+          <button type="button" role="menuitem" id="menuSignOut">Sign out</button>
+        </div>
       </div>
     </header>
 

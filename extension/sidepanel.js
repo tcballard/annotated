@@ -48,7 +48,9 @@ const authActions = $('#authActions');
 const signInOpen = $('#signInOpen');
 const signinVeil = $('#signinVeil');
 const signinCancel = $('#signinCancel');
-const signOutButton = $('#signOut');
+const meButton = $('#meButton');
+const meMenu = $('#meMenu');
+const meName = $('#meName');
 const queueStatus = $('#queueStatus');
 const queueStatusTitle = $('#queueStatusTitle');
 const queueStatusDetail = $('#queueStatusDetail');
@@ -1699,8 +1701,14 @@ const anyProviderAvailable = () => Object.keys(availableProviders).some((provide
 
 const setAuthState = (signedIn, user = panelUser) => {
   panelUser = signedIn ? user : null;
-  signOutButton.hidden = !signedIn;
-  if (signedIn) signOutButton.textContent = String(user?.handle || user?.displayName || 'A').slice(0, 1).toUpperCase();
+  meButton.hidden = !signedIn;
+  if (signedIn) {
+    meButton.textContent = String(user?.handle || user?.displayName || 'A').slice(0, 1).toUpperCase();
+    meName.textContent = `@${user?.handle || 'you'}`;
+  } else {
+    meMenu.hidden = true;
+    meButton.setAttribute('aria-expanded', 'false');
+  }
   signInOpen.hidden = signedIn || !anyProviderAvailable();
   signinVeil.querySelectorAll('[data-auth]').forEach((button) => { button.hidden = !availableProviders[button.dataset.auth]; });
   if (signedIn) closeSignin();
@@ -1753,7 +1761,35 @@ signinVeil.querySelectorAll('[data-auth]').forEach((button) => button.addEventLi
   }
 }));
 
-signOutButton.addEventListener('click', async () => {
+// The avatar opens a small menu instead of being a one-click sign-out
+// landmine: who you are, your public page, the settings the panel never
+// linked to before, and sign out — deliberately last.
+const setMenuOpen = (open) => {
+  meMenu.hidden = !open;
+  meButton.setAttribute('aria-expanded', String(open));
+  if (open) meMenu.querySelector('[role="menuitem"]')?.focus();
+};
+
+meButton.addEventListener('click', () => setMenuOpen(meMenu.hidden));
+
+document.addEventListener('click', (event) => {
+  if (!meMenu.hidden && !event.target.closest('#authActions')) setMenuOpen(false);
+});
+
+document.querySelector('#menuProfile').addEventListener('click', async () => {
+  setMenuOpen(false);
+  const origin = await apiOrigin();
+  const handle = panelUser?.handle || '';
+  await chrome.tabs.create({ url: `${origin}/u/${encodeURIComponent(handle)}` }).catch(() => {});
+});
+
+document.querySelector('#menuSettings').addEventListener('click', () => {
+  setMenuOpen(false);
+  chrome.runtime.openOptionsPage?.();
+});
+
+document.querySelector('#menuSignOut').addEventListener('click', async () => {
+  setMenuOpen(false);
   try {
     await signOut();
     setAuthState(false);
@@ -1840,6 +1876,18 @@ window.addEventListener('online', () => {
 /* ── keyboard: I/O marks, Ctrl/Cmd+Enter publish, Esc clears ───────── */
 
 document.addEventListener('keydown', (event) => {
+  // The account menu is a real menu: arrows walk it, Esc puts it away.
+  if (!meMenu.hidden) {
+    if (event.key === 'Escape') { event.preventDefault(); setMenuOpen(false); meButton.focus(); return; }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const items = [...meMenu.querySelectorAll('[role="menuitem"]')];
+      const index = items.indexOf(document.activeElement);
+      const next = index === -1 ? 0 : (index + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length;
+      items[next].focus();
+      return;
+    }
+  }
   // The sign-in door holds focus: Tab cycles inside it, never behind the veil.
   if (!signinVeil.hidden && event.key === 'Tab') {
     const focusables = [...signinVeil.querySelectorAll('button, a[href]')].filter((el) => !el.hidden);

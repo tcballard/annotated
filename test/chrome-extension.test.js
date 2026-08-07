@@ -326,6 +326,15 @@ test('details that read expensive: sources wear their faces', async () => {
   // a panel left open keeps telling the truth: times re-derive from stamps
   assert.match(runtime, /data-created=/);
   assert.match(runtime, /\.posttime\[data-created\]/);
+  // the avatar is a menu, not a sign-out landmine: profile, settings, then
+  // sign out — with real menu semantics (aria-haspopup, arrows, Esc)
+  assert.match(html, /id="meButton"[^>]*aria-haspopup="menu"/);
+  assert.match(html, /id="meMenu" role="menu"/);
+  assert.ok(html.indexOf('id="menuProfile"') < html.indexOf('id="menuSignOut"'), 'sign out comes last');
+  assert.match(runtime, /chrome\.runtime\.openOptionsPage\?\.\(\)/);
+  assert.match(runtime, /\/u\/\$\{encodeURIComponent\(handle\)\}/);
+  assert.match(runtime, /const setMenuOpen = /);
+  assert.match(runtime, /setMenuOpen\(false\); meButton\.focus\(\);/);
 });
 
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {

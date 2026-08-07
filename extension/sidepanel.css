@@ -129,6 +129,46 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .me:hover { background: #565D68; }
 
+/* the avatar opens a small menu — identity, profile, settings, and only
+   then sign out; no more one-click sign-out landmine */
+.auth { position: relative; }
+
+.me-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  min-width: 170px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  animation: card-in var(--t-fade) var(--e-enter);
+}
+
+.me-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--meta);
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--hair);
+  margin-bottom: 4px;
+}
+
+.me-menu [role="menuitem"] {
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--ink);
+  padding: 7px 8px;
+  border-radius: 6px;
+  min-height: 30px;
+  transition: background var(--t-hover) var(--e-ink);
+}
+
+.me-menu [role="menuitem"]:hover { background: var(--hover-row); }
+
 /* ── sign-in: one door, both providers behind it ────────────────────── */
 
 .signin-veil {
