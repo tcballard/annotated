@@ -273,11 +273,17 @@ const readPageSelection = async () => {
 
 const apiRequest = async (path, options = {}) => {
   let response;
+  // A hanging origin must fail into the styled offline state, not park the
+  // panel on "connecting" at the browser's mercy.
+  const timeoutController = new AbortController();
+  const timeout = setTimeout(() => timeoutController.abort(), 8000);
   try {
-    response = await fetch(`${await apiOrigin()}${path}`, { credentials: 'omit', headers: { 'content-type': 'application/json', ...(await authHeaders()), ...(options.headers || {}) }, ...options });
+    response = await fetch(`${await apiOrigin()}${path}`, { credentials: 'omit', signal: timeoutController.signal, headers: { 'content-type': 'application/json', ...(await authHeaders()), ...(options.headers || {}) }, ...options });
   } catch (requestError) {
     requestError.retryable = true;
     throw requestError;
+  } finally {
+    clearTimeout(timeout);
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -562,8 +568,12 @@ topicSelect.addEventListener('change', () => {
 const syncSource = () => {
   sourceTitle.textContent = currentTab.title || 'Reading this tab…';
   typeSelect.value = currentTab.sourceType;
+  // Three states, not two: until the tab is actually known the panel is
+  // "reading", never "unsupported" — the old boot order flashed a false
+  // error on every open while the first network round-trips settled.
+  const known = Boolean(currentTab.url);
   const supported = /^https?:/.test(currentTab.url || '');
-  capUnsupported.hidden = supported;
+  capUnsupported.hidden = !known || supported;
   mediaSelection.hidden = !supported || !isMediaType();
   textSelection.hidden = !supported || isMediaType();
   document.querySelector('#shotRow').hidden = !supported;
@@ -1538,8 +1548,13 @@ const boot = async () => {
   syncNote();
   syncComposer();
   renderTimeline();
-  await checkBackend();
-  await loadCurrentTab();
+  // The tab and the backend are independent — read them in parallel so the
+  // capture strip is truthful immediately instead of waiting out a cold
+  // backend round-trip.
+  await Promise.all([checkBackend(), loadCurrentTab()]);
+  // Source resolution is gated on the backend being online; if the tab won
+  // the race, run the light same-tab pass now that the backend answered.
+  if (backendOnline && !resolvedSource) await loadCurrentTab();
   await loadTimeline('recent');
   await refreshQueueStatus();
   await markNotificationsSeen();

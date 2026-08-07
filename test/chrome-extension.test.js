@@ -150,6 +150,19 @@ test('side panel implements the v5 surface: live source strip, marks, note, time
   assert.match(styles, /--serif:\s*Georgia/);
 });
 
+test('the first seconds are honest: no false errors while the panel boots', async () => {
+  const runtime = await read('sidepanel.js');
+  // unknown tab ≠ unsupported tab: the error strip waits for the tab to be known
+  assert.match(runtime, /const known = Boolean\(currentTab\.url\);/);
+  assert.match(runtime, /capUnsupported\.hidden = !known \|\| supported;/);
+  // the backend check and the tab read race in parallel, then resolution catches up
+  assert.match(runtime, /await Promise\.all\(\[checkBackend\(\), loadCurrentTab\(\)\]\)/);
+  assert.match(runtime, /if \(backendOnline && !resolvedSource\) await loadCurrentTab\(\);/);
+  // a hanging origin fails into the styled offline state, never a stuck boot
+  assert.match(runtime, /setTimeout\(\(\) => timeoutController\.abort\(\), 8000\)/);
+  assert.match(runtime, /signal: timeoutController\.signal/);
+});
+
 test('sign-in is one door: a single trigger, both providers behind a modal', async () => {
   const html = await read('sidepanel.html');
   const runtime = await read('sidepanel.js');
