@@ -93,6 +93,7 @@ let resolvedSource = null;
 let selection = { text: '', paragraph: 0, prefix: '', suffix: '' };
 let marks = { start: 0, end: 0, inSet: false, outSet: false };
 let manualMode = false;
+let typeOverridden = false;
 let playhead = { time: 0, duration: 0, paused: true, adShowing: false, at: 0 };
 let commentaryMode = 'text';
 let visibility = 'public';
@@ -919,7 +920,12 @@ const draftPayload = () => ({
 const saveDraft = () => {
   if (!draftReady || !Number.isInteger(currentTabId)) return;
   clearTimeout(draftSaveTimer);
-  draftSaveTimer = setTimeout(() => { void extensionStorage.saveTabDraft(currentTabId, draftPayload()).catch(() => {}); }, 250);
+  // Snapshot now, write later: the debounce fires after a tab switch may
+  // have rebound the panel, and a late write must land under the tab and
+  // content it belonged to — never the new tab's key with emptied state.
+  const tabId = currentTabId;
+  const payload = draftPayload();
+  draftSaveTimer = setTimeout(() => { void extensionStorage.saveTabDraft(tabId, payload).catch(() => {}); }, 250);
 };
 
 const restoreDraft = (draft) => {
@@ -980,9 +986,13 @@ const loadCurrentTab = async () => {
   }
   if (!tab) return;
   const url = tab.url || '';
-  const changed = tab.id !== currentTabId;
+  // A new URL in the same tab is a new source: YouTube's in-tab navigation
+  // must reset the capture exactly like a tab switch, or marks made on one
+  // video get published against the next.
+  const changed = tab.id !== currentTabId || url !== currentTab.url;
   if (changed) {
     draftReady = false;
+    typeOverridden = false;
     resetCaptureState();
     currentTabId = tab.id ?? null;
     feedCache.page = null;
@@ -995,7 +1005,7 @@ const loadCurrentTab = async () => {
   }
   const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
   currentTab = { url, title: tab.title || host || 'This tab', host, sourceType: currentTab.sourceType || 'article', duration: 0 };
-  currentTab.sourceType = await detectSourceType(tab.id, url);
+  if (!typeOverridden) currentTab.sourceType = await detectSourceType(tab.id, url);
   if (currentTabId !== tab.id) return; // a faster tab switch won the race
   void installSelectionWatcher(tab.id, url);
   // The needle found a new station: the live dot swells once, the title fades in.
@@ -1025,7 +1035,7 @@ const loadCurrentTab = async () => {
       if (!tab.title && resolvedSource.title) currentTab.title = resolvedSource.title;
       currentTab.host = resolvedSource.host || currentTab.host;
       currentTab.duration = resolvedSource.duration || 0;
-      if (resolvedSource.sourceType) currentTab.sourceType = resolvedSource.sourceType;
+      if (resolvedSource.sourceType && !typeOverridden) currentTab.sourceType = resolvedSource.sourceType;
       syncSource();
     } catch { /* the page's own details are enough to capture */ }
   }
@@ -1033,8 +1043,11 @@ const loadCurrentTab = async () => {
 };
 
 chrome.tabs?.onActivated?.addListener(() => { void loadCurrentTab(); });
-chrome.tabs?.onUpdated?.addListener((_tabId, changeInfo) => {
+chrome.tabs?.onUpdated?.addListener((tabId, changeInfo) => {
   // SPA navigations change the URL without a load cycle — rebind on both.
+  // Only the bound tab drives the panel: a background tab finishing its
+  // load must not yank the composer or revert a manual type override.
+  if (Number.isInteger(currentTabId) && tabId !== currentTabId) return;
   if (changeInfo.status === 'complete' || changeInfo.url) void loadCurrentTab();
 });
 
@@ -1051,7 +1064,9 @@ const enterManualMode = () => {
 
 const captureMark = async (boundary) => {
   if (panelMode !== 'capture') setPanelMode('capture');
+  const tabId = currentTabId;
   const player = await readPlayerTime();
+  if (tabId !== currentTabId) return; // a tab switch mid-probe wins
   if (!player) { enterManualMode(); return; }
   if (player.duration && !currentTab.duration) currentTab.duration = player.duration;
   if (boundary === 'in') {
@@ -1082,7 +1097,9 @@ const captureMark = async (boundary) => {
 // on "that was good — keep the last N seconds."
 const captureLastN = async (seconds) => {
   if (panelMode !== 'capture') setPanelMode('capture');
+  const tabId = currentTabId;
   const player = await readPlayerTime();
+  if (tabId !== currentTabId) return; // a tab switch mid-probe wins
   if (!player) { enterManualMode(); return; }
   if (player.duration && !currentTab.duration) currentTab.duration = player.duration;
   marks.end = player.time;
@@ -1372,6 +1389,8 @@ passageClear.addEventListener('click', () => {
 
 typeSelect.addEventListener('change', () => {
   currentTab.sourceType = typeSelect.value;
+  // A hand on the dial outranks every probe until the page changes.
+  typeOverridden = true;
   syncSource();
   saveDraft();
 });

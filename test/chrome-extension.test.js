@@ -359,6 +359,24 @@ test('the clip bay: the moment is drawn on the media’s own timeline', async ()
   assert.match(runtime, /ANNOTATED_MARK/);
 });
 
+test('nothing survives a navigation it does not belong to', async () => {
+  const runtime = await read('sidepanel.js');
+  // a new URL in the same tab is a new source: the rebind guard includes it
+  assert.match(runtime, /const changed = tab\.id !== currentTabId \|\| url !== currentTab\.url;/);
+  // the draft debounce snapshots its tab and payload at schedule time
+  const save = runtime.slice(runtime.indexOf('const saveDraft'), runtime.indexOf('const restoreDraft'));
+  assert.match(save, /const tabId = currentTabId;\s*\n\s*const payload = draftPayload\(\);/);
+  assert.match(save, /saveTabDraft\(tabId, payload\)/);
+  // background tabs never drive the panel
+  assert.match(runtime, /if \(Number\.isInteger\(currentTabId\) && tabId !== currentTabId\) return;/);
+  // a hand on the type dial outranks every probe until the page changes
+  assert.match(runtime, /typeOverridden = true;/);
+  assert.match(runtime, /if \(!typeOverridden\) currentTab\.sourceType = await detectSourceType/);
+  assert.match(runtime, /resolvedSource\.sourceType && !typeOverridden/);
+  // a mark probe that returns after a tab switch is discarded
+  assert.match(runtime, /if \(tabId !== currentTabId\) return; \/\/ a tab switch mid-probe wins/);
+});
+
 test('details that read expensive: sources wear their faces', async () => {
   const runtime = await read('sidepanel.js');
   const html = await read('sidepanel.html');
