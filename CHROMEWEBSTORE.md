@@ -45,7 +45,7 @@ HOW TO USE
 4. Choose Publish annotation when you are ready to share it.
 
 PRIVACY
-The extension reads the URL, title, and selected text from the active page so it can show and publish the source you choose. It does not publish anything until you choose Publish annotation. Draft metadata stays in the browser; a recorded audio note is held locally until upload or deletion. Published annotations and media are sent to the configured Annotated backend. There is no advertising or analytics collection.
+The extension reads the URL, title, and selected text from the active page so it can show and publish the source you choose. While the Capture surface is open, the current tab's address is sent to the Annotated backend to resolve the source's title, duration, and thumbnail — that is how the capture desk describes the page before you capture it. Switch to a feed and that stops. It does not publish anything until you choose Publish annotation. Draft metadata stays in the browser; a recorded audio note is held locally until upload or deletion. Published annotations and media are sent to the configured Annotated backend. There is no advertising or analytics collection.
 
 PERMISSIONS
 • Active-page access — needed to show the current source, read a selected passage, and let you choose a media range from any site you visit.
@@ -97,7 +97,7 @@ production integrations are available.
 |------------|------|---------------|
 | `sidePanel` | permissions | Opens Annotated's persistent capture workspace beside the page. |
 | `tabs` | permissions | Reads the active tab's URL and title, detects tab changes, and supplies the tab context required for selected-text capture. |
-| `scripting` | permissions | Injects only on explicit user actions while the sidebar is open: reads the current text selection, draws the drag-to-snip overlay when the user chooses a region screenshot, and highlights a chosen annotation's quoted passage on its page. |
+| `scripting` | permissions | Injects into the active tab only while the sidebar's **Capture** surface is open. Two injections are automatic there, because the capture surface exists to describe the page you are on: a read of the page's media element (to detect the source type and show the player's position) and a text-selection watcher (so the capture button can offer the passage you highlighted). The rest happen only on an explicit action — drawing the drag-to-snip overlay, and highlighting a chosen annotation's quoted passage. Nothing is injected while you are reading a feed, and no injected code sends page content anywhere on its own. |
 | `storage` | permissions | Stores bounded drafts, API configuration, retry metadata, compact published-result metadata, and the temporary browser session. It never stores media Blobs in key/value storage. |
 | `identity` | permissions | Opens the configured X sign-in handoff and receives the one-time extension callback; the Google adapter remains available for a future release. |
 | `alarms` | permissions | Wakes the extension periodically to retry queued captures without relying on a persistent background page. |

@@ -9,7 +9,12 @@ import test from 'node:test';
 // dot. Never on generic buttons, links, alerts, focus rings, or decoration —
 // focus is navigation, not a moment, so its ring is ink.
 
-const ACCENT_PATTERN = /var\(--accent(?:-soft)?\)|#B0674D/i;
+// The whole terracotta ramp is the accent, not just the base swatch:
+// --accent-soft is its wash and --accent-ink is the contrast-safe text tone
+// (#8F5039 light / #E0A48E dark). A literal hex is the same paint as the
+// token, so the audit reads both spellings — otherwise a hardcoded #E0A48E
+// sails straight through a law written about var(--accent).
+const ACCENT_PATTERN = /var\(--accent(?:-soft|-ink)?\)|#B0674D|#8F5039|#E0A48E/i;
 
 const ALLOWED_SELECTORS = [
   /^:root$/,
@@ -70,5 +75,22 @@ test('the accent is the one true terracotta and the logo dot is its tint', async
     assert.match(css, /--accent: #B0674D/);
     // no stray oranges or reds from earlier design systems
     assert.doesNotMatch(css, /#fa6336|#e85d3d|#d84c27/i);
+  }
+});
+
+// #B0674D is the moment's colour, not a legible one: as chip text it measures
+// 3.81:1 on paper and 2.37:1 on the dark card — both below AA for the small,
+// uppercase, letter-spaced type it is set in. --accent-ink is the same hue
+// darkened (light) and lightened (dark) until it passes: 5.52:1 and 4.77:1.
+// Both surfaces must carry both stops, or the identity chip silently regresses
+// on whichever one gets edited alone.
+test('the accent has a contrast-safe ink stop on both surfaces', async () => {
+  for (const file of ['../src/styles.css', '../extension/sidepanel.css']) {
+    const css = await readFile(new URL(file, import.meta.url), 'utf8');
+    assert.match(css, /--accent-ink: #8F5039/, `${file} is missing the light accent-ink stop`);
+    assert.match(css, /--accent-ink: #E0A48E/, `${file} is missing the dark accent-ink stop`);
+    // and the chip — the identity component, on every surface — must use it
+    const chip = css.match(/(^|\n)\.chip\s*\{[^}]*\}/)?.[0] || '';
+    assert.match(chip, /color: var\(--accent-ink\)/, `${file}: .chip must use --accent-ink, not --accent`);
   }
 });
