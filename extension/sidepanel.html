@@ -70,26 +70,48 @@
         </div>
         <p class="cap-unsupported" id="capUnsupported" role="status" hidden>This tab does not expose a capturable page. Open a video, article, or podcast.</p>
 
-        <!-- temporal selection: Mark in / Mark out from the player -->
+        <!-- temporal selection: the clip bay. The moment is drawn on the
+             media's own timeline — a band you shape, not numbers you operate. -->
         <div class="mediasel" id="mediaSelection">
-          <div class="marks">
-            <button class="markbtn" id="markIn" type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5v14M19 12H9m4-4-4 4 4 4" /></svg>
-              <span>Mark in</span><time class="t" id="markInTime">0:00</time>
-            </button>
-            <button class="markbtn" id="markOut" type="button">
-              <span>Mark out</span>
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 5v14M5 12h10m-4-4 4 4-4 4" /></svg>
-              <time class="t" id="markOutTime">0:00</time>
-            </button>
-            <span class="chip duration" id="durationChip" role="status" aria-label="Selected duration">0:00</span>
+          <div class="bay-head">
+            <span class="bay-note" id="bayNote">Marks read the player — keys <kbd>I</kbd> · <kbd>O</kbd> · <kbd>L</kbd></span>
+            <span class="bay-total" id="bayTotal" hidden></span>
           </div>
-          <p class="mark-note" id="markNote">Marks read the player. Keys: <kbd>I</kbd> in · <kbd>O</kbd> out.</p>
+          <div class="band" id="band">
+            <div class="band-rail" aria-hidden="true"></div>
+            <div class="band-ceiling" id="bandCeiling" hidden aria-hidden="true"></div>
+            <div class="band-tail" id="bandTail" hidden aria-hidden="true"></div>
+            <div class="band-sel" id="bandSel" hidden aria-hidden="true"></div>
+            <div class="band-head" id="bandHead" hidden aria-hidden="true"></div>
+            <button class="band-handle" id="markIn" type="button" hidden role="slider" aria-label="Clip start" aria-valuemin="0" aria-valuenow="0" aria-orientation="horizontal"></button>
+            <button class="band-handle" id="markOut" type="button" hidden role="slider" aria-label="Clip end" aria-valuemin="0" aria-valuenow="0" aria-orientation="horizontal"></button>
+          </div>
+          <div class="bay-moment" id="bayMoment" hidden>
+            <img class="bay-poster" id="bayPoster" alt="" hidden />
+            <div class="bay-moment-main">
+              <span class="chip duration" id="durationChip" role="status" aria-label="Selected range"></span>
+              <span class="bay-meta" id="bayMeta"></span>
+            </div>
+          </div>
+          <div class="bay-actions">
+            <button class="markbtn" id="bayPrimary" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5v14M19 12H9m4-4-4 4 4 4" /></svg>
+              <span id="bayPrimaryLabel">Mark in</span><kbd id="bayPrimaryKey">I</kbd>
+            </button>
+            <button class="markbtn bay-last" id="bayLast30" type="button" title="Clip the last 30 seconds">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" /></svg>
+              Last 30s
+            </button>
+            <button class="markbtn bay-clear" id="bayClear" type="button" hidden aria-label="Clear the marks">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
+          </div>
+          <p class="bay-foot"><button class="bay-swap" id="typeToggle" type="button">Type the times instead</button></p>
           <div class="manual-marks" id="manualMarks" hidden>
             <label class="markfield">In<input id="manualIn" inputmode="numeric" aria-label="Clip in point, minutes and seconds" /></label>
             <label class="markfield">Out<input id="manualOut" inputmode="numeric" aria-label="Clip out point, minutes and seconds" /></label>
+            <button class="bay-swap" id="playerToggle" type="button">Read the player instead</button>
           </div>
-          <p class="cap-block" id="overReason" role="alert" hidden></p>
         </div>
 
         <!-- article selection: highlight on the page -->

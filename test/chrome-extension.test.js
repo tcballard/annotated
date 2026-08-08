@@ -293,6 +293,72 @@ test('the badge keeps its promise: the digest shows before the watermark moves',
   assert.match(runtime, /signinVeil\.querySelectorAll\('button, a\[href\]'\)/);
 });
 
+test('the clip bay: the moment is drawn on the media’s own timeline', async () => {
+  const runtime = await read('sidepanel.js');
+  const html = await read('sidepanel.html');
+  const styles = await read('sidepanel.css');
+  // the band replaces the two-peer-button row: rail, selection, tail,
+  // playhead, ceiling tick, and two slider handles that keep the old ids
+  assert.match(html, /class="band" id="band"/);
+  assert.match(html, /id="markIn"[^>]*role="slider"/);
+  assert.match(html, /id="markOut"[^>]*role="slider"/);
+  assert.doesNotMatch(html, /type="range"/, 'a custom control, never a native range');
+  // the drag model is the shared core: boundary-aware, cap-clamping
+  assert.match(runtime, /moveClipBoundary, normalizeClipRange \} from '\.\/clip-range\.js'/);
+  assert.match(runtime, /moveClipBoundary\(marks\.start, marks\.end, boundary/);
+  // the ceiling is geometry, not an alarm: no role="alert" block, the
+  // clamp toast names the cap, the tick marks the wall
+  assert.doesNotMatch(html, /overReason/);
+  assert.match(runtime, /Capped at \$\{format\(MAX_CLIP_SECONDS\)\}/);
+  assert.match(html, /id="bandCeiling"/);
+  // law 4: the chip speaks range grammar, identical to the feed's
+  assert.match(runtime, /`\$\{format\(marks\.start\)\}–\$\{format\(marks\.end\)\}`/);
+  // retroactive capture: Last 30s button, L key, and out-first windows back
+  assert.match(html, /id="bayLast30"/);
+  assert.match(runtime, /const captureLastN = /);
+  assert.match(runtime, /captureLastN\(30\)/);
+  assert.match(runtime, /Start set 30s back — drag it to adjust/);
+  // the page player is the preview monitor: live lease feed, seek on
+  // handle release, and play-the-selection before publish
+  assert.match(runtime, /function watchPlayerInPage\(untilMs\)/);
+  assert.match(runtime, /window\.__annotatedFeedUntil/, 'the feed lease self-expires');
+  assert.match(runtime, /ANNOTATED_PLAYER_TICK/);
+  assert.match(runtime, /function seekPlayerInPage\(seconds\)/);
+  assert.match(runtime, /async function previewRangeInPage\(startSeconds, endSeconds\)/);
+  assert.match(runtime, /window\.__annotatedPreviewToken/, 'a newer preview supersedes a running one');
+  assert.match(runtime, /Click the video once, then try again\./);
+  // ticks from other tabs never move this band
+  const tickBlock = runtime.slice(runtime.lastIndexOf("'ANNOTATED_PLAYER_TICK'"), runtime.lastIndexOf("'ANNOTATED_PLAYER_TICK'") + 200);
+  assert.ok(tickBlock.includes('sender?.tab?.id !== currentTabId'), 'player ticks are tab-guarded');
+  // typed times are a chosen path with a way back, not a failure state
+  assert.match(html, /id="typeToggle"[^>]*>Type the times instead</);
+  assert.match(html, /id="playerToggle"[^>]*>Read the player instead</);
+  // format can say hours back — podcasts run long — and floors seconds
+  assert.match(runtime, /\$\{hours\}:\$\{String\(mins\)\.padStart\(2, '0'\)\}/);
+  // the moment wears the resolver's poster, and a dead image hides itself
+  assert.match(runtime, /poster: source\.thumbnailUrl \|\| source\.imageUrl \|\| ''/);
+  assert.match(runtime, /classList\?\.contains\('bay-poster'\)/);
+  // the selection fill is law-1 accent; the playhead is ink
+  assert.match(styles, /\.band-sel \{[^}]*background: var\(--accent\)/);
+  assert.match(styles, /\.band-head \{[^}]*background: var\(--ink\)/);
+  // global mark keys: read at keypress time in the background, while the
+  // PAGE has focus — the panel-document keys were a promise the panel
+  // could not keep on its own
+  const manifest = JSON.parse(await read('manifest.json'));
+  assert.equal(manifest.commands['mark-in'].suggested_key.default, 'Alt+I');
+  assert.equal(manifest.commands['mark-out'].suggested_key.default, 'Alt+O');
+  assert.equal(manifest.commands['clip-last-30'].suggested_key.default, 'Alt+L');
+  const background = await read('background.js');
+  assert.match(background, /chrome\.commands\?\.onCommand\.addListener/);
+  // the gesture window: open the panel before any await in the listener
+  const onCommand = background.slice(background.indexOf('onCommand.addListener'));
+  assert.ok(onCommand.indexOf('chrome.sidePanel.open') < onCommand.indexOf('await '), 'sidePanel.open fires before the first await, inside the gesture');
+  assert.match(background, /annotatedPendingMark/);
+  assert.match(runtime, /const applyGlobalMark = /);
+  assert.match(runtime, /const consumePendingMark = /);
+  assert.match(runtime, /ANNOTATED_MARK/);
+});
+
 test('details that read expensive: sources wear their faces', async () => {
   const runtime = await read('sidepanel.js');
   const html = await read('sidepanel.html');
