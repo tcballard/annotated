@@ -236,12 +236,16 @@ chrome.commands?.onCommand.addListener((command, tab) => {
 
 chrome.contextMenus?.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== 'annotated-capture-selection' || !tab?.id) return;
+  // The gesture grant from this click lives only for the synchronous run
+  // of the listener: awaiting anything first spends it, and sidePanel.open
+  // then rejects with "may only be called in response to a user gesture"
+  // — swallowed, so the menu item silently did nothing on a cold panel.
+  // Open first, stash and message after.
+  void chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
   runBackgroundTask('context-menu capture', async () => {
-    // Stash first so a cold panel finds the request at boot; the message
-    // covers the already-open panel. The context-menu click is the user
-    // gesture sidePanel.open requires.
+    // The stash covers a cold panel (consumed at boot); the message covers
+    // one that is already open.
     await chrome.storage.session.set({ annotatedPendingGrab: { tabId: tab.id } }).catch(() => {});
-    await chrome.sidePanel.open({ tabId: tab.id });
     await chrome.runtime.sendMessage({ type: 'ANNOTATED_GRAB_SELECTION', tabId: tab.id }).catch(() => {});
   });
 });

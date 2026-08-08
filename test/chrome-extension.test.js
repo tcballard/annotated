@@ -404,6 +404,29 @@ test('the probe finds the player you are watching, and refuses poisoned clocks',
   assert.match(runtime, /\(rtt \/ 2\) \* \(player\.rate \|\| 1\)/);
 });
 
+test('the panel keeps its hands clean: gestures, stashes, listeners, takes', async () => {
+  const runtime = await read('sidepanel.js');
+  const background = await read('background.js');
+  // the context-menu gesture is spent by the first await, so open first
+  const menu = background.slice(background.indexOf("info.menuItemId !== 'annotated-capture-selection'"));
+  assert.ok(menu.indexOf('chrome.sidePanel.open') < menu.indexOf('await '), 'sidePanel.open runs inside the gesture, before any await');
+  // the warm path clears the stash the cold path would have consumed
+  assert.match(runtime, /remove\('annotatedPendingGrab'\)[\s\S]{0,80}captureSelection\(\)/);
+  // the injected selection watcher outlives the panel — its send must not
+  // reject onto the page's console
+  assert.match(runtime, /ANNOTATED_SELECTION', preview: text\.slice\(0, 80\) \}\)\.catch\(\(\) => \{\}\)/);
+  // a self-ending recorder clears its own ticker, and a stale take never
+  // stamps its length onto the tab the panel moved to
+  const stop = runtime.slice(runtime.indexOf("recorder.addEventListener('stop'"));
+  assert.ok(stop.indexOf('clearInterval(recordingTimer)') < stop.indexOf('recordingStream?.getTracks'), 'the stop handler clears the ticker first');
+  assert.ok(stop.indexOf('token !== recordingToken') < stop.indexOf('audioDurationSeconds = clampAudioDuration'), 'the staleness guard precedes the duration write');
+  // the mic is requested before the previous take is destroyed
+  const start = runtime.slice(runtime.indexOf('const startAudioRecording'));
+  assert.ok(start.indexOf('getUserMedia({ audio: true })') < start.indexOf('deleteAudioDraft'), 'permission first, deletion second');
+  // the queue backs off instead of burning eight attempts in eight minutes
+  assert.match(background, /Math\.min\(2 \*\* \(capture\.attempts \|\| 0\), 128\) \* 60_000/);
+});
+
 test('details that read expensive: sources wear their faces', async () => {
   const runtime = await read('sidepanel.js');
   const html = await read('sidepanel.html');

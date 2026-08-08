@@ -1374,7 +1374,9 @@ function watchSelectionInPage() {
     clearTimeout(timer);
     timer = setTimeout(() => {
       const text = String(window.getSelection()?.toString() || '').replace(/\s+/g, ' ').trim();
-      try { chrome.runtime.sendMessage({ type: 'ANNOTATED_SELECTION', preview: text.slice(0, 80) }); } catch { /* extension reloaded */ }
+      // With the panel closed nobody answers and the returned promise
+      // rejects onto the PAGE's console — this listener outlives us.
+      try { chrome.runtime.sendMessage({ type: 'ANNOTATED_SELECTION', preview: text.slice(0, 80) }).catch(() => {}); } catch { /* extension reloaded */ }
     }, 250);
   });
   return true;
@@ -1444,8 +1446,11 @@ chrome.runtime?.onMessage?.addListener((message, sender) => {
     applyGlobalMark(message);
     return;
   }
-  // Right-click "Annotate" while the panel is already open: capture now.
+  // Right-click "Annotate" while the panel is already open: capture now,
+  // and clear the stash the background left for a cold panel — otherwise
+  // it waits there and fires a phantom capture on the next open.
   if (message?.type === 'ANNOTATED_GRAB_SELECTION' && message.tabId === currentTabId) {
+    void chrome.storage.session.remove('annotatedPendingGrab').catch(() => {});
     void captureSelection();
   }
 });
@@ -1588,15 +1593,18 @@ const startAudioRecording = async () => {
     showError('Audio recording is not supported in this browser.');
     return;
   }
-  if (audioDraftId) await deleteAudioDraft(audioDraftId).catch(() => {});
-  audioDraftId = '';
-  audioAssetId = '';
-  audioDurationSeconds = 0;
-  recordingChunks = [];
+  // Ask for the mic BEFORE destroying the take you already have: denying
+  // the prompt used to leave you with neither the old take nor a new one.
+  const previousDraftId = audioDraftId;
   const token = ++recordingToken;
   const sourceUrl = currentTab.url;
   try {
     recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (previousDraftId) await deleteAudioDraft(previousDraftId).catch(() => {});
+    audioDraftId = '';
+    audioAssetId = '';
+    audioDurationSeconds = 0;
+    recordingChunks = [];
     if (token !== recordingToken || currentTab.url !== sourceUrl) {
       recordingStream.getTracks().forEach((track) => track.stop());
       recordingStream = null;
@@ -1608,14 +1616,21 @@ const startAudioRecording = async () => {
     recordingStartedAt = Date.now();
     recorder.addEventListener('dataavailable', (event) => { if (event.data.size) recordingChunks.push(event.data); });
     recorder.addEventListener('stop', async () => {
+      // The stream can end without us: unplug a headset or revoke mic
+      // permission and MediaRecorder stops itself. Clear the ticker here
+      // or it repaints "Recording your take…" forever over a dead
+      // recorder that stopAudioRecording can no longer reach.
+      clearInterval(recordingTimer);
       recordingStream?.getTracks().forEach((track) => track.stop());
       recordingStream = null;
-      audioDurationSeconds = clampAudioDuration((Date.now() - recordingStartedAt) / 1000);
       const recordedMimeType = recorder.mimeType || 'audio/webm';
       const blob = new Blob(recordingChunks, { type: recordedMimeType });
       recordingChunks = [];
       if (mediaRecorder === recorder) mediaRecorder = null;
+      // The guard comes first: a stale recorder must not stamp its take's
+      // length onto the tab the panel has moved to.
       if (token !== recordingToken || currentTab.url !== sourceUrl) return;
+      audioDurationSeconds = clampAudioDuration((Date.now() - recordingStartedAt) / 1000);
       setReviewTake(blob); // hear it before you publish it
       try {
         const stagedId = await stageAudioDraft(blob, { duration: audioDurationSeconds, mimeType: recordedMimeType });
