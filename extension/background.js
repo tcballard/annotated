@@ -159,6 +159,41 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+// Global mark keys: Alt+I / Alt+O / Alt+L work while the PAGE has focus —
+// this is where Twitch's Alt+X lives. The time is read here, at keypress,
+// so the mark is accurate even though the panel wakes up later. The
+// sidePanel.open call must see the user gesture, so it fires before any
+// await in the listener.
+const readPlayerForCommand = async (tabId) => {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const players = [...document.querySelectorAll('video, audio')];
+      if (!players.length) return null;
+      const active = players.find((el) => !el.paused && !el.ended)
+        || players.find((el) => el.currentTime > 0)
+        || players[0];
+      return {
+        time: Math.max(0, active.currentTime || 0),
+        duration: Number.isFinite(active.duration) ? Math.floor(active.duration) : 0,
+      };
+    },
+  }).catch(() => null);
+  return results?.[0]?.result || null;
+};
+
+chrome.commands?.onCommand.addListener((command, tab) => {
+  const boundary = { 'mark-in': 'in', 'mark-out': 'out', 'clip-last-30': 'last30' }[command];
+  if (!boundary || !tab?.id) return;
+  void chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
+  runBackgroundTask('global mark', async () => {
+    const player = await readPlayerForCommand(tab.id);
+    const mark = { tabId: tab.id, boundary, time: player ? player.time : null, duration: player?.duration || 0, at: Date.now() };
+    await chrome.storage.session.set({ annotatedPendingMark: mark }).catch(() => {});
+    await chrome.runtime.sendMessage({ type: 'ANNOTATED_MARK', ...mark }).catch(() => {});
+  });
+});
+
 chrome.contextMenus?.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== 'annotated-capture-selection' || !tab?.id) return;
   runBackgroundTask('context-menu capture', async () => {

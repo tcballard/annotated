@@ -1097,6 +1097,51 @@ const captureLastN = async (seconds) => {
   saveDraft();
 };
 
+// A mark that arrived from the global keys (Alt+I/O/L): read at keypress
+// time in the background, so it is accurate even though the panel woke
+// up later. A player found on an "article" tab flips the type — an
+// embedded video someone is marking IS the source.
+const applyGlobalMark = ({ boundary, time, duration }) => {
+  if (panelMode !== 'capture') setPanelMode('capture');
+  if (time === null || time === undefined) { if (isMediaType()) enterManualMode(); return; }
+  if (!isMediaType()) { currentTab.sourceType = 'video'; syncSource(); }
+  if (duration && !currentTab.duration) currentTab.duration = duration;
+  if (boundary === 'last30') {
+    marks.end = time;
+    marks.start = Math.max(0, time - 30);
+    marks.inSet = true;
+    marks.outSet = true;
+  } else if (boundary === 'in') {
+    marks.start = time;
+    marks.inSet = true;
+    if (!marks.outSet || marks.end < marks.start) { marks.end = marks.start; marks.outSet = marks.outSet && marks.end >= marks.start; }
+  } else {
+    marks.end = time;
+    marks.outSet = true;
+    if (!marks.inSet) { marks.start = Math.max(0, marks.end - 30); marks.inSet = true; }
+    else if (marks.start > marks.end) marks.start = Math.max(0, marks.end);
+  }
+  clampMarks();
+  syncMarks();
+  retrigger(boundary === 'out' ? markOut : markIn, 'just-set');
+  if (boundary === 'last30') retrigger(markOut, 'just-set');
+  retrigger(bandSel, 'just-set');
+  saveDraft();
+};
+
+// A cold panel finds the stashed global mark at boot; staleness beyond a
+// few seconds means it belonged to a moment that has passed.
+const consumePendingMark = async () => {
+  try {
+    const { annotatedPendingMark } = await chrome.storage.session.get('annotatedPendingMark');
+    if (!annotatedPendingMark) return;
+    await chrome.storage.session.remove('annotatedPendingMark');
+    if (annotatedPendingMark.tabId === currentTabId && Date.now() - annotatedPendingMark.at < 15000) {
+      applyGlobalMark(annotatedPendingMark);
+    }
+  } catch { /* nothing pending */ }
+};
+
 /* the handles: drag to shape the moment, arrows to nudge it */
 let dragging = null;
 
@@ -1268,6 +1313,13 @@ chrome.runtime?.onMessage?.addListener((message, sender) => {
     playhead = { ...message.player, at: Date.now() };
     if (playhead.duration && !currentTab.duration) currentTab.duration = playhead.duration;
     updateBandLive();
+    return;
+  }
+  // A global mark key pressed while the panel was already open.
+  if (message?.type === 'ANNOTATED_MARK') {
+    if (message.tabId !== currentTabId) return;
+    void chrome.storage.session.remove('annotatedPendingMark').catch(() => {});
+    applyGlobalMark(message);
     return;
   }
   // Right-click "Annotate" while the panel is already open: capture now.
@@ -2383,6 +2435,7 @@ const boot = async () => {
   // the race, run the light same-tab pass now that the backend answered.
   if (backendOnline && !resolvedSource) await loadCurrentTab();
   await consumePendingGrab();
+  await consumePendingMark();
   await consumeQueuePublished();
   await loadTimeline('recent');
   await refreshQueueStatus();

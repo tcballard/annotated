@@ -341,6 +341,22 @@ test('the clip bay: the moment is drawn on the media’s own timeline', async ()
   // the selection fill is law-1 accent; the playhead is ink
   assert.match(styles, /\.band-sel \{[^}]*background: var\(--accent\)/);
   assert.match(styles, /\.band-head \{[^}]*background: var\(--ink\)/);
+  // global mark keys: read at keypress time in the background, while the
+  // PAGE has focus — the panel-document keys were a promise the panel
+  // could not keep on its own
+  const manifest = JSON.parse(await read('manifest.json'));
+  assert.equal(manifest.commands['mark-in'].suggested_key.default, 'Alt+I');
+  assert.equal(manifest.commands['mark-out'].suggested_key.default, 'Alt+O');
+  assert.equal(manifest.commands['clip-last-30'].suggested_key.default, 'Alt+L');
+  const background = await read('background.js');
+  assert.match(background, /chrome\.commands\?\.onCommand\.addListener/);
+  // the gesture window: open the panel before any await in the listener
+  const onCommand = background.slice(background.indexOf('onCommand.addListener'));
+  assert.ok(onCommand.indexOf('chrome.sidePanel.open') < onCommand.indexOf('await '), 'sidePanel.open fires before the first await, inside the gesture');
+  assert.match(background, /annotatedPendingMark/);
+  assert.match(runtime, /const applyGlobalMark = /);
+  assert.match(runtime, /const consumePendingMark = /);
+  assert.match(runtime, /ANNOTATED_MARK/);
 });
 
 test('details that read expensive: sources wear their faces', async () => {
