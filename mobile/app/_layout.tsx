@@ -4,20 +4,46 @@
 // epoch, and the signed-in account live here because they concern the
 // whole app.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
+import { Asset } from 'expo-asset';
+import { useFonts, Inter_400Regular, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold } from '@expo-google-fonts/inter';
 import { useShareIntent } from '../lib/share-intent';
 import { SessionEpochContext } from '../components/WebScreen';
 import { AccountContext, type Me } from '../components/AccountContext';
 import { api } from '../lib/api';
 import { card, ink, paper } from '../lib/tokens';
 
+// The native splash holds until the fonts and the welcome artwork are
+// resident and we know whether there is an account — so the first React
+// frame is the composed launch page, never a flash of the timeline
+// followed by a welcome sliding over it.
+void SplashScreen.preventAutoHideAsync().catch(() => {});
+
+const WELCOME_ASSETS = [require('../assets/welcome/lower-wash.png')];
+
 export default function RootLayout() {
   const router = useRouter();
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent({ debug: false, resetOnBackground: true });
+
+  const [fontsLoaded] = useFonts({
+    Inter_400Regular,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    Inter_800ExtraBold,
+  });
+  const [artworkLoaded, setArtworkLoaded] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    Asset.loadAsync(WELCOME_ASSETS)
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setArtworkLoaded(true); });
+    return () => { cancelled = true; };
+  }, []);
 
   // A share (cold start or while running) lands on the capture desk; the
   // web app extracts and resolves the URL itself. The nonce keeps a repeat
@@ -36,12 +62,14 @@ export default function RootLayout() {
   // every session change.
   const [me, setMe] = useState<Me>(null);
   const [unseen, setUnseen] = useState(0);
+  const [accountResolved, setAccountResolved] = useState(false);
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const result = await api.me().catch(() => ({ user: null }));
       if (cancelled) return;
       setMe(result.user || null);
+      setAccountResolved(true);
       if (!result.user) { setUnseen(0); return; }
       const inbox = await api.notifications().catch(() => ({ unseenCount: 0 }));
       if (!cancelled) setUnseen(Number(inbox.unseenCount) || 0);
@@ -49,6 +77,20 @@ export default function RootLayout() {
     return () => { cancelled = true; };
   }, [epoch]);
   const account = useMemo(() => ({ me, unseen, clearUnseen: () => setUnseen(0) }), [me, unseen]);
+
+  // Hand off from the native splash exactly once, when everything the
+  // first frame needs is resident. Someone with no account meets the
+  // welcome; someone signed in goes straight to their margin.
+  const handedOff = useRef(false);
+  const ready = fontsLoaded && artworkLoaded && accountResolved;
+  const revealApp = useCallback(async () => {
+    if (handedOff.current || !ready) return;
+    handedOff.current = true;
+    if (!me) router.replace('/welcome');
+    await SplashScreen.hideAsync().catch(() => {});
+  }, [me, ready, router]);
+  useEffect(() => { void revealApp(); }, [revealApp]);
+  if (!ready) return null;
 
   const webHeader = {
     headerShown: true,
@@ -66,6 +108,12 @@ export default function RootLayout() {
           <StatusBar style="auto" />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: paper } }}>
             <Stack.Screen name="(drawer)" />
+            {/* The welcome owns its canvas: no header, no safe-area inset,
+                and it fades rather than sliding in from the side. */}
+            <Stack.Screen
+              name="welcome"
+              options={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#F5F4F0' } }}
+            />
             <Stack.Screen name="web/[...path]" options={webHeader} />
           </Stack>
         </AccountContext.Provider>
