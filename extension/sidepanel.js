@@ -289,27 +289,96 @@ const probeTabForType = async (tabId) => {
 // Detection cascade: URL/host pattern → in-page media probe → article.
 const detectSourceType = async (tabId, url) => classifyByUrl(url) || await probeTabForType(tabId);
 
+// Injected into every frame: find the player the person is actually
+// watching, not the first one in DOM order. Picture-in-picture beats
+// playing beats unmuted (hover previews are muted) beats has-progress
+// beats on-screen area — the exact cascade that defeats YouTube's hover
+// previews, Shorts' mounted neighbours, and muted hero videos. Ads play
+// through the same <video> element, so the YouTube ad state rides along
+// rather than being silently trusted. Live/DVR timelines don't start at
+// zero; seekable.start(0) is the true origin. Self-contained — this
+// body is mirrored in watchPlayerInPage and background.js because
+// injected functions serialize without their lexical scope.
+function readPlayersInPage() {
+  let players = [...document.querySelectorAll('video, audio')];
+  if (!players.length) {
+    const collect = (root, out) => {
+      for (const el of root.querySelectorAll('video, audio')) out.push(el);
+      for (const el of root.querySelectorAll('*')) if (el.shadowRoot) collect(el.shadowRoot, out);
+      return out;
+    };
+    players = collect(document, []);
+  }
+  if (!players.length) return null;
+  const score = (el) => {
+    const box = el.getBoundingClientRect();
+    const visible = Math.max(0, Math.min(box.bottom, innerHeight) - Math.max(box.top, 0))
+      * Math.max(0, Math.min(box.right, innerWidth) - Math.max(box.left, 0));
+    return (el === document.pictureInPictureElement ? 1e9 : 0)
+      + (!el.paused && !el.ended ? 5e8 : 0)
+      + (el.muted ? 0 : 1e7)
+      + (el.currentTime > 0 ? 1e6 : 0)
+      + visible;
+  };
+  const best = players.reduce((a, b) => (score(b) > score(a) ? b : a));
+  const yt = document.querySelector('#movie_player');
+  const origin = best.seekable && best.seekable.length ? best.seekable.start(0) : 0;
+  return {
+    time: Math.max(0, (best.currentTime || 0) - origin),
+    duration: Number.isFinite(best.duration) ? Math.floor(best.duration) : 0,
+    paused: Boolean(best.paused),
+    rate: best.playbackRate || 1,
+    live: !Number.isFinite(best.duration) || best.duration === 0,
+    muted: Boolean(best.muted),
+    adShowing: Boolean(yt && (yt.classList.contains('ad-showing') || yt.classList.contains('ad-interrupting'))),
+  };
+}
+
+// The frame that holds the winning player: every later seek, preview,
+// and lease targets it, so an embedded player is a first-class citizen.
+let playerFrameId = 0;
+
+const pickPlayerFrame = (entries) => {
+  const scored = entries
+    .filter((entry) => entry && entry.result)
+    .map((entry) => ({
+      frameId: entry.frameId || 0,
+      player: entry.result,
+      score: (entry.result.adShowing ? -1e9 : 0)
+        + (!entry.result.paused ? 5e8 : 0)
+        + (entry.result.muted ? 0 : 1e7)
+        + (entry.result.time > 0 ? 1e6 : 0)
+        + (entry.frameId === 0 ? 1 : 0),
+    }))
+    .sort((a, b) => b.score - a.score);
+  return scored[0] || null;
+};
+
 const readPlayerTime = async () => {
   if (!Number.isInteger(currentTabId)) return null;
+  const started = performance.now();
+  let results;
   try {
-    const result = await chrome.scripting.executeScript({
-      target: { tabId: currentTabId },
-      func: () => {
-        const players = [...document.querySelectorAll('video, audio')];
-        if (!players.length) return null;
-        const active = players.find((el) => !el.paused && !el.ended)
-          || players.find((el) => el.currentTime > 0)
-          || players[0];
-        return {
-          time: Math.max(0, Math.floor(active.currentTime || 0)),
-          duration: Number.isFinite(active.duration) ? Math.floor(active.duration) : 0,
-        };
-      },
+    results = await chrome.scripting.executeScript({
+      target: { tabId: currentTabId, allFrames: true },
+      func: readPlayersInPage,
     });
-    return result?.[0]?.result || null;
   } catch {
-    return null;
+    // Injection refused is a different truth than "no player here".
+    return { blocked: true };
   }
+  const winner = pickPlayerFrame(results || []);
+  if (!winner) return null;
+  playerFrameId = winner.frameId;
+  const player = winner.player;
+  // The read happened ~half a round trip after the press. While playing,
+  // walk the time back by that much so the mark lands where the person
+  // MEANT, not where the video had drifted to by the time we asked.
+  if (!player.paused) {
+    const rtt = (performance.now() - started) / 1000;
+    player.time = Math.max(0, player.time - (rtt / 2) * (player.rate || 1));
+  }
+  return player;
 };
 
 // Injected: a lease-based playhead feed. The panel extends the lease
@@ -318,15 +387,34 @@ const readPlayerTime = async () => {
 function watchPlayerInPage(untilMs) {
   window.__annotatedFeedUntil = untilMs;
   if (window.__annotatedFeedTimer) return true;
+  // Mirrors readPlayersInPage's scoring — injected functions serialize
+  // without their lexical scope, so the body travels by copy.
   const read = () => {
-    const players = [...document.querySelectorAll('video, audio')];
+    let players = [...document.querySelectorAll('video, audio')];
+    if (!players.length) {
+      const collect = (root, out) => {
+        for (const el of root.querySelectorAll('video, audio')) out.push(el);
+        for (const el of root.querySelectorAll('*')) if (el.shadowRoot) collect(el.shadowRoot, out);
+        return out;
+      };
+      players = collect(document, []);
+    }
     if (!players.length) return null;
-    const active = players.find((el) => !el.paused && !el.ended)
-      || players.find((el) => el.currentTime > 0)
-      || players[0];
+    const score = (el) => {
+      const box = el.getBoundingClientRect();
+      const visible = Math.max(0, Math.min(box.bottom, innerHeight) - Math.max(box.top, 0))
+        * Math.max(0, Math.min(box.right, innerWidth) - Math.max(box.left, 0));
+      return (el === document.pictureInPictureElement ? 1e9 : 0)
+        + (!el.paused && !el.ended ? 5e8 : 0)
+        + (el.muted ? 0 : 1e7)
+        + (el.currentTime > 0 ? 1e6 : 0)
+        + visible;
+    };
+    const active = players.reduce((a, b) => (score(b) > score(a) ? b : a));
     const yt = document.querySelector('#movie_player');
+    const origin = active.seekable && active.seekable.length ? active.seekable.start(0) : 0;
     return {
-      time: Math.max(0, active.currentTime || 0),
+      time: Math.max(0, (active.currentTime || 0) - origin),
       duration: Number.isFinite(active.duration) ? Math.floor(active.duration) : 0,
       paused: Boolean(active.paused),
       adShowing: Boolean(yt && (yt.classList.contains('ad-showing') || yt.classList.contains('ad-interrupting'))),
@@ -386,12 +474,12 @@ async function previewRangeInPage(startSeconds, endSeconds) {
 
 const seekPlayer = async (seconds) => {
   if (!Number.isInteger(currentTabId)) return;
-  await chrome.scripting.executeScript({ target: { tabId: currentTabId }, func: seekPlayerInPage, args: [seconds] }).catch(() => {});
+  await chrome.scripting.executeScript({ target: { tabId: currentTabId, frameIds: [playerFrameId] }, func: seekPlayerInPage, args: [seconds] }).catch(() => {});
 };
 
 const playSelection = async () => {
   if (!(marks.inSet && marks.outSet) || !Number.isInteger(currentTabId)) return;
-  const results = await chrome.scripting.executeScript({ target: { tabId: currentTabId }, func: previewRangeInPage, args: [marks.start, marks.end] }).catch(() => null);
+  const results = await chrome.scripting.executeScript({ target: { tabId: currentTabId, frameIds: [playerFrameId] }, func: previewRangeInPage, args: [marks.start, marks.end] }).catch(() => null);
   const outcome = results?.[0]?.result;
   if (!outcome?.ok) showToast(outcome?.reason === 'blocked' ? 'Click the video once, then try again.' : 'No player found on this tab.');
 };
@@ -1007,6 +1095,11 @@ const loadCurrentTab = async () => {
   currentTab = { url, title: tab.title || host || 'This tab', host, sourceType: currentTab.sourceType || 'article', duration: 0 };
   if (!typeOverridden) currentTab.sourceType = await detectSourceType(tab.id, url);
   if (currentTabId !== tab.id) return; // a faster tab switch won the race
+  // Seed the winning player frame (and its duration) so the live feed and
+  // the first mark land on an embedded player without a warm-up press.
+  if (isMediaType() && /^https?:/.test(url)) {
+    void readPlayerTime().catch(() => null);
+  }
   void installSelectionWatcher(tab.id, url);
   // The needle found a new station: the live dot swells once, the title fades in.
   if (changed) retrigger(document.querySelector('.cap-source'), 'is-retuned');
@@ -1055,19 +1148,29 @@ chrome.tabs?.onUpdated?.addListener((tabId, changeInfo) => {
 
 // A mark press with no reachable player drops into typed times — chosen
 // copy, not an error, and the way back stays on screen.
-const enterManualMode = () => {
+const enterManualMode = (copy = 'No player found on this tab — type the times instead.') => {
   manualMode = true;
   syncMarks();
-  bayNote.innerHTML = 'No player found on this tab — type the times instead.';
+  bayNote.textContent = copy;
   manualIn.focus();
+};
+
+// Blocked is a different truth than empty, and an ad's clock is not the
+// video's: both refuse honestly instead of writing a poisoned number.
+const usablePlayer = (player) => {
+  if (player?.blocked) { enterManualMode('This page doesn’t allow reading its player — type the times.'); return null; }
+  if (!player) { enterManualMode(); return null; }
+  if (player.adShowing) { showToast('An ad is playing — mark once the video resumes.'); return null; }
+  return player;
 };
 
 const captureMark = async (boundary) => {
   if (panelMode !== 'capture') setPanelMode('capture');
   const tabId = currentTabId;
-  const player = await readPlayerTime();
+  const probed = await readPlayerTime();
   if (tabId !== currentTabId) return; // a tab switch mid-probe wins
-  if (!player) { enterManualMode(); return; }
+  const player = usablePlayer(probed);
+  if (!player) return;
   if (player.duration && !currentTab.duration) currentTab.duration = player.duration;
   if (boundary === 'in') {
     marks.start = player.time;
@@ -1098,9 +1201,10 @@ const captureMark = async (boundary) => {
 const captureLastN = async (seconds) => {
   if (panelMode !== 'capture') setPanelMode('capture');
   const tabId = currentTabId;
-  const player = await readPlayerTime();
+  const probed = await readPlayerTime();
   if (tabId !== currentTabId) return; // a tab switch mid-probe wins
-  if (!player) { enterManualMode(); return; }
+  const player = usablePlayer(probed);
+  if (!player) return;
   if (player.duration && !currentTab.duration) currentTab.duration = player.duration;
   marks.end = player.time;
   marks.start = Math.max(0, player.time - seconds);
@@ -1118,8 +1222,9 @@ const captureLastN = async (seconds) => {
 // time in the background, so it is accurate even though the panel woke
 // up later. A player found on an "article" tab flips the type — an
 // embedded video someone is marking IS the source.
-const applyGlobalMark = ({ boundary, time, duration }) => {
+const applyGlobalMark = ({ boundary, time, duration, adShowing }) => {
   if (panelMode !== 'capture') setPanelMode('capture');
+  if (adShowing) { showToast('An ad is playing — mark once the video resumes.'); return; }
   if (time === null || time === undefined) { if (isMediaType()) enterManualMode(); return; }
   if (!isMediaType()) { currentTab.sourceType = 'video'; syncSource(); }
   if (duration && !currentTab.duration) currentTab.duration = duration;
@@ -1313,7 +1418,7 @@ setInterval(() => {
   if (panelMode !== 'capture' || !isMediaType() || manualMode || document.hidden) return;
   if (!Number.isInteger(currentTabId) || !/^https?:/.test(currentTab.url || '')) return;
   chrome.scripting.executeScript({
-    target: { tabId: currentTabId },
+    target: { tabId: currentTabId, frameIds: [playerFrameId] },
     func: watchPlayerInPage,
     args: [Date.now() + 5000],
   }).catch(() => {});

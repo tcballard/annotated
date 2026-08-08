@@ -377,6 +377,33 @@ test('nothing survives a navigation it does not belong to', async () => {
   assert.match(runtime, /if \(tabId !== currentTabId\) return; \/\/ a tab switch mid-probe wins/);
 });
 
+test('the probe finds the player you are watching, and refuses poisoned clocks', async () => {
+  const runtime = await read('sidepanel.js');
+  const background = await read('background.js');
+  // every frame is searched — an embedded player is a first-class citizen
+  assert.match(runtime, /target: \{ tabId: currentTabId, allFrames: true \}/);
+  assert.match(background, /target: \{ tabId, allFrames: true \}/);
+  // the scoring cascade: PiP > playing > unmuted > has-progress > on-screen
+  assert.match(runtime, /function readPlayersInPage\(\)/);
+  assert.match(runtime, /pictureInPictureElement \? 1e9/);
+  assert.match(runtime, /el\.shadowRoot\) collect\(el\.shadowRoot, out\)/);
+  // live/DVR timelines don't start at zero
+  assert.match(runtime, /seekable\.start\(0\)/);
+  // an ad's clock is refused, not silently trusted — in the panel AND
+  // for global marks read in the background
+  assert.match(runtime, /An ad is playing — mark once the video resumes\./);
+  assert.match(runtime, /adShowing\) \{ showToast\('An ad is playing/);
+  assert.match(background, /adShowing: Boolean\(yt/);
+  // blocked injection is a different truth than "no player here"
+  assert.match(runtime, /return \{ blocked: true \};/);
+  assert.match(runtime, /doesn’t allow reading its player/);
+  // the winning frame is remembered; seek, preview, and the lease target it
+  assert.match(runtime, /let playerFrameId = 0;/);
+  assert.match(runtime, /frameIds: \[playerFrameId\]/);
+  // the mark lands where the person meant: half the round trip walked back
+  assert.match(runtime, /\(rtt \/ 2\) \* \(player\.rate \|\| 1\)/);
+});
+
 test('details that read expensive: sources wear their faces', async () => {
   const runtime = await read('sidepanel.js');
   const html = await read('sidepanel.html');
