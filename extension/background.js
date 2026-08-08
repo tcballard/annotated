@@ -1,6 +1,6 @@
 import { apiOrigin, authHeaders } from './config.js';
 import { extensionStorage, MAX_PENDING_ATTEMPTS } from './storage.js';
-import { deleteAudioDraft, readAudioDraft } from './media-draft-store.js';
+import { deleteAudioDraft, readAudioDraft, sweepOrphanedAudioDrafts } from './media-draft-store.js';
 
 const runBackgroundTask = (label, task) => {
   return (async () => {
@@ -153,6 +153,20 @@ const setupNotificationsBadge = async () => {
   await refreshNotificationsBadge();
 };
 
+// Staged audio is the only thing this extension keeps that is measured in
+// megabytes, and until now nothing collected the takes that lost their
+// owner. Browser startup is the safe moment to sweep: no panel is open, so
+// the live set — the saved draft plus every queued capture — is complete.
+const sweepStagedAudio = async () => {
+  const [draft, pending] = await Promise.all([
+    extensionStorage.getDraft().catch(() => null),
+    extensionStorage.getPendingCaptures().catch(() => []),
+  ]);
+  const live = [draft?.audioDraftId, ...pending.map((capture) => capture?.payload?.audioDraftId)];
+  const removed = await sweepOrphanedAudioDrafts(live);
+  if (removed.length) console.info(`annotated reclaimed ${removed.length} orphaned audio ${removed.length === 1 ? 'take' : 'takes'}.`);
+};
+
 chrome.runtime.onInstalled.addListener(() => {
   runBackgroundTask('installation setup', async () => {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
@@ -162,6 +176,8 @@ chrome.runtime.onInstalled.addListener(() => {
     await setupRetry();
     await setupNotificationsBadge();
   });
+  // an update tears down an open panel — exactly when takes lose their owner
+  runBackgroundTask('staged audio sweep', sweepStagedAudio);
 });
 
 // Global mark keys: Alt+I / Alt+O / Alt+L work while the PAGE has focus —
@@ -255,6 +271,7 @@ chrome.runtime.onStartup.addListener(() => {
     await setupRetry();
     await setupNotificationsBadge();
   });
+  runBackgroundTask('staged audio sweep', sweepStagedAudio);
 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'annotated-retry') runBackgroundTask('pending capture retry', retryPendingCaptures);
