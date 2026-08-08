@@ -485,10 +485,12 @@ test('details that read expensive: sources wear their faces', async () => {
   // the snip you took can be verified at full size — preview and timeline
   // screenshots open a veil with the standard exits (click, button, Esc)
   assert.match(html, /id="shotVeil" role="dialog" aria-modal="true"/);
-  assert.match(runtime, /openShotVeil\(shotPreview\.src, shotPreview\)/);
+  // the preview is a button wrapping the image, so the veil's focus returns
+  // to something focusable and the keyboard can open it at all
+  assert.match(runtime, /shotPreviewOpen\.addEventListener\('click', \(\) => openShotVeil\(shotPreview\.src, shotPreviewOpen\)\)/);
   assert.match(runtime, /closest\('\.srcmedia img'\)/);
   assert.match(runtime, /shotVeilImg\.removeAttribute\('src'\)/, 'the veil forgets the image when closed');
-  assert.match(styles, /\.shot-preview, \.srcmedia img \{ cursor: zoom-in; \}/);
+  assert.match(styles, /\.shot-preview-open, \.srcmedia img \{ cursor: zoom-in; \}/);
   assert.match(styles, /\.shot-veil\.is-closing \{ animation: veil-out var\(--t-hover\) var\(--e-exit\) forwards; \}/);
 });
 
@@ -576,4 +578,113 @@ test('the panel can put an annotation back on the page it came from', async () =
   assert.match(panel, /panelMode === 'page' \|\| matchesCurrentTab\(item\)/, 'only rows about the current page offer it');
   assert.match(panel, /That passage is not on this page right now\./);
   assert.match(panel, /scrollIntoView\(\{ behavior: 'smooth', block: 'center' \}\)/);
+});
+
+// ── H: the panel's word is worth what its code does ──────────────────────
+
+test('nothing is injected and no URL is resolved while you are reading a feed', async () => {
+  const panel = await read('sidepanel.js');
+  // The listing promises the current tab's address leaves the browser only
+  // while the Capture surface is open. That was a claim about intent, not a
+  // property of the code — loadCurrentTab ran on every tab change regardless
+  // of which tab you were on. Each of these three is the gate.
+  const loader = panel.slice(panel.indexOf('const loadCurrentTab'), panel.indexOf('const setPanelMode'));
+  const gated = [...loader.matchAll(/panelMode === 'capture'/g)];
+  assert.ok(gated.length >= 4, `expected the type probe, the media read, the selection watcher and the resolver to be gated; found ${gated.length}`);
+  assert.match(loader, /if \(panelMode === 'capture'\) void installSelectionWatcher/, 'the selection watcher is an injection');
+  assert.match(loader, /panelMode === 'capture' && isMediaType\(\)/, 'the media read is an injection');
+  assert.match(loader, /backendOnline && panelMode === 'capture' && \/\^https\?:\/\.test\(url\)/, 'the resolver is the network call the listing describes');
+  // the fourth one is easy to miss: classifying an unknown host falls back to
+  // reading its og:type, which is an injection like any other
+  assert.match(loader, /detectSourceType\(tab\.id, url, \{ probe: panelMode === 'capture' \}\)/);
+  assert.match(panel, /const detectSourceType = async \(tabId, url, \{ probe = true \} = \{\}\) => classifyByUrl\(url\) \|\| \(probe \? await probeTabForType\(tabId\) : 'article'\)/);
+
+  // …and the gate must not simply lose the source: arriving at the desk is
+  // when the work happens instead.
+  assert.match(panel, /const enteringCapture = mode === 'capture' && panelMode !== 'capture'/);
+  assert.match(panel, /if \(enteringCapture && !resolvedSource\) void loadCurrentTab\(\)/);
+});
+
+test('the store listing and the options page describe that gate, not a softer one', async () => {
+  const [listing, options] = await Promise.all([
+    readFile(new URL('../CHROMEWEBSTORE.md', import.meta.url), 'utf8'),
+    read('options.html'),
+  ]);
+  for (const [name, text] of [['CHROMEWEBSTORE.md', listing], ['options.html', options]]) {
+    assert.match(text, /while the Capture surface is open/i, `${name} must scope the resolve call to the capture surface`);
+  }
+  // the honest version names the two automatic injections rather than
+  // implying every injection follows a click
+  assert.match(listing, /Two injections are automatic there/);
+  assert.match(listing, /Nothing is injected while you are reading a feed/);
+});
+
+test('the panel exposes tabs, panels and status to a screen reader', async () => {
+  const html = await read('sidepanel.html');
+  const panel = await read('sidepanel.js');
+
+  // every tab points at the panel it actually controls
+  for (const [id, controls] of [['capture', 'captureSection'], ['recent', 'timeline'], ['following', 'timeline'], ['page', 'timeline']]) {
+    assert.match(html, new RegExp(`id="tab-${id}"[^>]*role="tab"[^>]*aria-controls="${controls}"`), `tab-${id} must control ${controls}`);
+  }
+  assert.match(html, /id="captureSection" role="tabpanel" aria-labelledby="tab-capture" tabindex="0"/);
+  assert.match(html, /id="timeline" role="tabpanel" tabindex="0"/);
+  // one panel, three tabs — so its label has to follow the active one
+  assert.match(panel, /timeline\.setAttribute\('aria-labelledby', `tab-\$\{panelMode\}`\)/);
+
+  // A live region around the whole feed re-announced every row on every
+  // render. The feed is now silent and a status node says what changed.
+  assert.doesNotMatch(html, /id="timeline"[^>]*aria-live/, 'the feed itself must not be a live region');
+  assert.match(html, /id="timelineState"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(panel, /const announceTimeline = \(\)/);
+  assert.match(panel, /announceTimeline\(\)/);
+
+  // controls that only responded to a mouse are real buttons now
+  assert.match(html, /<button class="backend" id="backendStatus" type="button"/);
+  assert.match(html, /id="backendState" role="status"/);
+  assert.match(html, /id="shotPreviewOpen"[^>]*type="button"/);
+});
+
+test('the identity chip is legible on both schemes, on both surfaces', async () => {
+  // #B0674D is the moment's colour, not a text colour: as chip type it
+  // measured 3.81:1 on paper and 2.37:1 on the dark card. --accent-ink is
+  // the same hue moved until it passes AA — 5.52:1 and 4.77:1.
+  for (const file of ['../src/styles.css', '../extension/sidepanel.css']) {
+    const css = await readFile(new URL(file, import.meta.url), 'utf8');
+    assert.match(css, /--accent-ink: #8F5039/);
+    assert.match(css, /--accent-ink: #E0A48E/);
+  }
+  // and the connection dot is a state, not a moment, so it left the ramp
+  const sidepanelCss = await read('sidepanel.css');
+  assert.match(sidepanelCss, /\.backend\.is-live i \{ background: #B9BEC6; \}/);
+});
+
+test('the panel opens with one round-trip, not two', async () => {
+  const panel = await read('sidepanel.js');
+  // checkBackend's recovery branch fires when the backend comes back from an
+  // outage. Booting is not that: with backendOnline starting at false, the
+  // first successful check looked like a recovery and fired a second
+  // concurrent resolve of the same tab alongside the boot sequence's own.
+  assert.match(panel, /let backendOnline = null;/, 'null means "not asked yet", distinct from "asked and down"');
+  assert.match(panel, /const wasOnline = backendOnline;/);
+  assert.match(panel, /if \(wasOnline === false\) \{/, 'recovery keys on a known-offline state, not a falsy one');
+  // and every other read of it stays a plain boolean test
+  assert.doesNotMatch(panel, /backendOnline === true|backendOnline == /);
+});
+
+test('the timeline status node describes every state the feed lands in', async () => {
+  const panel = await read('sidepanel.js');
+  // announceTimeline used to be called from the one branch that had items,
+  // so an empty or failed feed left the node holding a stale count — or, on
+  // first load, nothing at all.
+  const render = panel.slice(panel.indexOf('const renderTimeline'), panel.indexOf('const patchLikeButton'));
+  assert.match(render, /paintTimeline\(\);/);
+  assert.match(render, /announceTimeline\(\);/);
+  const paint = panel.slice(panel.indexOf('const paintTimeline'), panel.indexOf('const renderTimeline'));
+  assert.doesNotMatch(paint, /announceTimeline\(/, 'the paint must not announce from inside a branch');
+  // every state the paint can render has a sentence
+  const announce = panel.slice(panel.indexOf('const announceTimeline'), panel.indexOf('const paintTimeline'));
+  for (const phrase of ['Loading the timeline', 'Sign in to see', 'You’re offline', 'could not be loaded', 'Nothing here yet']) {
+    assert.ok(announce.includes(phrase), `announceTimeline is missing the "${phrase}" state`);
+  }
 });

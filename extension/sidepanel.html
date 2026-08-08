@@ -11,7 +11,7 @@
          directly above; this strip holds only what that bar cannot — backend
          state and identity. -->
     <header class="phead">
-      <span class="backend" id="backendStatus" aria-live="polite" title="Backend connection"><i aria-hidden="true"></i><span class="backend-label">connecting</span></span>
+      <button class="backend" id="backendStatus" type="button" title="Backend connection"><i aria-hidden="true"></i><span class="backend-label">connecting</span><span class="visually-hidden" id="backendState" role="status"></span></button>
       <div class="auth" id="authActions">
         <button type="button" class="auth-btn" id="signInOpen" hidden>Sign in</button>
         <button type="button" class="me" id="meButton" hidden aria-haspopup="menu" aria-expanded="false" aria-label="Account menu">A</button>
@@ -36,15 +36,15 @@
       <!-- panel modes: writing the margin or reading it, each at full height -->
       <div class="thead">
         <div class="tabs" role="tablist" aria-label="Panel mode">
-          <button class="tab is-active" data-feed-tab="capture" role="tab" aria-selected="true">Capture</button>
-          <button class="tab" data-feed-tab="recent" role="tab" aria-selected="false">Recent</button>
-          <button class="tab" data-feed-tab="following" role="tab" aria-selected="false">Following</button>
-          <button class="tab" data-feed-tab="page" role="tab" aria-selected="false">This page</button>
+          <button class="tab is-active" id="tab-capture" data-feed-tab="capture" role="tab" aria-controls="captureSection" aria-selected="true">Capture</button>
+          <button class="tab" id="tab-recent" data-feed-tab="recent" role="tab" aria-controls="timeline" aria-selected="false">Recent</button>
+          <button class="tab" id="tab-following" data-feed-tab="following" role="tab" aria-controls="timeline" aria-selected="false">Following</button>
+          <button class="tab" id="tab-page" data-feed-tab="page" role="tab" aria-controls="timeline" aria-selected="false">This page</button>
         </div>
       </div>
 
       <!-- capture: the source is the live tab -->
-      <section class="capture" id="captureSection" aria-label="Capture from this tab">
+      <section class="capture" id="captureSection" role="tabpanel" aria-labelledby="tab-capture" tabindex="0">
         <!-- first run only: frame the loop once, then get out of the way -->
         <div class="intro" id="introCard" hidden>
           <h2>Keep the moment, with the source attached</h2>
@@ -143,7 +143,7 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" /></svg>
               </button>
             </div>
-            <img class="shot-preview" id="shotPreview" alt="Captured screenshot preview" hidden />
+            <button class="shot-preview-open" id="shotPreviewOpen" type="button" hidden aria-label="View the screenshot at full size"><img class="shot-preview" id="shotPreview" alt="Captured screenshot preview" /></button>
           </div>
         </div>
 
@@ -186,7 +186,8 @@
       </section>
 
       <!-- timeline -->
-      <div class="timeline" id="timeline" aria-live="polite" hidden></div>
+      <div class="timeline" id="timeline" role="tabpanel" tabindex="0" hidden></div>
+      <span class="visually-hidden" id="timelineState" role="status" aria-live="polite"></span>
     </div>
 
     <!-- sign-in: one door, both providers behind it -->

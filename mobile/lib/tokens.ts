@@ -20,6 +20,7 @@ const light = {
   "link": "#52678F",
   "accent": "#B0674D",
   "accent-soft": "rgba(176, 103, 77, .10)",
+  "accent-ink": "#8F5039",
   "serif": "Georgia, 'Times New Roman', serif",
   "mono": "ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
   "hover-row": "#FBFAF8",
@@ -41,6 +42,7 @@ const dark = {
   "meta": "#9AA0A8",
   "link": "#8FA4C9",
   "accent-soft": "rgba(224, 164, 142, .14)",
+  "accent-ink": "#E0A48E",
   "hover-row": "#31363E",
   "strip": "#2A2E35",
 } as const;

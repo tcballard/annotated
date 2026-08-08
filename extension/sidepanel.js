@@ -76,6 +76,9 @@ const topicSelect = $('#topicSelect');
 const shotButton = $('#shotButton');
 const shotCard = $('#shotCard');
 const shotPreview = $('#shotPreview');
+const shotPreviewOpen = $('#shotPreviewOpen');
+const backendState = $('#backendState');
+const timelineState = $('#timelineState');
 const shotClear = $('#shotClear');
 const shotVeil = $('#shotVeil');
 const shotVeilImg = $('#shotVeilImg');
@@ -84,7 +87,12 @@ const toast = $('#toast');
 const toastText = $('#toastText');
 const toastLink = $('#toastLink');
 
-let backendOnline = false;
+// Tri-state on purpose: null means "not asked yet", false means "asked and
+// it is down". Everything else reads this as a boolean, but the recovery
+// path keys on the difference — booting is not coming back from an outage,
+// and treating it as one fired a second concurrent resolve of the same tab
+// alongside the one the boot sequence had already started.
+let backendOnline = null;
 let availableProviders = {};
 let panelUser = null;
 let currentTabId = null;
@@ -287,7 +295,11 @@ const probeTabForType = async (tabId) => {
 };
 
 // Detection cascade: URL/host pattern → in-page media probe → article.
-const detectSourceType = async (tabId, url) => classifyByUrl(url) || await probeTabForType(tabId);
+// The URL alone classifies the hosts we know. The fallback — reading the
+// page's og:type — is an injection, so it is worth running only for the
+// surface that needs an exact answer. A feed asks nothing of the page it
+// happens to be sitting over, and "article" is the neutral reading default.
+const detectSourceType = async (tabId, url, { probe = true } = {}) => classifyByUrl(url) || (probe ? await probeTabForType(tabId) : 'article');
 
 // Injected into every frame: find the player the person is actually
 // watching, not the first one in DOM order. Picture-in-picture beats
@@ -735,7 +747,7 @@ const syncScreenshot = () => {
   shotCard.hidden = !has;
   shotButton.hidden = has;
   const src = screenshotPreviewUrl || (has && apiOriginCache ? `${apiOriginCache}/media/${screenshotAssetId}` : '');
-  shotPreview.hidden = !src;
+  shotPreviewOpen.hidden = !src;
   if (src) shotPreview.src = src;
   syncPublishGate();
 };
@@ -906,7 +918,7 @@ const closeShotVeil = () => {
   setTimeout(finish, 140);
 };
 
-shotPreview.addEventListener('click', () => openShotVeil(shotPreview.src, shotPreview));
+shotPreviewOpen.addEventListener('click', () => openShotVeil(shotPreview.src, shotPreviewOpen));
 shotVeil.addEventListener('click', closeShotVeil);
 
 visibilitySelect.addEventListener('change', () => {
@@ -1093,14 +1105,16 @@ const loadCurrentTab = async () => {
   }
   const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
   currentTab = { url, title: tab.title || host || 'This tab', host, sourceType: currentTab.sourceType || 'article', duration: 0 };
-  if (!typeOverridden) currentTab.sourceType = await detectSourceType(tab.id, url);
+  if (!typeOverridden) currentTab.sourceType = await detectSourceType(tab.id, url, { probe: panelMode === 'capture' });
   if (currentTabId !== tab.id) return; // a faster tab switch won the race
   // Seed the winning player frame (and its duration) so the live feed and
-  // the first mark land on an embedded player without a warm-up press.
-  if (isMediaType() && /^https?:/.test(url)) {
+  // the first mark land on an embedded player without a warm-up press —
+  // but only while the capture surface is the one on screen. Reading a
+  // feed is not a reason to touch the page you happen to be on.
+  if (panelMode === 'capture' && isMediaType() && /^https?:/.test(url)) {
     void readPlayerTime().catch(() => null);
   }
-  void installSelectionWatcher(tab.id, url);
+  if (panelMode === 'capture') void installSelectionWatcher(tab.id, url);
   // The needle found a new station: the live dot swells once, the title fades in.
   if (changed) retrigger(document.querySelector('.cap-source'), 'is-retuned');
   if (changed) {
@@ -1113,7 +1127,10 @@ const loadCurrentTab = async () => {
   syncNote();
   syncComposer();
   draftReady = true;
-  if (backendOnline && /^https?:/.test(url)) {
+  // The resolver round-trip sends this tab's URL to the backend, so it
+  // happens only for the surface that needs it: the capture desk. Read a
+  // feed and the panel is a reader, not a reporter.
+  if (backendOnline && panelMode === 'capture' && /^https?:/.test(url)) {
     try {
       const resolved = await resolveSourceUrl(url, currentTab.title);
       // A slow resolve for a tab we already left must never stamp its
@@ -2034,6 +2051,8 @@ const syncTabs = () => {
   });
   captureSection.hidden = panelMode !== 'capture';
   timeline.hidden = panelMode === 'capture';
+  // One panel serves three feed tabs, so its label follows the active one.
+  if (panelMode !== 'capture') timeline.setAttribute('aria-labelledby', `tab-${panelMode}`);
 };
 
 // The real ARIA tabs pattern: arrow keys walk and activate the modes.
@@ -2048,8 +2067,21 @@ document.querySelector('.tabs')?.addEventListener('keydown', (event) => {
   next.focus();
 });
 
-const renderTimeline = () => {
-  syncTabs();
+// The feed used to BE the live region, so every render, revalidate, and
+// like re-read the whole list aloud. Now the list is a plain panel and a
+// one-line status node says what changed.
+const announceTimeline = () => {
+  const cache = feedCache[panelMode];
+  if (panelMode === 'capture') { timelineState.textContent = ''; return; }
+  if (!cache) { timelineState.textContent = 'Loading the timeline…'; return; }
+  if (cache.error === 'auth') { timelineState.textContent = 'Sign in to see the people you follow.'; return; }
+  if (cache.error === 'offline') { timelineState.textContent = 'You’re offline. The timeline returns with the connection.'; return; }
+  if (cache.error) { timelineState.textContent = 'The timeline could not be loaded.'; return; }
+  const count = cache.items.length;
+  timelineState.textContent = count ? `${count} annotation${count === 1 ? '' : 's'}.` : 'Nothing here yet.';
+};
+
+const paintTimeline = () => {
   if (panelMode === 'capture') return;
   const cache = feedCache[panelMode];
   if (!cache) {
@@ -2089,6 +2121,15 @@ const renderTimeline = () => {
   }
 };
 
+const renderTimeline = () => {
+  syncTabs();
+  paintTimeline();
+  // Every path through the paint ends here, so the status node describes the
+  // state the panel actually landed in — an empty feed and a failed one used
+  // to leave it holding whatever the last successful render had said.
+  announceTimeline();
+};
+
 const patchLikeButton = (button, liked, likes) => {
   button.classList.toggle('is-liked', liked);
   button.setAttribute('aria-label', `${liked ? 'Unlike' : 'Like'} this annotation`);
@@ -2102,12 +2143,16 @@ const patchLikeButton = (button, liked, likes) => {
 };
 
 const setPanelMode = (mode) => {
+  const enteringCapture = mode === 'capture' && panelMode !== 'capture';
   panelMode = mode;
   renderTimeline();
   // Warm caches render instantly and revalidate quietly in the background —
   // returning to Recent never shows the first fetch forever, and a
   // just-published clip picks up its processed media on re-entry.
   if (mode !== 'capture') void loadTimeline(mode, { background: Boolean(feedCache[mode]) });
+  // Arriving at the capture desk is the moment the source becomes the
+  // point: resolve and arm the page now, not while you were reading.
+  if (enteringCapture && !resolvedSource) void loadCurrentTab();
 };
 
 const loadTimeline = async (tab, { background = false, append = false } = {}) => {
@@ -2396,6 +2441,7 @@ const checkBackend = async () => {
     backendRetryDelay = 5000;
     backendStatus.classList.add('is-live');
     backendStatus.querySelector('.backend-label').textContent = 'connected';
+    if (wasOnline === false) backendState.textContent = 'Back online.';
     backendStatus.removeAttribute('title');
     const auth = await apiRequest('/api/auth/providers').catch(() => ({ providers: {} }));
     availableProviders = auth.providers || {};
@@ -2427,6 +2473,7 @@ const checkBackend = async () => {
     backendOnline = false;
     backendStatus.classList.remove('is-live');
     backendStatus.querySelector('.backend-label').textContent = 'offline';
+    if (wasOnline !== false) backendState.textContent = 'Offline — captures queue locally and retry.';
     backendStatus.setAttribute('title', 'Retry now');
     if (wasOnline !== false) showError('Can’t reach annotated right now — retrying quietly. Captures queue locally.');
     scheduleBackendRetry();

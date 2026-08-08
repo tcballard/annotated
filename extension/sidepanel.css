@@ -17,6 +17,11 @@
   --link: #52678F;
   --accent: #B0674D;
   --accent-soft: rgba(176, 103, 77, .10);
+  /* Terracotta is the moment's colour, but at 3.8:1 on its own tint it
+     was not a legible one — and 2.4:1 in dark. --accent-ink is the same
+     hue carried to a readable weight: the accent still says "moment",
+     the text says it out loud. Fills and rules keep --accent. */
+  --accent-ink: #8F5039;
   --strip: #FBFBF9;
   --hover-row: #FBFAF8;
   --serif: Georgia, 'Times New Roman', serif;
@@ -95,7 +100,9 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .backend { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #8B919A; }
 .backend i { width: 6px; height: 6px; border-radius: 50%; background: #8B919A; }
-.backend.is-live i { background: #E0A48E; }
+/* the backend dot is a connection state, not a moment — it brightens along
+   the chrome strip's own grey ramp rather than borrowing the accent */
+.backend.is-live i { background: #B9BEC6; }
 .backend.is-live .backend-label { color: #B9BEC6; }
 .backend:not(.is-live) { cursor: pointer; }
 
@@ -453,7 +460,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .02em;
-  color: var(--accent);
+  color: var(--accent-ink);
   background: var(--accent-soft);
   border-radius: 3px;
   padding: 3px 8px;
@@ -604,7 +611,10 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .grabber.shot { margin-bottom: 10px; }
 
-.shot-preview { display: block; width: 100%; max-height: 150px; object-fit: cover; object-position: top; background: #141518; }
+.shot-preview-open { display: block; width: 100%; padding: 0; border: none; background: none; }
+/* Contain, never cover: a provenance product must show the crop you drew,
+   not a top-sliced version of it. */
+.shot-preview { display: block; width: 100%; max-height: 190px; object-fit: contain; background: var(--soft); }
 
 .cap-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
@@ -860,7 +870,9 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   white-space: nowrap;
 }
 
-.toast a { color: #E0A48E; font-weight: 600; }
+/* a toast is an alert and its link is navigation — neither is a moment, so
+   the link reads as a link (underline on the pill's own white) */
+.toast a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
 
 /* ── responsive + preferences ───────────────────────────────────────── */
 
@@ -881,6 +893,9 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
     --meta: #9AA0A8;
     --link: #8FA4C9;
     --accent-soft: rgba(224, 164, 142, .14);
+    /* On dark paper the ramp flips: the tint lightens, so the text
+       colour has to lighten with it or the chip drops to 2.4:1. */
+    --accent-ink: #E0A48E;
     --strip: #2A2E35;
     --hover-row: #31363E;
   }
@@ -953,7 +968,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .signin-veil.is-closing { animation: veil-out var(--t-hover) var(--e-exit) forwards; }
 
 /* the screenshot at full size — verify the snip before it ships */
-.shot-preview, .srcmedia img { cursor: zoom-in; }
+.shot-preview-open, .srcmedia img { cursor: zoom-in; }
 
 .shot-veil {
   position: fixed;
