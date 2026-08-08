@@ -1705,16 +1705,31 @@ publishButton.addEventListener('click', async () => {
   clearError();
   const blocker = publishBlocker();
   if (blocker) { publishHint.textContent = blocker; return; }
+  // One publish at a time: disarm before the first await, not after —
+  // a fast double-click must not run the handler twice.
+  publishButton.disabled = true;
+  publishButton.classList.add('is-working');
+  const rearm = () => { publishButton.classList.remove('is-working'); syncPublishGate(); };
   // A reader who has never signed in gets the door, not a false 'session
   // expired' after a doomed round-trip. The capture stays exactly where it is.
   if (!(await extensionStorage.getAuthToken().catch(() => null))) {
+    rearm();
     openSignin('Sign in to publish — your capture stays right here.');
     return;
   }
+  // A failed audio upload used to promise "it will retry" and queue
+  // nothing. Now the failure falls through to a real queued capture that
+  // carries its audioDraftId — the background worker uploads the staged
+  // take first, then publishes.
+  let audioUploadFailed = null;
   if (commentaryMode === 'audio' && !audioAssetId && audioDraftId) {
     try { await uploadStagedAudio(); } catch (uploadError) {
-      showError(uploadError.retryable ? 'Audio note saved locally. It will retry when the backend is available.' : uploadError.message || 'Finish uploading the audio note before publishing.');
-      return;
+      if (!uploadError.retryable && !uploadError.authRequired) {
+        rearm();
+        showError(uploadError.message || 'Finish uploading the audio note before publishing.');
+        return;
+      }
+      audioUploadFailed = uploadError;
     }
   }
   const payload = {
@@ -1742,8 +1757,18 @@ publishButton.addEventListener('click', async () => {
       anchorSuffix: selection.suffix || undefined,
     } : {}),
   };
-  publishButton.disabled = true;
-  publishButton.classList.add('is-working');
+  if (audioUploadFailed) {
+    await extensionStorage.queueCapture({ ...payload, audioDraftId }).catch(() => {});
+    await refreshQueueStatus();
+    rearm();
+    if (audioUploadFailed.authRequired) {
+      setAuthState(false);
+      openSignin('Sign in — your voice note is queued and publishes itself.');
+    } else {
+      showError('Audio note queued locally. It uploads and publishes when the backend is back.');
+    }
+    return;
+  }
   publishHint.textContent = 'Publishing…';
   try {
     const { annotation } = await apiRequest('/api/annotations', { method: 'POST', body: JSON.stringify(payload) });

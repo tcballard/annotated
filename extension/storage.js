@@ -20,6 +20,12 @@ const boundedDuration = (value) => Math.max(0, Math.min(90, Number(value) || 0))
 
 export const compactDraft = (draft = {}) => ({
   sourceUrl: boundedString(draft.sourceUrl, 2048),
+  // The media worker needs these to cut a queued clip: without
+  // canonicalUrl/mediaUrl/provider, a capture that queued offline
+  // published fine and then failed its transcode forever.
+  canonicalUrl: boundedString(draft.canonicalUrl, 2048),
+  mediaUrl: boundedString(draft.mediaUrl, 2048),
+  provider: boundedString(draft.provider, 40),
   sourceType: sourceTypes.has(draft.sourceType) ? draft.sourceType : 'article',
   sourceTitle: boundedString(draft.sourceTitle, 500),
   sourceHost: boundedString(draft.sourceHost, 255),

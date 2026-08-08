@@ -88,6 +88,11 @@ const retryPendingCapturesOnce = async () => {
   for (const capture of captures) {
     if (capture.status === 'blocked' || capture.attempts >= MAX_PENDING_ATTEMPTS) continue;
     if (capture.status === 'needs-auth' && !token) continue;
+    // Exponential spacing between attempts: eight tries used to burn in
+    // eight minutes flat, so any outage longer than a coffee break
+    // permanently blocked the queue. Now they spread across ~4 hours.
+    const lastAttempt = Date.parse(capture.lastAttemptAt || '');
+    if (Number.isFinite(lastAttempt) && Date.now() - lastAttempt < Math.min(2 ** (capture.attempts || 0), 128) * 60_000) continue;
     const headers = token ? { authorization: `Bearer ${token}` } : {};
     try {
       const payload = await uploadStagedAudio(capture, origin, headers);
