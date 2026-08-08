@@ -93,6 +93,7 @@ let resolvedSource = null;
 let selection = { text: '', paragraph: 0, prefix: '', suffix: '' };
 let marks = { start: 0, end: 0, inSet: false, outSet: false };
 let manualMode = false;
+let typeOverridden = false;
 let playhead = { time: 0, duration: 0, paused: true, adShowing: false, at: 0 };
 let commentaryMode = 'text';
 let visibility = 'public';
@@ -288,27 +289,96 @@ const probeTabForType = async (tabId) => {
 // Detection cascade: URL/host pattern → in-page media probe → article.
 const detectSourceType = async (tabId, url) => classifyByUrl(url) || await probeTabForType(tabId);
 
+// Injected into every frame: find the player the person is actually
+// watching, not the first one in DOM order. Picture-in-picture beats
+// playing beats unmuted (hover previews are muted) beats has-progress
+// beats on-screen area — the exact cascade that defeats YouTube's hover
+// previews, Shorts' mounted neighbours, and muted hero videos. Ads play
+// through the same <video> element, so the YouTube ad state rides along
+// rather than being silently trusted. Live/DVR timelines don't start at
+// zero; seekable.start(0) is the true origin. Self-contained — this
+// body is mirrored in watchPlayerInPage and background.js because
+// injected functions serialize without their lexical scope.
+function readPlayersInPage() {
+  let players = [...document.querySelectorAll('video, audio')];
+  if (!players.length) {
+    const collect = (root, out) => {
+      for (const el of root.querySelectorAll('video, audio')) out.push(el);
+      for (const el of root.querySelectorAll('*')) if (el.shadowRoot) collect(el.shadowRoot, out);
+      return out;
+    };
+    players = collect(document, []);
+  }
+  if (!players.length) return null;
+  const score = (el) => {
+    const box = el.getBoundingClientRect();
+    const visible = Math.max(0, Math.min(box.bottom, innerHeight) - Math.max(box.top, 0))
+      * Math.max(0, Math.min(box.right, innerWidth) - Math.max(box.left, 0));
+    return (el === document.pictureInPictureElement ? 1e9 : 0)
+      + (!el.paused && !el.ended ? 5e8 : 0)
+      + (el.muted ? 0 : 1e7)
+      + (el.currentTime > 0 ? 1e6 : 0)
+      + visible;
+  };
+  const best = players.reduce((a, b) => (score(b) > score(a) ? b : a));
+  const yt = document.querySelector('#movie_player');
+  const origin = best.seekable && best.seekable.length ? best.seekable.start(0) : 0;
+  return {
+    time: Math.max(0, (best.currentTime || 0) - origin),
+    duration: Number.isFinite(best.duration) ? Math.floor(best.duration) : 0,
+    paused: Boolean(best.paused),
+    rate: best.playbackRate || 1,
+    live: !Number.isFinite(best.duration) || best.duration === 0,
+    muted: Boolean(best.muted),
+    adShowing: Boolean(yt && (yt.classList.contains('ad-showing') || yt.classList.contains('ad-interrupting'))),
+  };
+}
+
+// The frame that holds the winning player: every later seek, preview,
+// and lease targets it, so an embedded player is a first-class citizen.
+let playerFrameId = 0;
+
+const pickPlayerFrame = (entries) => {
+  const scored = entries
+    .filter((entry) => entry && entry.result)
+    .map((entry) => ({
+      frameId: entry.frameId || 0,
+      player: entry.result,
+      score: (entry.result.adShowing ? -1e9 : 0)
+        + (!entry.result.paused ? 5e8 : 0)
+        + (entry.result.muted ? 0 : 1e7)
+        + (entry.result.time > 0 ? 1e6 : 0)
+        + (entry.frameId === 0 ? 1 : 0),
+    }))
+    .sort((a, b) => b.score - a.score);
+  return scored[0] || null;
+};
+
 const readPlayerTime = async () => {
   if (!Number.isInteger(currentTabId)) return null;
+  const started = performance.now();
+  let results;
   try {
-    const result = await chrome.scripting.executeScript({
-      target: { tabId: currentTabId },
-      func: () => {
-        const players = [...document.querySelectorAll('video, audio')];
-        if (!players.length) return null;
-        const active = players.find((el) => !el.paused && !el.ended)
-          || players.find((el) => el.currentTime > 0)
-          || players[0];
-        return {
-          time: Math.max(0, Math.floor(active.currentTime || 0)),
-          duration: Number.isFinite(active.duration) ? Math.floor(active.duration) : 0,
-        };
-      },
+    results = await chrome.scripting.executeScript({
+      target: { tabId: currentTabId, allFrames: true },
+      func: readPlayersInPage,
     });
-    return result?.[0]?.result || null;
   } catch {
-    return null;
+    // Injection refused is a different truth than "no player here".
+    return { blocked: true };
   }
+  const winner = pickPlayerFrame(results || []);
+  if (!winner) return null;
+  playerFrameId = winner.frameId;
+  const player = winner.player;
+  // The read happened ~half a round trip after the press. While playing,
+  // walk the time back by that much so the mark lands where the person
+  // MEANT, not where the video had drifted to by the time we asked.
+  if (!player.paused) {
+    const rtt = (performance.now() - started) / 1000;
+    player.time = Math.max(0, player.time - (rtt / 2) * (player.rate || 1));
+  }
+  return player;
 };
 
 // Injected: a lease-based playhead feed. The panel extends the lease
@@ -317,15 +387,34 @@ const readPlayerTime = async () => {
 function watchPlayerInPage(untilMs) {
   window.__annotatedFeedUntil = untilMs;
   if (window.__annotatedFeedTimer) return true;
+  // Mirrors readPlayersInPage's scoring — injected functions serialize
+  // without their lexical scope, so the body travels by copy.
   const read = () => {
-    const players = [...document.querySelectorAll('video, audio')];
+    let players = [...document.querySelectorAll('video, audio')];
+    if (!players.length) {
+      const collect = (root, out) => {
+        for (const el of root.querySelectorAll('video, audio')) out.push(el);
+        for (const el of root.querySelectorAll('*')) if (el.shadowRoot) collect(el.shadowRoot, out);
+        return out;
+      };
+      players = collect(document, []);
+    }
     if (!players.length) return null;
-    const active = players.find((el) => !el.paused && !el.ended)
-      || players.find((el) => el.currentTime > 0)
-      || players[0];
+    const score = (el) => {
+      const box = el.getBoundingClientRect();
+      const visible = Math.max(0, Math.min(box.bottom, innerHeight) - Math.max(box.top, 0))
+        * Math.max(0, Math.min(box.right, innerWidth) - Math.max(box.left, 0));
+      return (el === document.pictureInPictureElement ? 1e9 : 0)
+        + (!el.paused && !el.ended ? 5e8 : 0)
+        + (el.muted ? 0 : 1e7)
+        + (el.currentTime > 0 ? 1e6 : 0)
+        + visible;
+    };
+    const active = players.reduce((a, b) => (score(b) > score(a) ? b : a));
     const yt = document.querySelector('#movie_player');
+    const origin = active.seekable && active.seekable.length ? active.seekable.start(0) : 0;
     return {
-      time: Math.max(0, active.currentTime || 0),
+      time: Math.max(0, (active.currentTime || 0) - origin),
       duration: Number.isFinite(active.duration) ? Math.floor(active.duration) : 0,
       paused: Boolean(active.paused),
       adShowing: Boolean(yt && (yt.classList.contains('ad-showing') || yt.classList.contains('ad-interrupting'))),
@@ -385,12 +474,12 @@ async function previewRangeInPage(startSeconds, endSeconds) {
 
 const seekPlayer = async (seconds) => {
   if (!Number.isInteger(currentTabId)) return;
-  await chrome.scripting.executeScript({ target: { tabId: currentTabId }, func: seekPlayerInPage, args: [seconds] }).catch(() => {});
+  await chrome.scripting.executeScript({ target: { tabId: currentTabId, frameIds: [playerFrameId] }, func: seekPlayerInPage, args: [seconds] }).catch(() => {});
 };
 
 const playSelection = async () => {
   if (!(marks.inSet && marks.outSet) || !Number.isInteger(currentTabId)) return;
-  const results = await chrome.scripting.executeScript({ target: { tabId: currentTabId }, func: previewRangeInPage, args: [marks.start, marks.end] }).catch(() => null);
+  const results = await chrome.scripting.executeScript({ target: { tabId: currentTabId, frameIds: [playerFrameId] }, func: previewRangeInPage, args: [marks.start, marks.end] }).catch(() => null);
   const outcome = results?.[0]?.result;
   if (!outcome?.ok) showToast(outcome?.reason === 'blocked' ? 'Click the video once, then try again.' : 'No player found on this tab.');
 };
@@ -919,7 +1008,12 @@ const draftPayload = () => ({
 const saveDraft = () => {
   if (!draftReady || !Number.isInteger(currentTabId)) return;
   clearTimeout(draftSaveTimer);
-  draftSaveTimer = setTimeout(() => { void extensionStorage.saveTabDraft(currentTabId, draftPayload()).catch(() => {}); }, 250);
+  // Snapshot now, write later: the debounce fires after a tab switch may
+  // have rebound the panel, and a late write must land under the tab and
+  // content it belonged to — never the new tab's key with emptied state.
+  const tabId = currentTabId;
+  const payload = draftPayload();
+  draftSaveTimer = setTimeout(() => { void extensionStorage.saveTabDraft(tabId, payload).catch(() => {}); }, 250);
 };
 
 const restoreDraft = (draft) => {
@@ -980,9 +1074,13 @@ const loadCurrentTab = async () => {
   }
   if (!tab) return;
   const url = tab.url || '';
-  const changed = tab.id !== currentTabId;
+  // A new URL in the same tab is a new source: YouTube's in-tab navigation
+  // must reset the capture exactly like a tab switch, or marks made on one
+  // video get published against the next.
+  const changed = tab.id !== currentTabId || url !== currentTab.url;
   if (changed) {
     draftReady = false;
+    typeOverridden = false;
     resetCaptureState();
     currentTabId = tab.id ?? null;
     feedCache.page = null;
@@ -995,8 +1093,13 @@ const loadCurrentTab = async () => {
   }
   const host = (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })();
   currentTab = { url, title: tab.title || host || 'This tab', host, sourceType: currentTab.sourceType || 'article', duration: 0 };
-  currentTab.sourceType = await detectSourceType(tab.id, url);
+  if (!typeOverridden) currentTab.sourceType = await detectSourceType(tab.id, url);
   if (currentTabId !== tab.id) return; // a faster tab switch won the race
+  // Seed the winning player frame (and its duration) so the live feed and
+  // the first mark land on an embedded player without a warm-up press.
+  if (isMediaType() && /^https?:/.test(url)) {
+    void readPlayerTime().catch(() => null);
+  }
   void installSelectionWatcher(tab.id, url);
   // The needle found a new station: the live dot swells once, the title fades in.
   if (changed) retrigger(document.querySelector('.cap-source'), 'is-retuned');
@@ -1025,7 +1128,7 @@ const loadCurrentTab = async () => {
       if (!tab.title && resolvedSource.title) currentTab.title = resolvedSource.title;
       currentTab.host = resolvedSource.host || currentTab.host;
       currentTab.duration = resolvedSource.duration || 0;
-      if (resolvedSource.sourceType) currentTab.sourceType = resolvedSource.sourceType;
+      if (resolvedSource.sourceType && !typeOverridden) currentTab.sourceType = resolvedSource.sourceType;
       syncSource();
     } catch { /* the page's own details are enough to capture */ }
   }
@@ -1033,8 +1136,11 @@ const loadCurrentTab = async () => {
 };
 
 chrome.tabs?.onActivated?.addListener(() => { void loadCurrentTab(); });
-chrome.tabs?.onUpdated?.addListener((_tabId, changeInfo) => {
+chrome.tabs?.onUpdated?.addListener((tabId, changeInfo) => {
   // SPA navigations change the URL without a load cycle — rebind on both.
+  // Only the bound tab drives the panel: a background tab finishing its
+  // load must not yank the composer or revert a manual type override.
+  if (Number.isInteger(currentTabId) && tabId !== currentTabId) return;
   if (changeInfo.status === 'complete' || changeInfo.url) void loadCurrentTab();
 });
 
@@ -1042,17 +1148,29 @@ chrome.tabs?.onUpdated?.addListener((_tabId, changeInfo) => {
 
 // A mark press with no reachable player drops into typed times — chosen
 // copy, not an error, and the way back stays on screen.
-const enterManualMode = () => {
+const enterManualMode = (copy = 'No player found on this tab — type the times instead.') => {
   manualMode = true;
   syncMarks();
-  bayNote.innerHTML = 'No player found on this tab — type the times instead.';
+  bayNote.textContent = copy;
   manualIn.focus();
+};
+
+// Blocked is a different truth than empty, and an ad's clock is not the
+// video's: both refuse honestly instead of writing a poisoned number.
+const usablePlayer = (player) => {
+  if (player?.blocked) { enterManualMode('This page doesn’t allow reading its player — type the times.'); return null; }
+  if (!player) { enterManualMode(); return null; }
+  if (player.adShowing) { showToast('An ad is playing — mark once the video resumes.'); return null; }
+  return player;
 };
 
 const captureMark = async (boundary) => {
   if (panelMode !== 'capture') setPanelMode('capture');
-  const player = await readPlayerTime();
-  if (!player) { enterManualMode(); return; }
+  const tabId = currentTabId;
+  const probed = await readPlayerTime();
+  if (tabId !== currentTabId) return; // a tab switch mid-probe wins
+  const player = usablePlayer(probed);
+  if (!player) return;
   if (player.duration && !currentTab.duration) currentTab.duration = player.duration;
   if (boundary === 'in') {
     marks.start = player.time;
@@ -1082,8 +1200,11 @@ const captureMark = async (boundary) => {
 // on "that was good — keep the last N seconds."
 const captureLastN = async (seconds) => {
   if (panelMode !== 'capture') setPanelMode('capture');
-  const player = await readPlayerTime();
-  if (!player) { enterManualMode(); return; }
+  const tabId = currentTabId;
+  const probed = await readPlayerTime();
+  if (tabId !== currentTabId) return; // a tab switch mid-probe wins
+  const player = usablePlayer(probed);
+  if (!player) return;
   if (player.duration && !currentTab.duration) currentTab.duration = player.duration;
   marks.end = player.time;
   marks.start = Math.max(0, player.time - seconds);
@@ -1101,8 +1222,9 @@ const captureLastN = async (seconds) => {
 // time in the background, so it is accurate even though the panel woke
 // up later. A player found on an "article" tab flips the type — an
 // embedded video someone is marking IS the source.
-const applyGlobalMark = ({ boundary, time, duration }) => {
+const applyGlobalMark = ({ boundary, time, duration, adShowing }) => {
   if (panelMode !== 'capture') setPanelMode('capture');
+  if (adShowing) { showToast('An ad is playing — mark once the video resumes.'); return; }
   if (time === null || time === undefined) { if (isMediaType()) enterManualMode(); return; }
   if (!isMediaType()) { currentTab.sourceType = 'video'; syncSource(); }
   if (duration && !currentTab.duration) currentTab.duration = duration;
@@ -1252,7 +1374,9 @@ function watchSelectionInPage() {
     clearTimeout(timer);
     timer = setTimeout(() => {
       const text = String(window.getSelection()?.toString() || '').replace(/\s+/g, ' ').trim();
-      try { chrome.runtime.sendMessage({ type: 'ANNOTATED_SELECTION', preview: text.slice(0, 80) }); } catch { /* extension reloaded */ }
+      // With the panel closed nobody answers and the returned promise
+      // rejects onto the PAGE's console — this listener outlives us.
+      try { chrome.runtime.sendMessage({ type: 'ANNOTATED_SELECTION', preview: text.slice(0, 80) }).catch(() => {}); } catch { /* extension reloaded */ }
     }, 250);
   });
   return true;
@@ -1296,7 +1420,7 @@ setInterval(() => {
   if (panelMode !== 'capture' || !isMediaType() || manualMode || document.hidden) return;
   if (!Number.isInteger(currentTabId) || !/^https?:/.test(currentTab.url || '')) return;
   chrome.scripting.executeScript({
-    target: { tabId: currentTabId },
+    target: { tabId: currentTabId, frameIds: [playerFrameId] },
     func: watchPlayerInPage,
     args: [Date.now() + 5000],
   }).catch(() => {});
@@ -1322,8 +1446,11 @@ chrome.runtime?.onMessage?.addListener((message, sender) => {
     applyGlobalMark(message);
     return;
   }
-  // Right-click "Annotate" while the panel is already open: capture now.
+  // Right-click "Annotate" while the panel is already open: capture now,
+  // and clear the stash the background left for a cold panel — otherwise
+  // it waits there and fires a phantom capture on the next open.
   if (message?.type === 'ANNOTATED_GRAB_SELECTION' && message.tabId === currentTabId) {
+    void chrome.storage.session.remove('annotatedPendingGrab').catch(() => {});
     void captureSelection();
   }
 });
@@ -1372,6 +1499,8 @@ passageClear.addEventListener('click', () => {
 
 typeSelect.addEventListener('change', () => {
   currentTab.sourceType = typeSelect.value;
+  // A hand on the dial outranks every probe until the page changes.
+  typeOverridden = true;
   syncSource();
   saveDraft();
 });
@@ -1464,15 +1593,18 @@ const startAudioRecording = async () => {
     showError('Audio recording is not supported in this browser.');
     return;
   }
-  if (audioDraftId) await deleteAudioDraft(audioDraftId).catch(() => {});
-  audioDraftId = '';
-  audioAssetId = '';
-  audioDurationSeconds = 0;
-  recordingChunks = [];
+  // Ask for the mic BEFORE destroying the take you already have: denying
+  // the prompt used to leave you with neither the old take nor a new one.
+  const previousDraftId = audioDraftId;
   const token = ++recordingToken;
   const sourceUrl = currentTab.url;
   try {
     recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (previousDraftId) await deleteAudioDraft(previousDraftId).catch(() => {});
+    audioDraftId = '';
+    audioAssetId = '';
+    audioDurationSeconds = 0;
+    recordingChunks = [];
     if (token !== recordingToken || currentTab.url !== sourceUrl) {
       recordingStream.getTracks().forEach((track) => track.stop());
       recordingStream = null;
@@ -1484,14 +1616,21 @@ const startAudioRecording = async () => {
     recordingStartedAt = Date.now();
     recorder.addEventListener('dataavailable', (event) => { if (event.data.size) recordingChunks.push(event.data); });
     recorder.addEventListener('stop', async () => {
+      // The stream can end without us: unplug a headset or revoke mic
+      // permission and MediaRecorder stops itself. Clear the ticker here
+      // or it repaints "Recording your take…" forever over a dead
+      // recorder that stopAudioRecording can no longer reach.
+      clearInterval(recordingTimer);
       recordingStream?.getTracks().forEach((track) => track.stop());
       recordingStream = null;
-      audioDurationSeconds = clampAudioDuration((Date.now() - recordingStartedAt) / 1000);
       const recordedMimeType = recorder.mimeType || 'audio/webm';
       const blob = new Blob(recordingChunks, { type: recordedMimeType });
       recordingChunks = [];
       if (mediaRecorder === recorder) mediaRecorder = null;
+      // The guard comes first: a stale recorder must not stamp its take's
+      // length onto the tab the panel has moved to.
       if (token !== recordingToken || currentTab.url !== sourceUrl) return;
+      audioDurationSeconds = clampAudioDuration((Date.now() - recordingStartedAt) / 1000);
       setReviewTake(blob); // hear it before you publish it
       try {
         const stagedId = await stageAudioDraft(blob, { duration: audioDurationSeconds, mimeType: recordedMimeType });
@@ -1581,16 +1720,31 @@ publishButton.addEventListener('click', async () => {
   clearError();
   const blocker = publishBlocker();
   if (blocker) { publishHint.textContent = blocker; return; }
+  // One publish at a time: disarm before the first await, not after —
+  // a fast double-click must not run the handler twice.
+  publishButton.disabled = true;
+  publishButton.classList.add('is-working');
+  const rearm = () => { publishButton.classList.remove('is-working'); syncPublishGate(); };
   // A reader who has never signed in gets the door, not a false 'session
   // expired' after a doomed round-trip. The capture stays exactly where it is.
   if (!(await extensionStorage.getAuthToken().catch(() => null))) {
+    rearm();
     openSignin('Sign in to publish — your capture stays right here.');
     return;
   }
+  // A failed audio upload used to promise "it will retry" and queue
+  // nothing. Now the failure falls through to a real queued capture that
+  // carries its audioDraftId — the background worker uploads the staged
+  // take first, then publishes.
+  let audioUploadFailed = null;
   if (commentaryMode === 'audio' && !audioAssetId && audioDraftId) {
     try { await uploadStagedAudio(); } catch (uploadError) {
-      showError(uploadError.retryable ? 'Audio note saved locally. It will retry when the backend is available.' : uploadError.message || 'Finish uploading the audio note before publishing.');
-      return;
+      if (!uploadError.retryable && !uploadError.authRequired) {
+        rearm();
+        showError(uploadError.message || 'Finish uploading the audio note before publishing.');
+        return;
+      }
+      audioUploadFailed = uploadError;
     }
   }
   const payload = {
@@ -1618,8 +1772,18 @@ publishButton.addEventListener('click', async () => {
       anchorSuffix: selection.suffix || undefined,
     } : {}),
   };
-  publishButton.disabled = true;
-  publishButton.classList.add('is-working');
+  if (audioUploadFailed) {
+    await extensionStorage.queueCapture({ ...payload, audioDraftId }).catch(() => {});
+    await refreshQueueStatus();
+    rearm();
+    if (audioUploadFailed.authRequired) {
+      setAuthState(false);
+      openSignin('Sign in — your voice note is queued and publishes itself.');
+    } else {
+      showError('Audio note queued locally. It uploads and publishes when the backend is back.');
+    }
+    return;
+  }
   publishHint.textContent = 'Publishing…';
   try {
     const { annotation } = await apiRequest('/api/annotations', { method: 'POST', body: JSON.stringify(payload) });

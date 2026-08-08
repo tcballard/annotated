@@ -88,6 +88,11 @@ const retryPendingCapturesOnce = async () => {
   for (const capture of captures) {
     if (capture.status === 'blocked' || capture.attempts >= MAX_PENDING_ATTEMPTS) continue;
     if (capture.status === 'needs-auth' && !token) continue;
+    // Exponential spacing between attempts: eight tries used to burn in
+    // eight minutes flat, so any outage longer than a coffee break
+    // permanently blocked the queue. Now they spread across ~4 hours.
+    const lastAttempt = Date.parse(capture.lastAttemptAt || '');
+    if (Number.isFinite(lastAttempt) && Date.now() - lastAttempt < Math.min(2 ** (capture.attempts || 0), 128) * 60_000) continue;
     const headers = token ? { authorization: `Bearer ${token}` } : {};
     try {
       const payload = await uploadStagedAudio(capture, origin, headers);
@@ -165,21 +170,56 @@ chrome.runtime.onInstalled.addListener(() => {
 // sidePanel.open call must see the user gesture, so it fires before any
 // await in the listener.
 const readPlayerForCommand = async (tabId) => {
+  // Mirrors the panel's readPlayersInPage scoring — injected functions
+  // serialize without scope, so the body travels by copy. All frames:
+  // an embedded player is a first-class citizen here too.
   const results = await chrome.scripting.executeScript({
-    target: { tabId },
+    target: { tabId, allFrames: true },
     func: () => {
-      const players = [...document.querySelectorAll('video, audio')];
+      let players = [...document.querySelectorAll('video, audio')];
+      if (!players.length) {
+        const collect = (root, out) => {
+          for (const el of root.querySelectorAll('video, audio')) out.push(el);
+          for (const el of root.querySelectorAll('*')) if (el.shadowRoot) collect(el.shadowRoot, out);
+          return out;
+        };
+        players = collect(document, []);
+      }
       if (!players.length) return null;
-      const active = players.find((el) => !el.paused && !el.ended)
-        || players.find((el) => el.currentTime > 0)
-        || players[0];
+      const score = (el) => {
+        const box = el.getBoundingClientRect();
+        const visible = Math.max(0, Math.min(box.bottom, innerHeight) - Math.max(box.top, 0))
+          * Math.max(0, Math.min(box.right, innerWidth) - Math.max(box.left, 0));
+        return (el === document.pictureInPictureElement ? 1e9 : 0)
+          + (!el.paused && !el.ended ? 5e8 : 0)
+          + (el.muted ? 0 : 1e7)
+          + (el.currentTime > 0 ? 1e6 : 0)
+          + visible;
+      };
+      const active = players.reduce((a, b) => (score(b) > score(a) ? b : a));
+      const yt = document.querySelector('#movie_player');
+      const origin = active.seekable && active.seekable.length ? active.seekable.start(0) : 0;
       return {
-        time: Math.max(0, active.currentTime || 0),
+        time: Math.max(0, (active.currentTime || 0) - origin),
         duration: Number.isFinite(active.duration) ? Math.floor(active.duration) : 0,
+        paused: Boolean(active.paused),
+        muted: Boolean(active.muted),
+        adShowing: Boolean(yt && (yt.classList.contains('ad-showing') || yt.classList.contains('ad-interrupting'))),
       };
     },
   }).catch(() => null);
-  return results?.[0]?.result || null;
+  const winners = (results || [])
+    .filter((entry) => entry && entry.result)
+    .map((entry) => ({
+      player: entry.result,
+      score: (entry.result.adShowing ? -1e9 : 0)
+        + (!entry.result.paused ? 5e8 : 0)
+        + (entry.result.muted ? 0 : 1e7)
+        + (entry.result.time > 0 ? 1e6 : 0)
+        + ((entry.frameId || 0) === 0 ? 1 : 0),
+    }))
+    .sort((a, b) => b.score - a.score);
+  return winners[0]?.player || null;
 };
 
 chrome.commands?.onCommand.addListener((command, tab) => {
@@ -196,12 +236,16 @@ chrome.commands?.onCommand.addListener((command, tab) => {
 
 chrome.contextMenus?.onClicked.addListener((info, tab) => {
   if (info.menuItemId !== 'annotated-capture-selection' || !tab?.id) return;
+  // The gesture grant from this click lives only for the synchronous run
+  // of the listener: awaiting anything first spends it, and sidePanel.open
+  // then rejects with "may only be called in response to a user gesture"
+  // — swallowed, so the menu item silently did nothing on a cold panel.
+  // Open first, stash and message after.
+  void chrome.sidePanel.open({ tabId: tab.id }).catch(() => {});
   runBackgroundTask('context-menu capture', async () => {
-    // Stash first so a cold panel finds the request at boot; the message
-    // covers the already-open panel. The context-menu click is the user
-    // gesture sidePanel.open requires.
+    // The stash covers a cold panel (consumed at boot); the message covers
+    // one that is already open.
     await chrome.storage.session.set({ annotatedPendingGrab: { tabId: tab.id } }).catch(() => {});
-    await chrome.sidePanel.open({ tabId: tab.id });
     await chrome.runtime.sendMessage({ type: 'ANNOTATED_GRAB_SELECTION', tabId: tab.id }).catch(() => {});
   });
 });

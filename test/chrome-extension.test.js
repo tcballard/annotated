@@ -359,6 +359,74 @@ test('the clip bay: the moment is drawn on the media’s own timeline', async ()
   assert.match(runtime, /ANNOTATED_MARK/);
 });
 
+test('nothing survives a navigation it does not belong to', async () => {
+  const runtime = await read('sidepanel.js');
+  // a new URL in the same tab is a new source: the rebind guard includes it
+  assert.match(runtime, /const changed = tab\.id !== currentTabId \|\| url !== currentTab\.url;/);
+  // the draft debounce snapshots its tab and payload at schedule time
+  const save = runtime.slice(runtime.indexOf('const saveDraft'), runtime.indexOf('const restoreDraft'));
+  assert.match(save, /const tabId = currentTabId;\s*\n\s*const payload = draftPayload\(\);/);
+  assert.match(save, /saveTabDraft\(tabId, payload\)/);
+  // background tabs never drive the panel
+  assert.match(runtime, /if \(Number\.isInteger\(currentTabId\) && tabId !== currentTabId\) return;/);
+  // a hand on the type dial outranks every probe until the page changes
+  assert.match(runtime, /typeOverridden = true;/);
+  assert.match(runtime, /if \(!typeOverridden\) currentTab\.sourceType = await detectSourceType/);
+  assert.match(runtime, /resolvedSource\.sourceType && !typeOverridden/);
+  // a mark probe that returns after a tab switch is discarded
+  assert.match(runtime, /if \(tabId !== currentTabId\) return; \/\/ a tab switch mid-probe wins/);
+});
+
+test('the probe finds the player you are watching, and refuses poisoned clocks', async () => {
+  const runtime = await read('sidepanel.js');
+  const background = await read('background.js');
+  // every frame is searched — an embedded player is a first-class citizen
+  assert.match(runtime, /target: \{ tabId: currentTabId, allFrames: true \}/);
+  assert.match(background, /target: \{ tabId, allFrames: true \}/);
+  // the scoring cascade: PiP > playing > unmuted > has-progress > on-screen
+  assert.match(runtime, /function readPlayersInPage\(\)/);
+  assert.match(runtime, /pictureInPictureElement \? 1e9/);
+  assert.match(runtime, /el\.shadowRoot\) collect\(el\.shadowRoot, out\)/);
+  // live/DVR timelines don't start at zero
+  assert.match(runtime, /seekable\.start\(0\)/);
+  // an ad's clock is refused, not silently trusted — in the panel AND
+  // for global marks read in the background
+  assert.match(runtime, /An ad is playing — mark once the video resumes\./);
+  assert.match(runtime, /adShowing\) \{ showToast\('An ad is playing/);
+  assert.match(background, /adShowing: Boolean\(yt/);
+  // blocked injection is a different truth than "no player here"
+  assert.match(runtime, /return \{ blocked: true \};/);
+  assert.match(runtime, /doesn’t allow reading its player/);
+  // the winning frame is remembered; seek, preview, and the lease target it
+  assert.match(runtime, /let playerFrameId = 0;/);
+  assert.match(runtime, /frameIds: \[playerFrameId\]/);
+  // the mark lands where the person meant: half the round trip walked back
+  assert.match(runtime, /\(rtt \/ 2\) \* \(player\.rate \|\| 1\)/);
+});
+
+test('the panel keeps its hands clean: gestures, stashes, listeners, takes', async () => {
+  const runtime = await read('sidepanel.js');
+  const background = await read('background.js');
+  // the context-menu gesture is spent by the first await, so open first
+  const menu = background.slice(background.indexOf("info.menuItemId !== 'annotated-capture-selection'"));
+  assert.ok(menu.indexOf('chrome.sidePanel.open') < menu.indexOf('await '), 'sidePanel.open runs inside the gesture, before any await');
+  // the warm path clears the stash the cold path would have consumed
+  assert.match(runtime, /remove\('annotatedPendingGrab'\)[\s\S]{0,80}captureSelection\(\)/);
+  // the injected selection watcher outlives the panel — its send must not
+  // reject onto the page's console
+  assert.match(runtime, /ANNOTATED_SELECTION', preview: text\.slice\(0, 80\) \}\)\.catch\(\(\) => \{\}\)/);
+  // a self-ending recorder clears its own ticker, and a stale take never
+  // stamps its length onto the tab the panel moved to
+  const stop = runtime.slice(runtime.indexOf("recorder.addEventListener('stop'"));
+  assert.ok(stop.indexOf('clearInterval(recordingTimer)') < stop.indexOf('recordingStream?.getTracks'), 'the stop handler clears the ticker first');
+  assert.ok(stop.indexOf('token !== recordingToken') < stop.indexOf('audioDurationSeconds = clampAudioDuration'), 'the staleness guard precedes the duration write');
+  // the mic is requested before the previous take is destroyed
+  const start = runtime.slice(runtime.indexOf('const startAudioRecording'));
+  assert.ok(start.indexOf('getUserMedia({ audio: true })') < start.indexOf('deleteAudioDraft'), 'permission first, deletion second');
+  // the queue backs off instead of burning eight attempts in eight minutes
+  assert.match(background, /Math\.min\(2 \*\* \(capture\.attempts \|\| 0\), 128\) \* 60_000/);
+});
+
 test('details that read expensive: sources wear their faces', async () => {
   const runtime = await read('sidepanel.js');
   const html = await read('sidepanel.html');
