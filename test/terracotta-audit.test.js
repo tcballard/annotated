@@ -15,7 +15,10 @@ const ALLOWED_SELECTORS = [
   /^:root$/,
   /\.chip\b/,
   /\.livedot\b/,
-  /\.markbtn\.is-set \.t$/,
+  // The clip band's selection fill and live tail ARE the mark-selection
+  // state — the same clause of law 1 that covered the old set-mark time
+  // readouts. The playhead stays ink (navigation), the rail stays hair.
+  /\.band-(sel|tail)$/,
   /\.cliptag\b/,
   /\.tab\.is-active::after$/,
   /\.nav-link\.is-active$/,

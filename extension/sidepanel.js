@@ -2,7 +2,7 @@ import { extensionStorage, PENDING_KEY } from './storage.js';
 import { apiOrigin, authHeaders, signIn, signOut } from './config.js';
 import { clampAudioDuration, MAX_AUDIO_SECONDS, preferredAudioMimeType } from './audio.js';
 import { deleteAudioDraft, readAudioDraft, stageAudioDraft } from './media-draft-store.js';
-import { MAX_CLIP_SECONDS } from './clip-range.js';
+import { MAX_CLIP_SECONDS, moveClipBoundary, normalizeClipRange } from './clip-range.js';
 import { isTopic, TOPICS } from './topics.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
 import { avatarColor, avatarInitial } from './avatar.js';
@@ -17,14 +17,28 @@ const mediaSelection = $('#mediaSelection');
 const textSelection = $('#textSelection');
 const markIn = $('#markIn');
 const markOut = $('#markOut');
-const markInTime = $('#markInTime');
-const markOutTime = $('#markOutTime');
 const durationChip = $('#durationChip');
-const markNote = $('#markNote');
+const bayNote = $('#bayNote');
+const bayTotal = $('#bayTotal');
+const band = $('#band');
+const bandSel = $('#bandSel');
+const bandTail = $('#bandTail');
+const bandHead = $('#bandHead');
+const bandCeiling = $('#bandCeiling');
+const bayMoment = $('#bayMoment');
+const bayPoster = $('#bayPoster');
+const bayMeta = $('#bayMeta');
+const bayPrimary = $('#bayPrimary');
+const bayPrimaryLabel = $('#bayPrimaryLabel');
+const bayPrimaryKey = $('#bayPrimaryKey');
+const bayLast30 = $('#bayLast30');
+const bayClear = $('#bayClear');
+const typeToggle = $('#typeToggle');
+const playerToggle = $('#playerToggle');
+const bayFoot = document.querySelector('.bay-foot');
 const manualMarks = $('#manualMarks');
 const manualIn = $('#manualIn');
 const manualOut = $('#manualOut');
-const overReason = $('#overReason');
 const grabSelection = $('#grabSelection');
 const passageCard = $('#passageCard');
 const passageChip = $('#passageChip');
@@ -78,6 +92,8 @@ let currentTab = { url: '', title: 'Reading this tab…', host: '', sourceType: 
 let resolvedSource = null;
 let selection = { text: '', paragraph: 0, prefix: '', suffix: '' };
 let marks = { start: 0, end: 0, inSet: false, outSet: false };
+let manualMode = false;
+let playhead = { time: 0, duration: 0, paused: true, adShowing: false, at: 0 };
 let commentaryMode = 'text';
 let visibility = 'public';
 let topic = '';
@@ -106,7 +122,16 @@ let freshFeedTab = null;
 let lastCleared = null;
 const feedCache = { recent: null, following: null, page: null };
 
-const format = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, '0')}`;
+// Hours matter: podcasts run long, and parseTimeInput already accepts
+// 1:02:05 — format must be able to say it back. Seconds floor, never
+// round, so 59.6 can't become ":60".
+const format = (seconds) => {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = String(total % 60).padStart(2, '0');
+  return hours ? `${hours}:${String(mins).padStart(2, '0')}:${secs}` : `${mins}:${secs}`;
+};
 
 const escapeHTML = (value = '') => String(value)
   .replaceAll('&', '&amp;')
@@ -144,7 +169,7 @@ const faviconUrl = (pageUrl) => {
 // A site without a cached icon fails the img load; it disappears instead
 // of showing the broken-image glyph. Capture phase — error does not bubble.
 document.addEventListener('error', (event) => {
-  if (event.target?.classList?.contains('favicon')) event.target.hidden = true;
+  if (event.target?.classList?.contains('favicon') || event.target?.classList?.contains('bay-poster')) event.target.hidden = true;
 }, true);
 
 // A panel left open keeps telling the truth: relative times re-derive
@@ -286,6 +311,90 @@ const readPlayerTime = async () => {
   }
 };
 
+// Injected: a lease-based playhead feed. The panel extends the lease
+// every ~2s; a closed panel simply lets it lapse, so there is nothing
+// to tear down. Self-guarded and self-contained (no closures).
+function watchPlayerInPage(untilMs) {
+  window.__annotatedFeedUntil = untilMs;
+  if (window.__annotatedFeedTimer) return true;
+  const read = () => {
+    const players = [...document.querySelectorAll('video, audio')];
+    if (!players.length) return null;
+    const active = players.find((el) => !el.paused && !el.ended)
+      || players.find((el) => el.currentTime > 0)
+      || players[0];
+    const yt = document.querySelector('#movie_player');
+    return {
+      time: Math.max(0, active.currentTime || 0),
+      duration: Number.isFinite(active.duration) ? Math.floor(active.duration) : 0,
+      paused: Boolean(active.paused),
+      adShowing: Boolean(yt && (yt.classList.contains('ad-showing') || yt.classList.contains('ad-interrupting'))),
+    };
+  };
+  window.__annotatedFeedTimer = setInterval(() => {
+    if (Date.now() > window.__annotatedFeedUntil) {
+      clearInterval(window.__annotatedFeedTimer);
+      window.__annotatedFeedTimer = 0;
+      return;
+    }
+    const player = read();
+    if (!player) return;
+    try { chrome.runtime.sendMessage({ type: 'ANNOTATED_PLAYER_TICK', player }).catch(() => {}); }
+    catch { /* extension reloaded — the lease will lapse */ }
+  }, 250);
+  return true;
+}
+
+// Injected: seek the page's player. Setting currentTime is enough — the
+// page's own timeupdate handlers resync its scrubber.
+function seekPlayerInPage(seconds) {
+  const players = [...document.querySelectorAll('video, audio')];
+  if (!players.length) return false;
+  const active = players.find((el) => !el.paused && !el.ended)
+    || players.find((el) => el.currentTime > 0)
+    || players[0];
+  active.currentTime = seconds;
+  return true;
+}
+
+// Injected: play exactly the selection — seek to in, play, pause at out.
+// Token-guarded so a newer preview supersedes a running one.
+async function previewRangeInPage(startSeconds, endSeconds) {
+  const players = [...document.querySelectorAll('video, audio')];
+  if (!players.length) return { ok: false, reason: 'no-player' };
+  const el = players.find((p) => !p.paused && !p.ended)
+    || players.find((p) => p.currentTime > 0)
+    || players[0];
+  const token = (window.__annotatedPreviewToken = (window.__annotatedPreviewToken || 0) + 1);
+  const tick = () => {
+    if (token !== window.__annotatedPreviewToken) { el.removeEventListener('timeupdate', tick); return; }
+    if (el.currentTime >= endSeconds) {
+      el.removeEventListener('timeupdate', tick);
+      el.pause();
+    }
+  };
+  el.currentTime = startSeconds;
+  el.addEventListener('timeupdate', tick);
+  const outcome = await el.play().catch(() => 'blocked');
+  if (outcome === 'blocked' && el.paused) {
+    el.removeEventListener('timeupdate', tick);
+    return { ok: false, reason: 'blocked' };
+  }
+  return { ok: true };
+}
+
+const seekPlayer = async (seconds) => {
+  if (!Number.isInteger(currentTabId)) return;
+  await chrome.scripting.executeScript({ target: { tabId: currentTabId }, func: seekPlayerInPage, args: [seconds] }).catch(() => {});
+};
+
+const playSelection = async () => {
+  if (!(marks.inSet && marks.outSet) || !Number.isInteger(currentTabId)) return;
+  const results = await chrome.scripting.executeScript({ target: { tabId: currentTabId }, func: previewRangeInPage, args: [marks.start, marks.end] }).catch(() => null);
+  const outcome = results?.[0]?.result;
+  if (!outcome?.ok) showToast(outcome?.reason === 'blocked' ? 'Click the video once, then try again.' : 'No player found on this tab.');
+};
+
 const readPageSelection = async () => {
   if (!Number.isInteger(currentTabId)) return { text: '' };
   try {
@@ -386,6 +495,7 @@ const resolveSourceUrl = async (url, fallbackTitle = '') => {
     excerpt: source.excerpt || '',
     mediaUrl: source.mediaUrl || '',
     provider: source.provider || '',
+    poster: source.thumbnailUrl || source.imageUrl || '',
   };
 };
 
@@ -436,21 +546,85 @@ const retrigger = (element, className) => {
   element.classList.add(className);
 };
 
+// The band's scale: the full runtime when known, else enough to hold
+// everything visible — never less than one cap-width, so early marks
+// don't smear across the whole rail.
+const bandScale = () => Math.max(
+  currentTab.duration || 0,
+  playhead.duration || 0,
+  marks.end,
+  marks.inSet ? marks.start + MAX_CLIP_SECONDS : 0,
+  playhead.time,
+  MAX_CLIP_SECONDS,
+);
+
+const bandPct = (seconds) => `${Math.min(100, Math.max(0, (seconds / bandScale()) * 100))}%`;
+
+// The ceiling is enforced by geometry: a range can exist, but never a
+// range longer than the cap. normalizeClipRange clamps the end down.
+const clampMarks = () => {
+  if (!(marks.inSet && marks.outSet)) return;
+  const wasOver = marks.end - marks.start > MAX_CLIP_SECONDS;
+  const safe = normalizeClipRange(marks.start, marks.end, { max: bandScale(), maxDuration: MAX_CLIP_SECONDS });
+  marks.start = safe.start;
+  marks.end = safe.end;
+  if (wasOver) showToast(`Capped at ${format(MAX_CLIP_SECONDS)} — drag the start to shift the window`);
+};
+
+const baySentence = () => {
+  if (manualMode) return 'Times accept 1:02 or plain seconds.';
+  if (!marks.inSet && !marks.outSet) return 'Marks read the player — keys <kbd>I</kbd> · <kbd>O</kbd> · <kbd>L</kbd>';
+  if (marks.inSet && !marks.outSet) return `In at ${format(marks.start)} — mark the end`;
+  return 'Drag the ends — arrows nudge';
+};
+
 const syncMarks = () => {
   const length = Math.max(0, marks.end - marks.start);
-  markInTime.textContent = format(marks.start);
-  markOutTime.textContent = format(marks.end);
+  const both = marks.inSet && marks.outSet;
+  const scale = bandScale();
+  band.hidden = manualMode;
+  manualMarks.hidden = !manualMode;
+  bayFoot.hidden = manualMode;
+  // the handles ride the band at their marks
+  markIn.hidden = manualMode || !marks.inSet;
+  markOut.hidden = manualMode || !marks.outSet;
+  markIn.style.left = bandPct(marks.start);
+  markOut.style.left = bandPct(marks.end);
   markIn.classList.toggle('is-set', marks.inSet);
   markOut.classList.toggle('is-set', marks.outSet);
-  const nextDuration = format(length);
-  if (durationChip.textContent !== nextDuration) {
-    durationChip.textContent = nextDuration;
+  for (const [handle, value] of [[markIn, marks.start], [markOut, marks.end]]) {
+    handle.setAttribute('aria-valuemax', String(Math.floor(scale)));
+    handle.setAttribute('aria-valuenow', String(Math.floor(value)));
+    handle.setAttribute('aria-valuetext', format(value));
+  }
+  // the selection is the accent; the ceiling is geometry, not an alarm
+  bandSel.hidden = manualMode || !both || length <= 0;
+  bandSel.style.left = bandPct(marks.start);
+  bandSel.style.width = `${Math.max(0, (length / scale) * 100)}%`;
+  const ceilingAt = marks.start + MAX_CLIP_SECONDS;
+  bandCeiling.hidden = manualMode || !marks.inSet || both || ceilingAt >= scale;
+  bandCeiling.style.left = bandPct(ceilingAt);
+  // law 4: the chip names the moment in range grammar, or not at all
+  const chipText = both ? `${format(marks.start)}–${format(marks.end)}` : marks.inSet ? `${format(marks.start)}–…` : '';
+  bayMoment.hidden = !chipText;
+  if (chipText && durationChip.textContent !== chipText) {
+    durationChip.textContent = chipText;
     retrigger(durationChip, 'just-ticked');
   }
-  const over = length > MAX_CLIP_SECONDS;
-  durationChip.classList.toggle('is-over', over);
-  overReason.hidden = !over;
-  if (over) overReason.textContent = `Clips are capped at ${format(MAX_CLIP_SECONDS)}. Shorten the selection.`;
+  const total = currentTab.duration || playhead.duration || 0;
+  bayMeta.textContent = both
+    ? `${format(length)}${length >= MAX_CLIP_SECONDS ? ' — the cap' : ''}${total ? ` · ${Math.max(1, Math.round((length / total) * 100))}% of ${format(total)}` : ''}`
+    : '';
+  bayPoster.hidden = !(both && bayPoster.getAttribute('src'));
+  bayNote.innerHTML = baySentence();
+  bayTotal.hidden = manualMode;
+  if (Date.now() - playhead.at > 1200) bayTotal.textContent = total ? `${format(total)} total` : `${format(MAX_CLIP_SECONDS)} max`;
+  // the primary action morphs with the stage: in → out → play
+  bayPrimaryLabel.textContent = both ? 'Play selection' : marks.inSet ? 'Mark out' : 'Mark in';
+  bayPrimaryKey.textContent = marks.inSet ? 'O' : 'I';
+  bayPrimaryKey.hidden = both;
+  bayPrimary.querySelector('svg path').setAttribute('d', both ? 'M8 6v12l10-6z' : marks.inSet ? 'M19 5v14M5 12h10m-4-4 4 4-4 4' : 'M5 5v14M19 12H9m4-4-4 4 4 4');
+  bayClear.hidden = !marks.inSet && !marks.outSet;
   if (manualIn !== document.activeElement) manualIn.value = format(marks.start);
   if (manualOut !== document.activeElement) manualOut.value = format(marks.end);
   syncPublishGate();
@@ -776,6 +950,9 @@ const resetCaptureState = () => {
   mediaRecorder = null;
   selection = { text: '', paragraph: 0, prefix: '', suffix: '' };
   marks = { start: 0, end: 0, inSet: false, outSet: false };
+  manualMode = false;
+  playhead = { time: 0, duration: 0, paused: true, adShowing: false, at: 0 };
+  bayPoster.removeAttribute('src');
   commentaryMode = 'text';
   visibility = 'public';
   visibilitySelect.value = 'public';
@@ -840,6 +1017,9 @@ const loadCurrentTab = async () => {
       // details onto the tab we are on now.
       if (currentTab.url !== url) return;
       resolvedSource = resolved;
+      // The moment gets a face: the resolver's thumbnail rides the bay.
+      if (resolvedSource.poster) bayPoster.src = resolvedSource.poster;
+      else bayPoster.removeAttribute('src');
       // The live tab title is the source of truth for the strip; the resolver
       // fills in what the tab cannot know (canonical URL, media URL, duration).
       if (!tab.title && resolvedSource.title) currentTab.title = resolvedSource.title;
@@ -860,15 +1040,19 @@ chrome.tabs?.onUpdated?.addListener((_tabId, changeInfo) => {
 
 /* ── marks ─────────────────────────────────────────────────────────── */
 
+// A mark press with no reachable player drops into typed times — chosen
+// copy, not an error, and the way back stays on screen.
+const enterManualMode = () => {
+  manualMode = true;
+  syncMarks();
+  bayNote.innerHTML = 'No player found on this tab — type the times instead.';
+  manualIn.focus();
+};
+
 const captureMark = async (boundary) => {
   if (panelMode !== 'capture') setPanelMode('capture');
   const player = await readPlayerTime();
-  if (!player) {
-    manualMarks.hidden = false;
-    markNote.innerHTML = 'No player found on this tab — type the times instead.';
-    manualIn.focus();
-    return;
-  }
+  if (!player) { enterManualMode(); return; }
   if (player.duration && !currentTab.duration) currentTab.duration = player.duration;
   if (boundary === 'in') {
     marks.start = player.time;
@@ -877,15 +1061,111 @@ const captureMark = async (boundary) => {
   } else {
     marks.end = player.time;
     marks.outSet = true;
-    if (!marks.inSet || marks.start > marks.end) { marks.start = Math.max(0, marks.end); marks.inSet = true; }
+    // Out-first is the natural retroactive reach — "that was good" —
+    // so window back a default 30s instead of inventing a dead range.
+    if (!marks.inSet) {
+      marks.start = Math.max(0, marks.end - 30);
+      marks.inSet = true;
+      showToast('Start set 30s back — drag it to adjust');
+    } else if (marks.start > marks.end) {
+      marks.start = Math.max(0, marks.end);
+    }
   }
+  clampMarks();
   syncMarks();
   retrigger(boundary === 'in' ? markIn : markOut, 'just-set');
+  retrigger(bandSel, 'just-set');
   saveDraft();
 };
 
-markIn.addEventListener('click', () => { void captureMark('in'); });
-markOut.addEventListener('click', () => { void captureMark('out'); });
+// Twitch's Alt+X, ours: the whole podcast and streaming world converged
+// on "that was good — keep the last N seconds."
+const captureLastN = async (seconds) => {
+  if (panelMode !== 'capture') setPanelMode('capture');
+  const player = await readPlayerTime();
+  if (!player) { enterManualMode(); return; }
+  if (player.duration && !currentTab.duration) currentTab.duration = player.duration;
+  marks.end = player.time;
+  marks.start = Math.max(0, player.time - seconds);
+  marks.inSet = true;
+  marks.outSet = true;
+  clampMarks();
+  syncMarks();
+  retrigger(markIn, 'just-set');
+  retrigger(markOut, 'just-set');
+  retrigger(bandSel, 'just-set');
+  saveDraft();
+};
+
+/* the handles: drag to shape the moment, arrows to nudge it */
+let dragging = null;
+
+const bandSeconds = (clientX) => {
+  const rect = band.getBoundingClientRect();
+  if (!rect.width) return 0;
+  return ((clientX - rect.left) / rect.width) * bandScale();
+};
+
+const applyBoundary = (boundary, seconds) => {
+  if (marks.inSet && marks.outSet) {
+    const next = moveClipBoundary(marks.start, marks.end, boundary, seconds, { max: bandScale(), maxDuration: MAX_CLIP_SECONDS });
+    marks.start = next.start;
+    marks.end = next.end;
+  } else if (boundary === 'start') {
+    marks.start = Math.max(0, Math.min(seconds, bandScale()));
+    if (marks.outSet && marks.end < marks.start) marks.end = marks.start;
+  } else {
+    marks.end = Math.max(0, Math.min(seconds, bandScale()));
+  }
+  syncMarks();
+};
+
+for (const handle of [markIn, markOut]) {
+  const boundary = handle === markIn ? 'start' : 'end';
+  handle.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    dragging = boundary;
+    handle.setPointerCapture(event.pointerId);
+  });
+  handle.addEventListener('pointermove', (event) => {
+    if (dragging !== boundary) return;
+    applyBoundary(boundary, bandSeconds(event.clientX));
+  });
+  handle.addEventListener('pointerup', () => {
+    if (dragging !== boundary) return;
+    dragging = null;
+    saveDraft();
+    // scrub-to-seek: releasing a handle parks the page player on it,
+    // so the page itself is the preview monitor
+    void seekPlayer(boundary === 'start' ? marks.start : marks.end);
+  });
+  handle.addEventListener('pointercancel', () => { dragging = null; saveDraft(); });
+  handle.addEventListener('keydown', (event) => {
+    const step = event.shiftKey ? 5 : 1;
+    let delta = 0;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') delta = -step;
+    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') delta = step;
+    if (!delta) return;
+    event.preventDefault();
+    applyBoundary(boundary, (boundary === 'start' ? marks.start : marks.end) + delta);
+    saveDraft();
+  });
+}
+
+bayPrimary.addEventListener('click', () => {
+  if (marks.inSet && marks.outSet) { void playSelection(); return; }
+  if (marks.inSet) { void captureMark('out'); return; }
+  void captureMark('in');
+});
+bayLast30.addEventListener('click', () => { void captureLastN(30); });
+bayClear.addEventListener('click', () => {
+  marks = { start: 0, end: 0, inSet: false, outSet: false };
+  syncMarks();
+  saveDraft();
+  bayPrimary.focus();
+});
+typeToggle.addEventListener('click', () => { manualMode = true; syncMarks(); manualIn.focus(); });
+playerToggle.addEventListener('click', () => { manualMode = false; syncMarks(); });
 
 const applyManualMark = (boundary, input) => {
   const parsed = parseTimeInput(input.value);
@@ -904,6 +1184,7 @@ const applyManualMark = (boundary, input) => {
     marks.outSet = true;
     if (marks.start > parsed) marks.start = parsed;
   }
+  clampMarks();
   syncMarks();
   retrigger(boundary === 'in' ? markIn : markOut, 'just-set');
   saveDraft();
@@ -943,10 +1224,50 @@ const armGrabber = (preview) => {
     : GRAB_IDLE_LABEL;
 };
 
+// The live playhead: cheap direct writes, never a full re-render. The
+// head is ink (it is where you are, not what you kept); the tail grows
+// terracotta from the in-mark while the out-mark is still pending.
+const updateBandLive = () => {
+  if (panelMode !== 'capture' || !isMediaType() || manualMode) return;
+  const fresh = Date.now() - playhead.at < 1200;
+  bandHead.hidden = !fresh;
+  if (fresh) bandHead.style.left = bandPct(playhead.time);
+  const tailing = fresh && marks.inSet && !marks.outSet && !playhead.paused && playhead.time > marks.start;
+  bandTail.hidden = !tailing;
+  if (tailing) {
+    const tailEnd = Math.min(playhead.time, marks.start + MAX_CLIP_SECONDS);
+    bandTail.style.left = bandPct(marks.start);
+    bandTail.style.width = `${Math.max(0, ((tailEnd - marks.start) / bandScale()) * 100)}%`;
+  }
+  const total = currentTab.duration || playhead.duration || 0;
+  bayTotal.textContent = fresh
+    ? `${playhead.adShowing ? 'ad · ' : ''}${format(playhead.time)}${total ? ` / ${format(total)}` : ''}`
+    : total ? `${format(total)} total` : `${format(MAX_CLIP_SECONDS)} max`;
+};
+
+// The lease driver: while the clip bay is on stage, keep the page feed
+// alive; everywhere else, let it lapse on its own.
+setInterval(() => {
+  if (panelMode !== 'capture' || !isMediaType() || manualMode || document.hidden) return;
+  if (!Number.isInteger(currentTabId) || !/^https?:/.test(currentTab.url || '')) return;
+  chrome.scripting.executeScript({
+    target: { tabId: currentTabId },
+    func: watchPlayerInPage,
+    args: [Date.now() + 5000],
+  }).catch(() => {});
+}, 2000);
+
 chrome.runtime?.onMessage?.addListener((message, sender) => {
   if (message?.type === 'ANNOTATED_SELECTION') {
     if (sender?.tab?.id !== currentTabId) return;
     armGrabber(message.preview || '');
+    return;
+  }
+  if (message?.type === 'ANNOTATED_PLAYER_TICK') {
+    if (sender?.tab?.id !== currentTabId) return;
+    playhead = { ...message.player, at: Date.now() };
+    if (playhead.duration && !currentTab.duration) currentTab.duration = playhead.duration;
+    updateBandLive();
     return;
   }
   // Right-click "Annotate" while the panel is already open: capture now.
@@ -1954,6 +2275,11 @@ document.addEventListener('keydown', (event) => {
   if (isMediaType() && (event.key === 'o' || event.key === 'O')) {
     event.preventDefault();
     void captureMark('out');
+    return;
+  }
+  if (isMediaType() && (event.key === 'l' || event.key === 'L')) {
+    event.preventDefault();
+    void captureLastN(30);
     return;
   }
   if (event.key === 'Escape') {

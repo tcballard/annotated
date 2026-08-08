@@ -359,7 +359,69 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .capture.is-unsupported .cap-hint,
 .capture.is-unsupported .recorder { display: none; }
 
-.marks { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+/* ── the clip bay ──────────────────────────────────────────────────────
+   The moment is drawn on the media's own timeline: a band with two
+   handles, a live playhead, and the ceiling as geometry — never as an
+   alarm. Terracotta appears only once a mark exists (law 1: the accent
+   is the mark-selection state itself). */
+
+.bay-head { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; color: var(--meta); margin-bottom: 2px; min-height: 20px; }
+.bay-note { min-width: 0; }
+.bay-total { margin-left: auto; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 11px; white-space: nowrap; }
+
+.band { position: relative; height: 44px; touch-action: none; }
+
+.band-rail { position: absolute; left: 0; right: 0; top: 50%; height: 6px; transform: translateY(-50%); background: var(--hair); border-radius: 99px; }
+
+.band-sel { position: absolute; top: 50%; height: 6px; transform: translateY(-50%); background: var(--accent); border-radius: 99px; transform-origin: left; }
+.band-sel.just-set { animation: band-in var(--t-move) var(--e-enter); }
+@keyframes band-in { from { transform: translateY(-50%) scaleX(0); } }
+
+.band-tail { position: absolute; top: 50%; height: 6px; transform: translateY(-50%); background: color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 99px; }
+
+.band-head { position: absolute; top: 10px; bottom: 10px; width: 2px; margin-left: -1px; background: var(--ink); border-radius: 99px; }
+
+.band-ceiling { position: absolute; top: 12px; bottom: 12px; width: 2px; margin-left: -1px; background: var(--border); border-radius: 99px; }
+
+.band-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  margin-left: -14px;
+  padding: 0;
+  cursor: grab;
+  background: none;
+  border: none;
+}
+
+.band-handle:active { cursor: grabbing; }
+
+.band-handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.band-handle.is-set::after { background: var(--accent); border-color: transparent; }
+.band-handle.just-set::after { animation: chip-tick var(--t-fade) var(--e-enter); }
+
+.bay-moment { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; }
+.bay-poster { width: 76px; height: 44px; flex: none; object-fit: cover; border-radius: 6px; border: 1px solid var(--hair); background: var(--soft); }
+.bay-moment-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.bay-meta { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 11px; color: var(--meta); }
+
+.bay-actions { display: flex; gap: 8px; margin: 2px 0 6px; }
+.bay-actions .markbtn:first-child { flex: 1.4; }
+.bay-actions .bay-last { flex: 1; }
+.bay-actions .bay-clear { flex: 0 0 44px; }
 
 .markbtn {
   flex: 1;
@@ -383,16 +445,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .markbtn svg { width: 14px; height: 14px; flex: none; }
 
-.markbtn .t {
-  font-family: var(--mono);
-  font-variant-numeric: tabular-nums;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--meta);
-  font-style: normal;
-}
-
-.markbtn.is-set .t { color: var(--accent); font-weight: 700; }
+.markbtn kbd { margin-left: 2px; }
 
 .chip {
   font-family: var(--mono);
@@ -407,13 +460,11 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   flex: none;
 }
 
-.chip.duration.is-over { color: #fff; background: var(--ink-soft); }
+.bay-foot { font-size: 11px; color: var(--meta); margin-bottom: 10px; }
+.bay-swap { color: var(--link); padding: 0; font-size: 11px; min-height: 0; }
+.bay-swap:hover { text-decoration: underline; }
 
-.mark-note { font-size: 11px; color: var(--meta); margin-bottom: 10px; }
-.mark-note button { color: var(--link); padding: 0; font-size: 11px; min-height: 0; }
-.mark-note button:hover { text-decoration: underline; }
-
-.manual-marks { display: flex; gap: 8px; margin-bottom: 10px; }
+.manual-marks { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
 
 .markfield {
   flex: 1;
@@ -428,7 +479,7 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 3px 4px 3px 10px;
-  min-height: 36px;
+  min-height: 40px;
 }
 
 .markfield input {
@@ -446,16 +497,6 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 }
 
 .markfield input:hover { border-color: var(--border); }
-
-.cap-block {
-  font-size: 12px;
-  color: var(--ink-soft);
-  background: var(--soft);
-  border-left: 3px solid var(--ink-soft);
-  border-radius: 0 8px 8px 0;
-  padding: 7px 10px;
-  margin-bottom: 10px;
-}
 
 /* article selection */
 .grabber {
