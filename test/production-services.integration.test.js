@@ -10,7 +10,7 @@ import {
   CreateBucketCommand,
   HeadObjectCommand,
 } from '@aws-sdk/client-s3';
-import { createPostgresStore, latestMigrationVersion } from '../server/store.js';
+import { createPostgresStore } from '../server/store.js';
 import { S3ObjectStore } from '../server/object-store.js';
 
 const integrationEnabled = Boolean(
@@ -46,7 +46,9 @@ test('production PostgreSQL and S3 adapters work against real services', {
   }));
   const persisted = await repository.read();
   assert.ok(persisted.users.some((user) => user.id === markerId));
-  assert.equal(latestMigrationVersion, '004_rate_limit_buckets');
+  // the applied schema must be the current one — check() throws on drift,
+  // and unlike a hardcoded version string it can never go stale
+  await repository.check();
 
   const fixturePrefix = `full-surface-${randomUUID()}`;
   const annotationId = `${fixturePrefix}-annotation`;
