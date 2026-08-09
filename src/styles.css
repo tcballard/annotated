@@ -1211,8 +1211,17 @@ footer .footer-note { margin-left: auto; }
 
 @media (max-width: 560px) {
   .chrome { gap: 8px; padding: 0 12px; }
+  .chrome .logo img { width: 74px; }
   .chrome nav { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  /* When the links overrun, the edge fades instead of shearing a word in
+     half — the fade zone is empty whenever everything fits. */
+  .chrome nav { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
   .chrome nav .nav-link { padding: 0 8px; flex: 0 0 auto; }
+  /* The source line gives the title the full width and lets it wrap — on a
+     provenance product the source's NAME outranks "· article ·", which used
+     to keep its every pixel while the title shrank to "Web an…". */
+  .srchead { white-space: normal; flex-wrap: wrap; row-gap: 2px; }
+  .srchead .srcname { flex: 1 1 100%; }
   .chrome .auth { flex-shrink: 0; }
   .chrome .auth .auth-long { display: none; }
   .permacard .actions { padding: 6px 8px 12px; }
@@ -1311,6 +1320,20 @@ html.shell-mode .feedhead {
 }
 html.shell-mode .feedhead .tabs { box-shadow: var(--shadow); }
 html.shell-mode .feed:has(.feedhead) { padding-bottom: 24px; }
+
+/* ── touch targets ──────────────────────────────────────────────────── */
+
+/* On a touch screen every control a shared link lands on meets the 44px
+   floor. Visual sizes hold — hit areas grow through padding, and the
+   avatar keeps its 28px face by clipping paint to the content box. */
+@media (pointer: coarse) {
+  .srcstrip .open { min-height: 44px; }
+  .act { min-height: 44px; min-width: 44px; justify-content: center; }
+  .tabs .tab { min-height: 44px; }
+  .chrome .bell { width: 44px; height: 44px; min-height: 44px; }
+  .chrome .me { box-sizing: content-box; padding: 8px; background-clip: content-box; }
+  footer a { display: inline-flex; align-items: center; min-height: 44px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
