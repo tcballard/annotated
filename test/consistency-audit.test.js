@@ -160,3 +160,22 @@ test('focus is the same ink ring on web and panel', () => {
     assert.match(css, /:focus-visible \{ outline-color: #F5F4F0; \}/, `${surface} flips to paper on the dark chrome`);
   }
 });
+
+test('one clock: web and panel share the same motion tokens', () => {
+  // Affordance motion runs on the panel's proven tokens on both surfaces.
+  // Authored sequences (the publish celebration's locked beat, ambient
+  // loops, the welcome's timeline) deliberately keep their own clocks.
+  const clock = [
+    '--t-press: 60ms', '--t-hover: 120ms', '--t-fade: 180ms', '--t-move: 240ms',
+    '--e-ink: cubic-bezier(.25, .1, .25, 1)',
+    '--e-enter: cubic-bezier(.2, .7, .3, 1)',
+    '--e-exit: cubic-bezier(.4, 0, .7, 1)',
+    '--e-hold: ease-in-out',
+  ];
+  for (const token of clock) {
+    assert.ok(webCss.includes(token), `web must carry ${token}`);
+    assert.ok(panelCss.includes(token), `panel must carry ${token}`);
+  }
+  // and the web actually runs on them — no raw transition timings left
+  assert.doesNotMatch(webCss, /transition: [^;]*\.\d+s/, 'web transitions must use the tokens');
+});

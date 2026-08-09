@@ -30,6 +30,18 @@
   --accent-ink: #8F5039;
   --serif: Georgia, 'Times New Roman', serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* motion tokens — the panel's one clock, shared. Affordances (hovers,
+     presses, fades) run on these; authored sequences (the publish
+     celebration, skeleton and wave loops) keep their own locked beats. */
+  --t-press: 60ms;   /* tactile ack */
+  --t-hover: 120ms;  /* hovers, fast exits */
+  --t-fade: 180ms;   /* fades and small reveals */
+  --t-move: 240ms;   /* anything that travels or lands */
+  --e-ink: cubic-bezier(.25, .1, .25, 1);
+  --e-enter: cubic-bezier(.2, .7, .3, 1);
+  --e-exit: cubic-bezier(.4, 0, .7, 1);
+  --e-hold: ease-in-out;
   --hover-row: #FBFAF8;
   --strip: #FBFBF9;
   --shadow: 0 2px 10px rgba(38, 41, 47, .06);
@@ -78,7 +90,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--link); text-decoration: none; transition: color .12s ease; }
+a { color: var(--link); text-decoration: none; transition: color var(--t-hover) var(--e-ink); }
 a:hover { text-decoration: underline; }
 
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
@@ -149,7 +161,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   align-items: center;
   height: 100%;
   min-width: 44px;
-  transition: color .12s ease;
+  transition: color var(--t-hover) var(--e-ink);
 }
 
 .chrome nav .nav-link:hover { color: #fff; text-decoration: none; }
@@ -207,7 +219,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   padding: 8px;
   border-radius: 6px;
   min-height: 32px;
-  transition: background .12s ease;
+  transition: background var(--t-hover) var(--e-ink);
 }
 
 .me-menu [role="menuitem"]:hover { background: var(--hover-row); }
@@ -298,7 +310,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   border-radius: var(--radius-inner);
   padding: 12px;
   box-shadow: var(--shadow);
-  transition: box-shadow .14s ease;
+  transition: box-shadow var(--t-hover) var(--e-ink);
 }
 
 .notif-row:hover { box-shadow: var(--shadow-lift); }
@@ -372,7 +384,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   font-weight: 600;
   color: var(--ink);
   min-height: 42px;
-  transition: background .12s ease;
+  transition: background var(--t-hover) var(--e-ink);
 }
 
 .signin-modal .continue:hover { background: var(--hover-row); text-decoration: none; }
@@ -460,7 +472,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   color: var(--meta);
   border-radius: 99px;
   min-height: 38px;
-  transition: background .12s ease, color .12s ease;
+  transition: background var(--t-hover) var(--e-ink), color var(--t-hover) var(--e-ink);
 }
 
 .tabs .tab:hover { background: var(--soft); color: var(--ink); }
@@ -475,7 +487,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   border-radius: var(--radius-card);
   box-shadow: var(--shadow);
   margin-bottom: 14px;
-  transition: box-shadow .14s ease;
+  transition: box-shadow var(--t-hover) var(--e-ink);
 }
 
 .post:hover { box-shadow: var(--shadow-lift); }
@@ -525,7 +537,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   border: 1px solid var(--hair);
   border-radius: var(--radius-inner);
   overflow: hidden;
-  transition: border-color .12s ease;
+  transition: border-color var(--t-hover) var(--e-ink);
 }
 
 .post:hover .srccard { border-color: #CDCFD5; }
@@ -591,7 +603,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 /* screenshots enlarge in place; the hint chip appears on hover/focus */
 .srccard .shot-open { display: block; width: 100%; padding: 0; position: relative; cursor: zoom-in; }
-.srccard .shot-open .shot-hint { position: absolute; bottom: 8px; right: 8px; z-index: 2; font-family: var(--mono); font-size: 10.5px; letter-spacing: .3px; color: #E9EAEC; background: rgba(0, 0, 0, .55); border-radius: 4px; padding: 3px 8px; opacity: 0; transition: opacity .12s ease; }
+.srccard .shot-open .shot-hint { position: absolute; bottom: 8px; right: 8px; z-index: 2; font-family: var(--mono); font-size: 10.5px; letter-spacing: .3px; color: #E9EAEC; background: rgba(0, 0, 0, .55); border-radius: 4px; padding: 3px 8px; opacity: 0; transition: opacity var(--t-hover) var(--e-ink); }
 .srccard .shot-open:hover .shot-hint, .srccard .shot-open:focus-visible .shot-hint { opacity: 1; }
 
 .lightbox { position: fixed; inset: 0; background: rgba(20, 21, 24, .82); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; z-index: 60; cursor: zoom-out; }
@@ -613,7 +625,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   padding: 6px 10px;
   border-radius: 99px;
   min-height: 40px;
-  transition: background .12s ease, color .12s ease;
+  transition: background var(--t-hover) var(--e-ink), color var(--t-hover) var(--e-ink);
 }
 
 .act:hover { text-decoration: none; background: var(--soft); color: var(--ink); }
@@ -641,7 +653,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .feed-empty h3 { font-size: 15px; margin-bottom: 6px; }
 .feed-empty p { font-size: 13px; color: var(--meta); margin-bottom: 14px; }
 
-.feed-more { display: block; width: 100%; padding: 12px 0; font-size: 13px; font-weight: 600; color: var(--meta); min-height: 44px; background: var(--card); border: 1px solid var(--border); border-radius: 99px; margin-bottom: 14px; transition: background .12s ease; }
+.feed-more { display: block; width: 100%; padding: 12px 0; font-size: 13px; font-weight: 600; color: var(--meta); min-height: 44px; background: var(--card); border: 1px solid var(--border); border-radius: 99px; margin-bottom: 14px; transition: background var(--t-hover) var(--e-ink); }
 .feed-more:hover { background: var(--soft); color: var(--ink); }
 
 .feed-error { padding: 14px 18px; font-size: 13px; color: var(--ink-soft); background: var(--card); border-radius: var(--radius-inner); box-shadow: var(--shadow); margin-bottom: 14px; }
@@ -680,7 +692,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   padding: 9px 18px;
   min-height: 40px;
   cursor: pointer;
-  transition: background .12s ease, transform .06s ease;
+  transition: background var(--t-hover) var(--e-ink), transform var(--t-press) var(--e-ink);
 }
 
 .btn:hover { background: var(--chrome-dark); text-decoration: none; }
@@ -700,7 +712,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   border-radius: 99px;
   padding: 7px 14px;
   min-height: 40px;
-  transition: background .12s ease, color .12s ease;
+  transition: background var(--t-hover) var(--e-ink), color var(--t-hover) var(--e-ink);
 }
 
 .ghost:hover { background: var(--soft); color: var(--ink); text-decoration: none; }
@@ -787,7 +799,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .player .media-status { color: #9AA0A8; font-size: 13px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0 16px; text-align: center; }
 
 .media-recovery { display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 12px; color: #9AA0A8; }
-.media-recovery button { color: #E9EAEC; border: 1px solid #3E444E; border-radius: 99px; padding: 6px 14px; min-height: 36px; transition: background .12s ease; }
+.media-recovery button { color: #E9EAEC; border: 1px solid #3E444E; border-radius: 99px; padding: 6px 14px; min-height: 36px; transition: background var(--t-hover) var(--e-ink); }
 .media-recovery button:hover { background: #26292F; }
 
 /* audio annotation: compact waveform bar */
@@ -1020,7 +1032,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .cap-foot .mode { font-size: 12px; margin-left: auto; display: flex; align-items: center; gap: 4px; color: var(--meta); }
 
-.cap-foot .mode button { color: var(--meta); padding: 6px 10px; border-radius: 99px; min-height: 36px; transition: background .12s ease, color .12s ease; }
+.cap-foot .mode button { color: var(--meta); padding: 6px 10px; border-radius: 99px; min-height: 36px; transition: background var(--t-hover) var(--e-ink), color var(--t-hover) var(--e-ink); }
 .cap-foot .mode button:hover { background: var(--soft); }
 .cap-foot .mode button.is-on { color: var(--ink); font-weight: 600; }
 
@@ -1040,7 +1052,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   align-items: center;
   justify-content: center;
   color: var(--ink);
-  transition: background .12s ease, color .12s ease;
+  transition: background var(--t-hover) var(--e-ink), color var(--t-hover) var(--e-ink);
 }
 
 .rec-button:hover { background: var(--hair); }
@@ -1075,7 +1087,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .librows { background: var(--card); border-radius: var(--radius-card); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 4px; }
 
-.librow { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--hair); transition: background .12s ease; }
+.librow { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--hair); transition: background var(--t-hover) var(--e-ink); }
 .librow:last-child { border-bottom: none; }
 .librow:hover { background: var(--hover-row); }
 
@@ -1107,7 +1119,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 /* topic taxonomy: chips filter trending; tags on cards jump to it */
 .topic-chips { display: flex; gap: 6px; padding: 10px 4px 0; flex-wrap: wrap; }
-.topic-chip { font-size: 12px; font-weight: 600; color: var(--meta); border: 1px solid var(--border); border-radius: 99px; padding: 4px 11px; min-height: 28px; background: var(--card); transition: color .12s ease, border-color .12s ease; }
+.topic-chip { font-size: 12px; font-weight: 600; color: var(--meta); border: 1px solid var(--border); border-radius: 99px; padding: 4px 11px; min-height: 28px; background: var(--card); transition: color var(--t-hover) var(--e-ink), border-color var(--t-hover) var(--e-ink); }
 .topic-chip:hover { color: var(--ink); border-color: var(--ink-soft); }
 .topic-chip.is-active { color: #fff; background: var(--chrome); border-color: var(--chrome); }
 .topic-chip .n { font-weight: 400; opacity: .75; }
@@ -1132,7 +1144,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .mod-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
-.mod-actions button { font-size: 12px; color: var(--meta); border: 1px solid var(--border); border-radius: 99px; padding: 6px 12px; min-height: 36px; text-transform: capitalize; transition: background .12s ease; }
+.mod-actions button { font-size: 12px; color: var(--meta); border: 1px solid var(--border); border-radius: 99px; padding: 6px 12px; min-height: 36px; text-transform: capitalize; transition: background var(--t-hover) var(--e-ink); }
 .mod-actions button:hover { background: var(--soft); color: var(--ink); }
 .mod-actions button.is-current { color: var(--ink); font-weight: 600; background: var(--soft); }
 .mod-actions button.is-takedown { color: #fff; background: var(--ink-soft); border-color: var(--ink-soft); }
