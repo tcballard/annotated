@@ -71,7 +71,10 @@
           "resizeMode": "contain",
           "backgroundColor": "#F5F4F0"
         }
-      ]
+      ],
+      "expo-font",
+      "expo-asset",
+      "expo-image"
     ],
     "owner": "tcballard-oss",
     "updates": {
