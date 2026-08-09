@@ -219,6 +219,14 @@ test('local API serves the acceptance-critical health, identity, publish, social
   const revalidated = await fetch(`${baseUrl}/og/${published.payload.annotation.slug}.png`, { headers: { 'if-none-match': cardTag } });
   assert.equal(revalidated.status, 304);
 
+  // the badge poll revalidates the same way: unchanged notifications 304
+  const badge = await fetch(`${baseUrl}/api/notifications`);
+  assert.equal(badge.status, 200);
+  const badgeTag = badge.headers.get('etag');
+  assert.ok(badgeTag && badgeTag.startsWith('"nf-'));
+  const badgeAgain = await fetch(`${baseUrl}/api/notifications`, { headers: { 'if-none-match': badgeTag } });
+  assert.equal(badgeAgain.status, 304);
+
   const firstFeedPage = await request(baseUrl, '/api/feed?limit=1');
   assert.equal(firstFeedPage.response.status, 200);
   assert.equal(firstFeedPage.payload.annotations.length, 1);
