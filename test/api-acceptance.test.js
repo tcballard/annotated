@@ -210,6 +210,15 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.ok(publishedFeedItem);
   assert.equal(publishedFeedItem.canonicalUrl, annotationPayload.sourceUrl);
 
+  // the share card revalidates: same pixels answer 304 before any render
+  const card = await fetch(`${baseUrl}/og/${published.payload.annotation.slug}.png`);
+  assert.equal(card.status, 200);
+  const cardTag = card.headers.get('etag');
+  assert.ok(cardTag && cardTag.startsWith('"og-'), 'the card carries its cache-key ETag');
+  assert.match(card.headers.get('cache-control') || '', /s-maxage=86400/);
+  const revalidated = await fetch(`${baseUrl}/og/${published.payload.annotation.slug}.png`, { headers: { 'if-none-match': cardTag } });
+  assert.equal(revalidated.status, 304);
+
   const firstFeedPage = await request(baseUrl, '/api/feed?limit=1');
   assert.equal(firstFeedPage.response.status, 200);
   assert.equal(firstFeedPage.payload.annotations.length, 1);

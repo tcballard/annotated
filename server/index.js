@@ -4,7 +4,7 @@ import http from 'node:http';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { checkStore, closeStore, incrementOpenCount, readStore, storageDescription, toggleFollow, toggleLike, updateStore } from './store.js';
 import { normalizeAudioMimeType, normalizeImageMimeType, removeStoredMedia, serveStoredMedia, writeIncomingImage, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
@@ -834,12 +834,22 @@ const serveClaimForm = async (request, response, slug) => {
   return sendClaimPage(response, 200, { annotation, mode: 'received' });
 };
 
-const serveOgCard = async (response, slug, { download = false } = {}) => {
+const serveOgCard = async (request, response, slug, { download = false } = {}) => {
   const found = await publishedAnnotationBySlug(decodeURIComponent(slug)).catch(() => null);
   if (!found) return notFound(response);
   const { annotation, author } = found;
   try {
     const cacheKey = [annotation.id, annotation.mediaStatus, annotation.openCount || 0, annotation.editedAt || '', annotation.visibility || 'public', annotation.screenshotAssetId || ''].join(':');
+    // Crawlers refetch share cards on every unfurl. The ETag is the cache
+    // key that already names everything the pixels depend on, so an
+    // unchanged card answers 304 before any render happens — and s-maxage
+    // lets a CDN hold it for a day while browsers keep an hour.
+    const etag = `"og-${createHash('sha256').update(cacheKey).digest('hex').slice(0, 24)}"`;
+    const cacheHeaders = { etag, 'cache-control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400' };
+    if (request.headers['if-none-match'] === etag) {
+      response.writeHead(304, { ...cacheHeaders, ...securityHeaders({ api: true }) });
+      return response.end();
+    }
     const png = await renderOgCardCached(cacheKey, async () => {
       const data = ogCardData(annotation, author);
       // Screenshot captures put the actual image on the card. PNG only (the
@@ -860,7 +870,7 @@ const serveOgCard = async (response, slug, { download = false } = {}) => {
       return data;
     });
     response.writeHead(200, {
-      'content-type': 'image/png', 'content-length': png.length, 'cache-control': 'public, max-age=3600',
+      'content-type': 'image/png', 'content-length': png.length, ...cacheHeaders,
       ...(download ? { 'content-disposition': `attachment; filename="annotated-${annotation.slug}.png"` } : {}),
       ...securityHeaders({ api: true }),
     });
@@ -925,7 +935,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) return send(response, 204, '');
     if (request.method === 'GET' && url.pathname.startsWith('/media/')) return serveMedia(response, url.pathname.slice('/media/'.length));
     const ogMatch = request.method === 'GET' ? url.pathname.match(/^\/og\/([^/]+)\.png$/) : null;
-    if (ogMatch) return serveOgCard(response, ogMatch[1], { download: url.searchParams.has('download') });
+    if (ogMatch) return serveOgCard(request, response, ogMatch[1], { download: url.searchParams.has('download') });
     // The mobile shell finishes sign-in here: its one-time ticket becomes the
     // same cookie session the web app uses, then the WebView returns to the
     // surface it came from. `next` is honoured only as a local path — a
