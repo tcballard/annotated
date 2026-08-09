@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
-import { checkStore, closeStore, readStore, storageDescription, updateStore } from './store.js';
+import { checkStore, closeStore, incrementOpenCount, readStore, storageDescription, toggleFollow, toggleLike, updateStore } from './store.js';
 import { normalizeAudioMimeType, normalizeImageMimeType, removeStoredMedia, serveStoredMedia, writeIncomingImage, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
@@ -357,15 +357,11 @@ const handleApi = async (request, response, pathname) => {
     if (!knownUsers.some((user) => user.id === targetId)) return notFound(response);
     if (targetId === actor?.id) return send(response, 422, { error: 'You cannot follow yourself.' });
     if (!(await mutationAllowed(request, actor, 'follow', 60))) return send(response, 429, { error: 'Too many follow changes. Try again later.' }, { 'retry-after': '60' });
-    let following = followMatch[2] === 'follow';
-    const result = await updateStore((store) => {
-      const exists = (store.follows || []).some((follow) => follow.followerId === (actor?.id || 'local-tom') && follow.followingId === targetId);
-      const follows = following && !exists
-        ? [...(store.follows || []), { id: randomUUID(), followerId: actor?.id || 'local-tom', followingId: targetId, createdAt: new Date().toISOString() }]
-        : !following ? (store.follows || []).filter((follow) => !(follow.followerId === (actor?.id || 'local-tom') && follow.followingId === targetId)) : store.follows || [];
-      return { ...store, follows };
-    });
-    following = result.follows.some((follow) => follow.followerId === (actor?.id || 'local-tom') && follow.followingId === targetId);
+    // Row-native hot path (Gate 1): a single indexed row, not a rewrite.
+    const followerId = actor?.id || 'local-tom';
+    await toggleFollow(followerId, targetId, followMatch[2] === 'follow');
+    const result = await readStore();
+    const following = (result.follows || []).some((follow) => follow.followerId === followerId && follow.followingId === targetId);
     return send(response, 200, { following });
   }
 
@@ -538,16 +534,15 @@ const handleApi = async (request, response, pathname) => {
     if (!actor && authIsRequired()) return unauthorized(response);
     if (!(await viewableAnnotation(likeMatch[1], actor?.id))) return notFound(response);
     if (!(await mutationAllowed(request, actor, 'like', 120))) return send(response, 429, { error: 'Too many like changes. Try again later.' }, { 'retry-after': '60' });
-    const result = await updateStore((store) => {
-      const annotation = store.annotations.find((item) => item.slug === likeMatch[1] || item.id === likeMatch[1]);
-      if (!annotation) return store;
-      const userId = actor?.id || 'local-tom';
-      const key = (like) => like.annotationId === annotation.id && like.userId === userId;
-      const likes = likeMatch[2] === 'like' ? ((store.likes || []).some(key) ? store.likes : [...(store.likes || []), { id: randomUUID(), annotationId: annotation.id, userId, createdAt: new Date().toISOString() }]) : (store.likes || []).filter((like) => !key(like));
-      return { ...store, likes };
-    });
-    const annotation = result.annotations.find((item) => item.slug === likeMatch[1] || item.id === likeMatch[1]);
-    return annotation ? send(response, 200, { annotation: withComments(annotation, result, actor?.id) }) : notFound(response);
+    // Row-native hot path: one indexed row write plus an O(1) cache patch —
+    // never a whole-store rewrite (Gate 1).
+    const state = await readStore();
+    const annotation = state.annotations.find((item) => item.slug === likeMatch[1] || item.id === likeMatch[1]);
+    if (!annotation) return notFound(response);
+    await toggleLike(annotation.id, actor?.id || 'local-tom', likeMatch[2] === 'like');
+    const result = await readStore();
+    const fresh = result.annotations.find((item) => item.id === annotation.id);
+    return fresh ? send(response, 200, { annotation: withComments(fresh, result, actor?.id) }) : notFound(response);
   }
 
   // Counts clicks on "Open original" — the traffic-back-to-source stat shown
@@ -557,16 +552,14 @@ const handleApi = async (request, response, pathname) => {
     const opener = await currentUser(request);
     if (!(await viewableAnnotation(openMatch[1], opener?.id))) return notFound(response);
     if (!(await mutationAllowed(request, null, 'open-original', 120))) return send(response, 429, { error: 'Too many open events. Try again later.' }, { 'retry-after': '60' });
-    let found = false;
-    const result = await updateStore((store) => {
-      const annotation = store.annotations.find((item) => item.slug === openMatch[1] || item.id === openMatch[1]);
-      if (!annotation) return store;
-      found = true;
-      return { ...store, annotations: store.annotations.map((item) => item.id === annotation.id ? { ...item, openCount: (Number(item.openCount) || 0) + 1 } : item) };
-    });
-    if (!found) return notFound(response);
-    const annotation = result.annotations.find((item) => item.slug === openMatch[1] || item.id === openMatch[1]);
-    return send(response, 200, { opens: Number(annotation.openCount) || 0 });
+    // Row-native hot path (Gate 1): the public, unauthenticated counter is
+    // one jsonb_set on one row.
+    const state = await readStore();
+    const target = state.annotations.find((item) => item.slug === openMatch[1] || item.id === openMatch[1]);
+    if (!target) return notFound(response);
+    await incrementOpenCount(target.id);
+    const annotation = (await readStore()).annotations.find((item) => item.id === target.id);
+    return send(response, 200, { opens: Number(annotation?.openCount) || 0 });
   }
 
   const claimsMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/claims$/);
