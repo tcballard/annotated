@@ -10,7 +10,7 @@ import { normalizeAudioMimeType, normalizeImageMimeType, removeStoredMedia, serv
 import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
-import { followingFeedRequiresAuth, matchesFeedQuery, matchesFeedUrl, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey } from './feed.js';
+import { afterKeysetCursor, followingFeedRequiresAuth, keysetCursorFor, matchesFeedQuery, matchesFeedUrl, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey, parseKeysetCursor } from './feed.js';
 import { ogCardData, renderOgCardCached } from './og-card.js';
 import { escapeHtml, injectAnnotationMeta } from './permalink-meta.js';
 import { allowsIndexing, canViewAnnotation, isPubliclyListed, VISIBILITIES } from './visibility.js';
@@ -259,11 +259,19 @@ const handleApi = async (request, response, pathname) => {
       ? TOPICS.map(({ slug, label }) => ({ slug, label, count: filtered.filter((item) => item.topic === slug).length })).filter((entry) => entry.count > 0)
       : undefined;
     const scoped = topic ? filtered.filter((item) => item.topic === topic) : filtered;
-    const candidates = trending
-      ? sortByTrending(scoped, store)
-      : scoped.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    const page = candidates.slice(offset, offset + limit);
-    return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null, query: search || null, ...(topicCounts ? { topics: topicCounts, topic } : {}) });
+    if (trending) {
+      const candidates = sortByTrending(scoped, store);
+      const page = candidates.slice(offset, offset + limit);
+      return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null, query: search || null, ...(topicCounts ? { topics: topicCounts, topic } : {}) });
+    }
+    // Recent is keyset-paginated: an insert mid-scroll can no longer make
+    // readers skip or double-see items (Gate 1b). Legacy numeric cursors
+    // still work as offsets while old clients drain.
+    const candidates = scoped.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+    const keyset = parseKeysetCursor(query.get('cursor'));
+    const remaining = keyset ? afterKeysetCursor(candidates, keyset) : candidates.slice(offset);
+    const page = remaining.slice(0, limit);
+    return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: remaining.length > limit ? keysetCursorFor(page[page.length - 1]) : null, query: search || null });
   }
 
   // Source hub: a host's public annotations and its annotators, discovery by

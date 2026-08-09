@@ -213,12 +213,30 @@ test('local API serves the acceptance-critical health, identity, publish, social
   const firstFeedPage = await request(baseUrl, '/api/feed?limit=1');
   assert.equal(firstFeedPage.response.status, 200);
   assert.equal(firstFeedPage.payload.annotations.length, 1);
-  assert.equal(firstFeedPage.payload.nextCursor, '1');
-  const secondFeedPage = await request(baseUrl, `/api/feed?limit=1&cursor=${firstFeedPage.payload.nextCursor}`);
+  // the cursor is the last row's position in the sort, opaque to clients —
+  // keyset, not offset, so an insert mid-scroll cannot shift later pages
+  const firstItem = firstFeedPage.payload.annotations[0];
+  assert.equal(firstFeedPage.payload.nextCursor, `${firstItem.createdAt}|${firstItem.id}`);
+  const secondFeedPage = await request(baseUrl, `/api/feed?limit=1&cursor=${encodeURIComponent(firstFeedPage.payload.nextCursor)}`);
   assert.equal(secondFeedPage.response.status, 200);
   assert.equal(secondFeedPage.payload.annotations.length, 1);
   assert.equal(secondFeedPage.payload.nextCursor, null);
-  assert.notEqual(secondFeedPage.payload.annotations[0].id, firstFeedPage.payload.annotations[0].id);
+  assert.notEqual(secondFeedPage.payload.annotations[0].id, firstItem.id);
+  // the actual regression: publish something NEW between pages, then reuse
+  // the old cursor — the reader must land on the same next item, not a
+  // shifted or repeated one (the offset cursor failed exactly this)
+  const midScroll = await request(baseUrl, '/api/annotations', { method: 'POST', body: { ...annotationPayload, sourceUrl: 'https://example.com/mid-scroll', clientRequestId: 'mid-scroll-1' } });
+  assert.equal(midScroll.response.status, 201);
+  const resumed = await request(baseUrl, `/api/feed?limit=1&cursor=${encodeURIComponent(firstFeedPage.payload.nextCursor)}`);
+  assert.equal(resumed.response.status, 200);
+  assert.equal(resumed.payload.annotations[0].id, secondFeedPage.payload.annotations[0].id, 'an insert while scrolling must not shift the resumed page');
+  // legacy numeric cursors from older clients still work as offsets
+  const legacy = await request(baseUrl, '/api/feed?limit=1&cursor=1');
+  assert.equal(legacy.response.status, 200);
+  assert.equal(legacy.payload.annotations.length, 1);
+  // the mid-scroll probe leaves the stage so later counts see the original world
+  const sweep = await request(baseUrl, `/api/annotations/${midScroll.payload.annotation.slug}`, { method: 'DELETE' });
+  assert.equal(sweep.response.status, 200);
 
   const searchedFeed = await request(baseUrl, '/api/feed?limit=invalid&cursor=invalid&q=durable%20publish');
   assert.equal(searchedFeed.response.status, 200);
