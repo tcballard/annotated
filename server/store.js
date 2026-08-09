@@ -58,7 +58,7 @@ const postgresSchema = `
     ON annotated_records ((payload->>'authorId'), (payload->>'clientRequestId'))
     WHERE collection = 'annotations';
 `;
-export const latestMigrationVersion = '004_rate_limit_buckets';
+export const latestMigrationVersion = '005_hot_path_indexes';
 
 const recordCollections = Object.keys(emptyStore);
 const recordId = (collection, value, index) => String(value?.id || value?.tokenHash || `${collection}-${index}`);
@@ -93,28 +93,45 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
     const migrations = await pool.query('SELECT version FROM annotated_schema_migrations ORDER BY version DESC LIMIT 1');
     if (migrations.rows[0]?.version !== latestMigrationVersion) throw new Error(`PostgreSQL migrations are not current (expected ${latestMigrationVersion}).`);
   };
+  // Mutators receive the whole state and return the whole state — but the
+  // write is a DIFF, not a rewrite. The old engine deleted every row and
+  // re-inserted the dataset on every write (measured: one like cost 1.6 s
+  // at 500k rows, serialised product-wide). Now only rows the mutator
+  // actually changed are upserted or deleted. The advisory lock stays
+  // EXCLUSIVE here — whole-state mutators must serialise against each
+  // other AND against the row-native ops below, which take it SHARED.
   const update = async (mutator) => {
     await ensureSchema();
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock($1)', [746132]);
-      const records = await client.query('SELECT collection, record_id, payload FROM annotated_records FOR UPDATE');
+      const records = await client.query('SELECT collection, record_id, payload FROM annotated_records');
       const current = records.rows.length ? stateFromRecords(records.rows) : await readLegacy(client);
+      const before = new Map(records.rows.map((row) => [`${row.collection}|${row.record_id}`, JSON.stringify(row.payload)]));
       const next = await mutator(current);
-      await client.query('DELETE FROM annotated_records');
+      const seen = new Set();
       for (const collection of recordCollections) {
         for (const [index, value] of (next[collection] || []).entries()) {
+          const id = recordId(collection, value, index);
+          const key = `${collection}|${id}`;
+          seen.add(key);
+          const payload = JSON.stringify(value);
+          if (before.get(key) === payload) continue;
           await client.query(
-            'INSERT INTO annotated_records (collection, record_id, payload, updated_at) VALUES ($1, $2, $3::jsonb, now())',
-            [collection, recordId(collection, value, index), JSON.stringify(value)],
+            `INSERT INTO annotated_records (collection, record_id, payload, updated_at) VALUES ($1, $2, $3::jsonb, now())
+             ON CONFLICT (collection, record_id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()`,
+            [collection, id, payload],
           );
         }
       }
-      await client.query(`
-        INSERT INTO annotated_state (id, state, updated_at) VALUES (1, $1::jsonb, now())
-        ON CONFLICT (id) DO UPDATE SET state = EXCLUDED.state, updated_at = now()
-      `, [JSON.stringify(next)]);
+      for (const key of before.keys()) {
+        if (seen.has(key)) continue;
+        const separatorIndex = key.indexOf('|');
+        const collection = key.slice(0, separatorIndex);
+        const id = key.slice(separatorIndex + 1);
+        await client.query('DELETE FROM annotated_records WHERE collection = $1 AND record_id = $2', [collection, id]);
+      }
       await client.query('COMMIT');
       return clone(next);
     } catch (error) {
@@ -124,8 +141,83 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
       client.release();
     }
   };
-  return { read, update, check, close: () => pool.end(), mode: 'postgres' };
+
+  // Row-native hot ops: the three highest-frequency writes touch exactly
+  // the rows they mean. They take the advisory lock SHARED, so they run
+  // concurrently with each other while any whole-state mutator still
+  // excludes everything. Race safety for the toggles comes from the
+  // partial UNIQUE indexes in migration 005, not from locking.
+  const withSharedLock = async (work) => {
+    await ensureSchema();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock_shared($1)', [746132]);
+      const result = await work(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  };
+
+  const toggleLike = (annotationId, userId, on) => withSharedLock(async (client) => {
+    if (on) {
+      const record = { id: `like-${annotationId}-${userId}`, annotationId, userId, createdAt: new Date().toISOString() };
+      await client.query(
+        `INSERT INTO annotated_records (collection, record_id, payload) VALUES ('likes', $1, $2::jsonb)
+         ON CONFLICT DO NOTHING`,
+        [record.id, JSON.stringify(record)],
+      );
+    } else {
+      await client.query(
+        `DELETE FROM annotated_records WHERE collection = 'likes' AND payload->>'annotationId' = $1 AND payload->>'userId' = $2`,
+        [annotationId, userId],
+      );
+    }
+  });
+
+  const toggleFollow = (followerId, followingId, on) => withSharedLock(async (client) => {
+    if (on) {
+      const record = { id: `follow-${followerId}-${followingId}`, followerId, followingId, createdAt: new Date().toISOString() };
+      await client.query(
+        `INSERT INTO annotated_records (collection, record_id, payload) VALUES ('follows', $1, $2::jsonb)
+         ON CONFLICT DO NOTHING`,
+        [record.id, JSON.stringify(record)],
+      );
+    } else {
+      await client.query(
+        `DELETE FROM annotated_records WHERE collection = 'follows' AND payload->>'followerId' = $1 AND payload->>'followingId' = $2`,
+        [followerId, followingId],
+      );
+    }
+  });
+
+  const incrementOpenCount = (annotationId) => withSharedLock(async (client) => {
+    const result = await client.query(
+      `UPDATE annotated_records
+         SET payload = jsonb_set(payload, '{openCount}', to_jsonb(COALESCE((payload->>'openCount')::int, 0) + 1)), updated_at = now()
+       WHERE collection = 'annotations' AND record_id = $1`,
+      [annotationId],
+    );
+    return result.rowCount > 0;
+  });
+
+  return { read, update, check, toggleLike, toggleFollow, incrementOpenCount, close: () => pool.end(), mode: 'postgres' };
 };
+
+// The read-through cache. Every request used to materialise the entire
+// dataset from storage; now the first read after a write does, and the
+// rest share it. Row ops PATCH the cache in place (they know their exact
+// delta), whole-state mutators invalidate it (they don't). Correct for
+// the current one-API-instance topology; multi-instance needs
+// LISTEN/NOTIFY invalidation (Gate 1b). Consumers treat the returned
+// state as immutable — all mutation goes through updateStore or the ops.
+let cachedState = null;
+function invalidateReadCache() { cachedState = null; }
 
 const fileStore = {
   mode: 'file',
@@ -151,13 +243,52 @@ const fileStore = {
     return clone(next);
   },
   close: async () => {},
+  // File mode mirrors the row ops through the same whole-file write it has
+  // always done — identical semantics, laptop-friendly, zero pg required.
+  toggleLike: async (annotationId, userId, on) => {
+    await fileStore.update((store) => {
+      const key = (like) => like.annotationId === annotationId && like.userId === userId;
+      const likes = on
+        ? ((store.likes || []).some(key) ? store.likes : [...(store.likes || []), { id: `like-${annotationId}-${userId}`, annotationId, userId, createdAt: new Date().toISOString() }])
+        : (store.likes || []).filter((like) => !key(like));
+      return { ...store, likes };
+    });
+  },
+  toggleFollow: async (followerId, followingId, on) => {
+    await fileStore.update((store) => {
+      const key = (follow) => follow.followerId === followerId && follow.followingId === followingId;
+      const follows = on
+        ? ((store.follows || []).some(key) ? store.follows : [...(store.follows || []), { id: `follow-${followerId}-${followingId}`, followerId, followingId, createdAt: new Date().toISOString() }])
+        : (store.follows || []).filter((follow) => !key(follow));
+      return { ...store, follows };
+    });
+  },
+  incrementOpenCount: async (annotationId) => {
+    let found = false;
+    await fileStore.update((store) => ({
+      ...store,
+      annotations: store.annotations.map((item) => {
+        if (item.id !== annotationId) return item;
+        found = true;
+        return { ...item, openCount: (Number(item.openCount) || 0) + 1 };
+      }),
+    }));
+    return found;
+  },
 };
 
 if (storageMode === 'postgres') assertPostgresConfiguration();
 const selectedStore = storageMode === 'postgres' ? createPostgresStore() : fileStore;
 
+const enqueue = (task) => {
+  const operation = writeQueue.then(task);
+  writeQueue = operation.catch(() => {});
+  return operation;
+};
+
 export async function readStore() {
-  return selectedStore.read();
+  cachedState ||= await selectedStore.read();
+  return cachedState;
 }
 
 export async function checkStore() {
@@ -165,9 +296,50 @@ export async function checkStore() {
 }
 
 export function updateStore(mutator) {
-  const operation = writeQueue.then(() => selectedStore.update(mutator));
-  writeQueue = operation.catch(() => {});
-  return operation;
+  return enqueue(async () => {
+    const next = await selectedStore.update(mutator);
+    cachedState = next;
+    return next;
+  });
+}
+
+// The three hot writes. Each runs its backend's row op, then patches the
+// read cache with the same delta by structural sharing — no reload, no
+// invalidation, so a like is one indexed row write plus an O(1) patch.
+export function toggleLike(annotationId, userId, on) {
+  return enqueue(async () => {
+    await selectedStore.toggleLike(annotationId, userId, on);
+    if (!cachedState) return;
+    const exists = (cachedState.likes || []).some((like) => like.annotationId === annotationId && like.userId === userId);
+    if (on && !exists) {
+      cachedState = { ...cachedState, likes: [...(cachedState.likes || []), { id: `like-${annotationId}-${userId}`, annotationId, userId, createdAt: new Date().toISOString() }] };
+    } else if (!on && exists) {
+      cachedState = { ...cachedState, likes: cachedState.likes.filter((like) => !(like.annotationId === annotationId && like.userId === userId)) };
+    }
+  });
+}
+
+export function toggleFollow(followerId, followingId, on) {
+  return enqueue(async () => {
+    await selectedStore.toggleFollow(followerId, followingId, on);
+    if (!cachedState) return;
+    const exists = (cachedState.follows || []).some((follow) => follow.followerId === followerId && follow.followingId === followingId);
+    if (on && !exists) {
+      cachedState = { ...cachedState, follows: [...(cachedState.follows || []), { id: `follow-${followerId}-${followingId}`, followerId, followingId, createdAt: new Date().toISOString() }] };
+    } else if (!on && exists) {
+      cachedState = { ...cachedState, follows: cachedState.follows.filter((follow) => !(follow.followerId === followerId && follow.followingId === followingId)) };
+    }
+  });
+}
+
+export function incrementOpenCount(annotationId) {
+  return enqueue(async () => {
+    const found = await selectedStore.incrementOpenCount(annotationId);
+    if (cachedState) {
+      cachedState = { ...cachedState, annotations: cachedState.annotations.map((item) => item.id === annotationId ? { ...item, openCount: (Number(item.openCount) || 0) + 1 } : item) };
+    }
+    return found;
+  });
 }
 
 export const closeStore = () => selectedStore.close();
