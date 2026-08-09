@@ -63,7 +63,10 @@ test('empty states say the same thing for the same state everywhere', () => {
     'trending-empty title': ['Nothing is trending yet.', [web, timeline]],
     'search-empty title': ['Nothing matches “', [web, search]],
     'search-empty body': ['Try a different source, author, or phrase.', [web, search]],
-    'notifications-empty title': ['All quiet.', [web, notifications]],
+    // The sentence is canon; the stop is surface-local. On web the .card
+    // h2::after supplies it in terracotta, so the copy carries no period —
+    // "All quiet." would render "All quiet..". Native text keeps its own.
+    'notifications-empty title': ['All quiet', [web, notifications]],
     'notifications-empty body': ['When readers respond, like your annotations, or follow you, it lands here.', [web, notifications]],
     'notifications signed-out body': ['Sign in to see responses, likes, and new followers.', [web, notifications]],
   };

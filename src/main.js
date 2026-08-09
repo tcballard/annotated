@@ -293,7 +293,11 @@ const chromeAuth = () => {
     return `<span class="auth">${bell}<button class="me ${state.user.avatarUrl ? 'has-photo' : ''}" data-action="logout" aria-label="Sign out ${escapeHTML(state.user.handle || '')}" title="Sign out">${face}</button></span>`;
   }
   const providers = enabledProviders(state.authProviders);
-  if (!providers.length) return `<span class="auth"><span class="connection-note">${state.serverStatus === 'offline' ? 'offline' : 'local'}</span></span>`;
+  // No providers and online is a development stack — a visitor-facing
+  // deployment always configures at least one. Render nothing rather than
+  // leak the word "local" into a stranger's header; offline stays named
+  // because it explains why the page beneath has gone quiet.
+  if (!providers.length) return state.serverStatus === 'offline' ? `<span class="auth"><span class="connection-note">offline</span></span>` : '';
   return `<span class="auth"><button class="auth-link" data-action="open-signin">Sign in</button></span>`;
 };
 
@@ -833,7 +837,7 @@ const captureView = () => {
     : 'Paste a link, mark the moment, leave your context. The sidebar does this from the page you are on.';
   const urlForm = `
       <form class="cap-url" data-action="resolve-form">
-        <input data-action="source-url" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://youtube.com/watch?v=… · article · podcast" aria-label="Source URL" value="${escapeHTML(state.sourceUrl)}" />
+        <input data-action="source-url" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://… video · article · podcast" aria-label="Source URL" value="${escapeHTML(state.sourceUrl)}" />
         <button class="btn" type="submit" ${state.isResolvingSource ? 'disabled' : ''}>${state.isResolvingSource ? 'Resolving…' : 'Resolve'}</button>
         ${navigator.clipboard?.readText && !resolved ? `<button class="ghost" type="button" data-action="paste-link" title="Read a copied link from the clipboard">Paste link</button>` : ''}
       </form>
@@ -1208,7 +1212,7 @@ const notificationsView = () => {
           ${item.body ? `<span class="notif-quote">&ldquo;${escapeHTML(item.body)}&rdquo;</span>` : ''}
         </span>
       </button>`).join('')
-    : `<div class="card"><h2>All quiet.</h2><p>When readers respond, like your annotations, or follow you, it lands here.</p></div>`;
+    : `<div class="card"><h2>All quiet</h2><p>When readers respond, like your annotations, or follow you, it lands here.</p></div>`;
   return `
   <div class="page single">
     <h1 class="sr-only">Notifications</h1>

@@ -90,3 +90,29 @@ test('the keyboard path covers publish and clear on the capture surface', () => 
   assert.match(mainSource, /publishAnnotation\(\)/u);
   assert.match(mainSource, /event\.key === 'Escape' && !event\.target\.closest\('input, textarea'\)/u);
 });
+
+test('headline full stops come from the identity system, never twice', () => {
+  // .card h2 (and its ::after siblings) append the terracotta full stop, so
+  // heading copy destined for those containers must not carry its own —
+  // "All quiet." rendered "All quiet.." on the notifications empty state.
+  assert.match(styles, /\.card h2::after,[\s\S]*?content: "\."; color: var\(--accent\);/u);
+  assert.match(mainSource, /<h2>All quiet<\/h2>/u);
+
+  // Headings that end in a period are only legal where no ::after dot will
+  // land. Each entry below was checked against the ::after selector list;
+  // a new period-ending heading fails here until someone does the same.
+  const reviewedOutsideAccentScope = new Set([
+    'This annotation was removed after a rights claim.', // .perma-empty
+    'Your library is waiting.',                          // .perma-empty
+    'This source could not be loaded.',                  // .perma-empty
+    'We could not load this profile.',                   // .perma-empty
+    'Moderation access is required.',                    // .feed-empty
+    'Nothing to ring about yet.',                        // .perma-empty
+  ]);
+  for (const match of mainSource.matchAll(/<h[12][^>]*>([^<]*\.)<\/h[12]>/gu)) {
+    assert.ok(
+      reviewedOutsideAccentScope.has(match[1]),
+      `"${match[1]}" ends in a period — if it renders inside a .card/.responses/.capcard/.libhead/.modhead heading, the ::after dot makes it a double stop. Drop the period or review the container and extend the list.`,
+    );
+  }
+});
