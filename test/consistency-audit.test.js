@@ -120,3 +120,22 @@ test('the moment chip is the same component on every surface', () => {
   assert.match(nativeChip, /backgroundColor: tokens\['accent-soft'\]/, 'the native chip wash must be accent-soft');
   assert.match(nativeChip, /borderRadius: 3,/, 'the native chip radius must be 3');
 });
+
+test('one lockup: the wordmark is the same drawing everywhere', async () => {
+  const [brandMark, welcome, ogCard] = await Promise.all([
+    read('mobile/components/BrandMark.tsx'),
+    read('mobile/components/welcome/speak-language.tsx'),
+    read('server/og-card.js'),
+  ]);
+  // The web ships the lockup outlined from Inter ExtraBold at -2.1%
+  // (locked in brand-identity.test.js). The app must name that face —
+  // an unnamed fontFamily drew SF on iOS and Roboto on Android — and
+  // every native rendering tracks at the same -2.1%.
+  assert.match(brandMark, /fontFamily: 'Inter_800ExtraBold'/, 'BrandMark must name the face, not inherit the platform default');
+  assert.match(brandMark, /letterSpacing: size \* -0\.021/);
+  assert.match(welcome, /letterSpacing: size \* -0\.021/, 'the welcome lockup tracks like the brand');
+  // The share card embeds the outlined drawing itself — retyping the
+  // wordmark hands the brand to whatever font the container carries.
+  assert.match(ogCard, /OG_WORDMARK/, 'the share card must embed the outlined lockup');
+  assert.doesNotMatch(ogCard, /'annotated'\)/, 'the card must not retype the wordmark in container fonts');
+});

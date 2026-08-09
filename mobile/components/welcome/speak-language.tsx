@@ -63,7 +63,7 @@ const lowerWash = require('../../assets/welcome/lower-wash.png');
 
 function Wordmark({ size }: { size: number }) {
   return (
-    <Text style={[styles.wordmark, { fontSize: size, lineHeight: size * 1.2, letterSpacing: size * -0.045 }]}>
+    <Text style={[styles.wordmark, { fontSize: size, lineHeight: size * 1.2, letterSpacing: size * -0.021 }]}>
       annotated<Text style={{ color: ACCENT }}>.</Text>
     </Text>
   );
