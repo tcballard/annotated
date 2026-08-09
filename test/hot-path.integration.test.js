@@ -15,8 +15,29 @@ const gated = { skip: url ? false : 'DATABASE_URL not set' };
 const SEED_ANNOTATIONS = 5_000;
 const SEED_LIKES = 50_000;
 
+// Test files run in parallel and CI shares one DATABASE_URL — a TRUNCATE
+// here while another suite holds rows in the same tables would wipe its
+// state mid-flight (it did: the production-services marker vanished). So
+// this suite claims its own database and stomps only there.
+const HOT_DB = 'annotated_hot_path_tests';
+let databaseReady;
+const ensureDatabase = async () => {
+  databaseReady ||= (async () => {
+    const admin = new pg.Pool({ connectionString: url, max: 1, ssl: process.env.PGSSL === 'disable' ? false : undefined });
+    await admin.query(`CREATE DATABASE ${HOT_DB}`).catch((error) => { if (error.code !== '42P04') throw error; });
+    await admin.end();
+  })();
+  await databaseReady;
+};
+const hotDatabaseUrl = () => {
+  const parsed = new URL(url);
+  parsed.pathname = `/${HOT_DB}`;
+  return parsed.toString();
+};
+
 const withDatabase = async (work) => {
-  const pool = new pg.Pool({ connectionString: url, max: 6, ssl: process.env.PGSSL === 'disable' ? false : undefined });
+  await ensureDatabase();
+  const pool = new pg.Pool({ connectionString: hotDatabaseUrl(), max: 6, ssl: process.env.PGSSL === 'disable' ? false : undefined });
   const repository = createPostgresStore({ pool });
   try {
     await pool.query('CREATE TABLE IF NOT EXISTS annotated_schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
