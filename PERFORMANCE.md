@@ -6,7 +6,7 @@ Annotated should be fast at the point of capture and resilient when media work i
 
 - Browser UI and Chrome APIs: small vanilla JavaScript bundle. Browser extension APIs, DOM selection, and side-panel lifecycle remain JavaScript-native.
 - API: Rust with Axum and Tokio once the service needs sustained concurrency. The current Node API is deliberately kept behind the same JSON contract so the migration is a replaceable server boundary.
-- Media: FFmpeg in isolated workers. Rust should schedule jobs, enforce the 90-second/240p policy, and stream progress; it should not reimplement codecs.
+- Media: FFmpeg in isolated workers. The worker runs today as a standalone Node process (`npm run worker`) behind a job-lease contract; a Rust implementation of that same seam should schedule jobs, enforce the 90-second/240p policy, and stream progress — it should not reimplement codecs.
 - Persistence: PostgreSQL for metadata and object storage for source derivatives and audio notes. The current JSON file store is a local development adapter only.
 - Delivery: signed object URLs and a CDN. The API should acknowledge a capture quickly and never proxy large media through the web process.
 
@@ -24,10 +24,15 @@ The browser capture path stages recorded audio in IndexedDB before upload. This 
 
 ## Migration order
 
-1. Keep the current API paths and validation semantics stable.
-2. Replace the local JSON adapter with PostgreSQL and add indexes for public slugs and feed ordering.
-3. Move source metadata fetching and media extraction into bounded worker jobs.
-4. Implement the API in Rust behind the existing paths and run contract tests against both servers.
-5. Add CDN-backed playback, tracing, rate limits, and load tests before switching production traffic.
+Steps 1–3 have landed:
 
-Rust is a good fit for the high-concurrency service and worker orchestration. It is not expected to make a measurable difference to a low-volume metadata prototype, and it would not improve the main bottleneck if the product still stores media synchronously or serializes every write through one JSON file.
+1. API paths and validation semantics stayed stable throughout.
+2. PostgreSQL replaced the JSON adapter behind the same store contract. Hot-path writes are row-native — a like lands in about a millisecond at fifty thousand rows, with a 25 ms budget enforced in CI ([`test/hot-path.integration.test.js`](test/hot-path.integration.test.js)) — feeds page by keyset cursor, share cards and the notification badge revalidate with ETags, and deploys run migrations before they serve.
+3. Source metadata fetching and media extraction run as bounded worker jobs, recoverable by lease, in a standalone process (`npm run worker`) whose read cache is invalidated cross-instance over LISTEN/NOTIFY.
+
+Still deliberately ahead, gated on real traffic:
+
+4. Implement the API in Rust behind the existing paths and run contract tests against both servers. The worker process is the documented seam.
+5. Add CDN-backed playback, tracing, and load tests before switching production traffic; server-side rate limits already ship.
+
+Rust remains a good fit for the high-concurrency service and worker orchestration. It was never the first lever: the old bottleneck — every write re-serializing one JSON document — is gone now that writes are row-native PostgreSQL, so the next measurable wins are CDN delivery and worker throughput, which is exactly where the Rust seam sits.

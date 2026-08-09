@@ -17,9 +17,10 @@ rather than carrying a separate release number.
   feed, profile, follow, like, comment, and sharing flows.
 - Local development adapters plus tested PostgreSQL/S3-compatible production
   boundaries, asynchronous media-job states, and deployment configuration.
-- X-only OAuth configuration for the current POC, with a provider-neutral
-  Google adapter retained for a future expansion; no provider credential is
-  embedded in the repository or extension.
+- X and Google OAuth both enabled by default (`OAUTH_PROVIDERS=x,google`),
+  with production refusing to boot unless credentials for every enabled
+  provider are configured; no provider credential is embedded in the
+  repository or extension.
 
 The detailed product contract is in [PRODUCT.md](PRODUCT.md), and the live
 brief comparison is in [BRIEF_ACCEPTANCE.md](BRIEF_ACCEPTANCE.md).
@@ -47,9 +48,10 @@ records the current results and their limits.
 
 These are release gates, not features to imply through versioning or copy:
 
-- Complete deployed X OAuth consent/callback/logout/expiry proof and a
-  configured public application origin. Google remains intentionally disabled
-  for this POC.
+- Complete deployed OAuth consent/callback/logout/expiry proof for both X and
+  Google, plus a configured public application origin. Both providers are
+  configured and reported live on staging; the deployed round-trip evidence
+  is what remains.
 - A production-grade PostgreSQL/object-storage/CDN environment with operational
   backup and recovery evidence; Railway staging is a POC boundary, not that
   production environment.
