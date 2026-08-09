@@ -150,3 +150,21 @@ test('sessions are rows: create sweeps the expired, sign-out deletes one', gated
     assert.equal(Number(rows.rows[0].count), 0, 'sign-out removes exactly the session');
   });
 });
+
+test('every write path NOTIFYs so other instances drop their cache', gated, async () => {
+  await withDatabase(async (repository, pool) => {
+    const listener = await pool.connect();
+    const heard = [];
+    listener.on('notification', (message) => heard.push(message.payload));
+    await listener.query('LISTEN annotated_changed');
+    try {
+      await repository.toggleLike('a-notify', 'u-1', true);          // shared-lock row op
+      await repository.update((store) => ({ ...store }));            // exclusive whole-state op
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      assert.ok(heard.length >= 2, `both write paths must notify (heard ${heard.length})`);
+      assert.ok(heard.every((payload) => payload && payload.length > 10), 'the payload names the writing instance');
+    } finally {
+      listener.release();
+    }
+  });
+});

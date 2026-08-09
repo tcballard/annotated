@@ -134,13 +134,18 @@ const setupRetry = async () => {
 // The toolbar icon wears the unseen-notifications count, X-style: signed
 // in, the pinned extension shows what's waiting without being opened.
 // Opening the panel marks everything seen, which clears it.
+let badgeEtag = '';
 const refreshNotificationsBadge = async () => {
   try {
     const headers = await authHeaders();
     if (!headers.authorization) return await chrome.action.setBadgeText({ text: '' });
     const origin = await apiOrigin();
-    const response = await fetch(`${origin}/api/notifications`, { headers });
+    // Conditional poll: the steady state is a 304 that ships no body and
+    // leaves the badge exactly as it was.
+    const response = await fetch(`${origin}/api/notifications`, { headers: { ...headers, ...(badgeEtag ? { 'if-none-match': badgeEtag } : {}) } });
+    if (response.status === 304) return;
     if (!response.ok) return await chrome.action.setBadgeText({ text: '' });
+    badgeEtag = response.headers.get('etag') || '';
     const body = await response.json().catch(() => ({}));
     const unseen = Number(body.unseenCount) || 0;
     await chrome.action.setBadgeBackgroundColor({ color: '#B0674D' });

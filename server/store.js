@@ -1,6 +1,11 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import pg from 'pg';
+
+// Names this process in cross-instance invalidation: NOTIFY carries it so
+// an instance ignores its own writes (it already patched or refreshed).
+const instanceId = randomUUID();
 
 const { Pool } = pg;
 
@@ -132,6 +137,7 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
         const id = key.slice(separatorIndex + 1);
         await client.query('DELETE FROM annotated_records WHERE collection = $1 AND record_id = $2', [collection, id]);
       }
+      await client.query("SELECT pg_notify('annotated_changed', $1)", [instanceId]);
       await client.query('COMMIT');
       return clone(next);
     } catch (error) {
@@ -154,6 +160,7 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
       await client.query('BEGIN');
       await client.query('SELECT pg_advisory_xact_lock_shared($1)', [746132]);
       const result = await work(client);
+      await client.query("SELECT pg_notify('annotated_changed', $1)", [instanceId]);
       await client.query('COMMIT');
       return result;
     } catch (error) {
@@ -225,7 +232,23 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
     );
   });
 
-  return { read, update, check, toggleLike, toggleFollow, incrementOpenCount, putSession, deleteSessionByTokenHash, close: () => pool.end(), mode: 'postgres' };
+  // Another instance's write must drop THIS instance's read cache. NOTIFY
+  // is delivered on commit; our own instanceId is ignored because the
+  // wrappers already patched or refreshed the cache more precisely.
+  const startInvalidationListener = async () => {
+    const client = await pool.connect();
+    if (typeof client.on !== 'function') { client.release(); return; }
+    await client.query('LISTEN annotated_changed');
+    client.on('notification', (message) => {
+      if (message.payload !== instanceId) invalidateReadCache();
+    });
+    client.on('error', () => {
+      try { client.release(); } catch { /* already gone */ }
+      setTimeout(() => startInvalidationListener().catch(() => {}), 5_000);
+    });
+  };
+
+  return { read, update, check, toggleLike, toggleFollow, incrementOpenCount, putSession, deleteSessionByTokenHash, startInvalidationListener, close: () => pool.end(), mode: 'postgres' };
 };
 
 // The read-through cache. Every request used to materialise the entire
@@ -388,6 +411,12 @@ export function incrementOpenCount(annotationId) {
     return found;
   });
 }
+
+// The standalone media worker polls readStore for new jobs; without this,
+// its cache would never learn about writes made by the API process.
+export { invalidateReadCache };
+
+if (storageMode === 'postgres') selectedStore.startInvalidationListener?.().catch((error) => console.error('cache invalidation listener failed to start:', error.message));
 
 export const closeStore = () => selectedStore.close();
 export const storageDescription = () => selectedStore.mode;

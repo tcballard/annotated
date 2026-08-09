@@ -191,7 +191,16 @@ const handleApi = async (request, response, pathname) => {
         .map((follow) => ({ type: 'follow', actor: actorOf(follow.followerId), createdAt: follow.createdAt })),
     ].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 50);
     const seenAt = String(viewer.lastNotificationsSeenAt || '');
-    return send(response, 200, { notifications: items, unseenCount: items.filter((item) => String(item.createdAt) > seenAt).length });
+    // The extension's 5-minute badge poll is the product's only recurring
+    // per-user request. The ETag names everything the response depends on
+    // (newest item, count, watermark), so the steady state is a 304 that
+    // never re-derives or re-ships the list — same trick as the share cards.
+    const badgeTag = `"nf-${createHash('sha256').update(`${viewer.id}:${items[0]?.createdAt || ''}:${items.length}:${seenAt}`).digest('hex').slice(0, 24)}"`;
+    if (request.headers['if-none-match'] === badgeTag) {
+      response.writeHead(304, { etag: badgeTag, 'cache-control': 'private, no-cache', ...securityHeaders({ api: true }) });
+      return response.end();
+    }
+    return send(response, 200, { notifications: items, unseenCount: items.filter((item) => String(item.createdAt) > seenAt).length }, { etag: badgeTag, 'cache-control': 'private, no-cache' });
   }
 
   if (request.method === 'POST' && pathname === '/api/notifications/seen') {
