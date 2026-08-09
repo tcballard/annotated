@@ -111,6 +111,7 @@ const initialState = {
   commentDraft: '',
   claimOpen: false,
   signinOpen: false,
+  meMenuOpen: false,
   signinContext: '',
   lightbox: null,
   claimSlug: '',
@@ -184,6 +185,39 @@ let recordingStartedAt = 0;
 let mediaPollTimer;
 let claimReturnFocus = null;
 let pendingCommentFocus = false;
+// Set by navigate(): after the next render, focus moves to the view's main
+// region. Every render replaces #app's markup wholesale, which silently
+// drops keyboard focus onto <body> — from there Tab restarts at the top of
+// the document and keydown events stop reaching #app's listeners at all.
+let pendingViewFocus = false;
+
+// Render rebuilds every element, so the focused control is destroyed by
+// each render — including ones the user never asked for, like a toast
+// expiring three seconds after an action. Remember the control by its data
+// signature before the rebuild and put the keyboard back on its double
+// afterwards. Elements without a signature (or none focused) restore
+// nothing, which is exactly today's behaviour.
+const captureFocus = () => {
+  const el = document.activeElement;
+  if (!el || el === document.body || !app.contains(el)) return () => {};
+  if (el.id) {
+    const id = el.id;
+    return () => document.getElementById(id)?.focus({ preventScroll: true });
+  }
+  const action = el.dataset?.action;
+  if (!action) return () => {};
+  const escapeValue = (value) => value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const kebab = (key) => key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+  const selector = Object.entries(el.dataset)
+    .filter(([, value]) => value.length <= 120)
+    .map(([key, value]) => `[data-${kebab(key)}="${escapeValue(value)}"]`)
+    .join('');
+  const index = [...app.querySelectorAll(selector)].indexOf(el);
+  return () => {
+    const twin = [...app.querySelectorAll(selector)][Math.max(index, 0)];
+    if (twin && !twin.disabled && !twin.closest('[inert]')) twin.focus({ preventScroll: true });
+  };
+};
 
 const persist = () => {
   try {
@@ -283,6 +317,13 @@ const closeSignin = () => {
   document.querySelector('[data-action="open-signin"]')?.focus();
 };
 
+const meMenu = () => `<div class="me-menu" role="menu" aria-label="Account">
+  <div class="me-name">@${escapeHTML(state.user?.handle || '')}</div>
+  <button role="menuitem" data-action="me-view-profile">View profile</button>
+  <button role="menuitem" data-action="me-view-library">Your library</button>
+  <button role="menuitem" data-action="logout">Sign out</button>
+</div>`;
+
 const chromeAuth = () => {
   if (state.user) {
     const initials = escapeHTML((state.user.displayName || state.user.handle || 'A').slice(0, 2).toUpperCase());
@@ -290,7 +331,11 @@ const chromeAuth = () => {
       ? `<img src="${escapeHTML(state.user.avatarUrl)}" alt="" referrerpolicy="no-referrer" />`
       : initials;
     const bell = `<button class="bell ${state.activeView === 'notifications' ? 'is-active' : ''}" data-action="open-notifications" aria-label="Notifications${state.unseenNotifications ? ` (${state.unseenNotifications} unseen)` : ''}">${icon('bell')}${state.unseenNotifications ? `<span class="n">${state.unseenNotifications > 9 ? '9+' : state.unseenNotifications}</span>` : ''}</button>`;
-    return `<span class="auth">${bell}<button class="me ${state.user.avatarUrl ? 'has-photo' : ''}" data-action="logout" aria-label="Sign out ${escapeHTML(state.user.handle || '')}" title="Sign out">${face}</button></span>`;
+    // The avatar opens a small menu — identity, profile, library, and only
+    // then sign out. It used to BE the sign-out button: one stray click or
+    // Enter press on your own face and the session was gone. The panel
+    // retired that landmine in D4; the web now matches.
+    return `<span class="auth">${bell}<button class="me ${state.user.avatarUrl ? 'has-photo' : ''}" data-action="toggle-me-menu" aria-haspopup="menu" aria-expanded="${state.meMenuOpen ? 'true' : 'false'}" aria-label="Account menu for ${escapeHTML(state.user.handle || '')}">${face}</button>${state.meMenuOpen ? meMenu() : ''}</span>`;
   }
   const providers = enabledProviders(state.authProviders);
   // No providers and online is a development stack — a visitor-facing
@@ -349,6 +394,8 @@ const navigate = (view, { push = true } = {}) => {
   state.activeView = view;
   state.signinOpen = false;
   state.signinContext = '';
+  state.meMenuOpen = false;
+  pendingViewFocus = true;
   if (push) window.history.pushState({}, '', routeFor(view));
   if (view === 'moderation') loadModerationClaims().then(render);
   if (view === 'library') loadLibrary().then(render);
@@ -1220,6 +1267,16 @@ const notificationsView = () => {
   </div>`;
 };
 
+// Closing hands focus back to the shot that opened it — after the
+// re-render that button is a new element, but its data-src re-finds it.
+const closeLightbox = () => {
+  if (!state.lightbox) return;
+  const src = state.lightbox.src || '';
+  state.lightbox = null;
+  render();
+  app.querySelector(`[data-action="open-lightbox"][data-src="${src.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`)?.focus();
+};
+
 let publishMomentTimer;
 const dismissPublishMoment = () => {
   if (!state.publishMoment) return;
@@ -1264,11 +1321,27 @@ const render = () => {
     : state.activeView === 'notifications' ? notificationsView()
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
-  app.innerHTML = `${SHELL_MODE ? '' : chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${state.claimOpen ? claimModal() : ''}${state.signinOpen ? signinModal() : ''}${lightboxView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
+  const restoreFocus = captureFocus();
+  app.innerHTML = `${SHELL_MODE ? '' : '<a class="skip-link" href="#main" data-action="skip-to-content">Skip to content</a>' + chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${state.claimOpen ? claimModal() : ''}${state.signinOpen ? signinModal() : ''}${lightboxView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
+  restoreFocus();
   const overlayOpen = state.claimOpen || state.signinOpen || Boolean(state.lightbox);
   for (const element of app.querySelectorAll('.chrome, .auth-notice, .auth-prompt, .page, footer, .offline-note')) {
     element.inert = overlayOpen;
     if (overlayOpen) element.setAttribute('aria-hidden', 'true');
+  }
+  // The view's main region is the skip link's target and the landing spot
+  // after navigation — focusable by script, invisible to the tab order.
+  const page = app.querySelector('.page');
+  if (page) { page.id = 'main'; page.tabIndex = -1; }
+  if (pendingViewFocus) {
+    pendingViewFocus = false;
+    page?.focus();
+  }
+  // Opening the lightbox re-rendered away the button that had focus, which
+  // parked focus on <body> — outside #app, where the Escape listener never
+  // hears it. Move focus inside the dialog it belongs to.
+  if (state.lightbox && !app.querySelector('.lightbox')?.contains(document.activeElement)) {
+    app.querySelector('.lightbox .modal-close')?.focus();
   }
   if (pendingCommentFocus) {
     pendingCommentFocus = false;
@@ -1783,11 +1856,39 @@ const currentFeedPane = () => state.feedFollowing ? 2 : state.feedSort === 'tren
 /* ── events ────────────────────────────────────────────────────────── */
 
 app.addEventListener('click', (event) => {
+  // a click anywhere outside the account menu closes it, then the click
+  // proceeds as itself — menus dismiss, they don't eat the next action
+  if (state.meMenuOpen && !event.target.closest('.me-menu, [data-action="toggle-me-menu"]')) {
+    state.meMenuOpen = false;
+    render();
+  }
   const target = event.target.closest('[data-action]');
   if (!target) return;
   const action = target.dataset.action;
 
   if (target.dataset.stopClick === 'true') return;
+  if (action === 'skip-to-content') {
+    event.preventDefault();
+    app.querySelector('.page')?.focus();
+    return;
+  }
+  if (action === 'toggle-me-menu') {
+    state.meMenuOpen = !state.meMenuOpen;
+    render();
+    if (state.meMenuOpen) app.querySelector('.me-menu [role="menuitem"]')?.focus();
+    else app.querySelector('[data-action="toggle-me-menu"]')?.focus();
+    return;
+  }
+  if (action === 'me-view-profile') {
+    state.meMenuOpen = false;
+    openProfile(state.user?.handle || '');
+    return;
+  }
+  if (action === 'me-view-library') {
+    state.meMenuOpen = false;
+    navigate('library');
+    return;
+  }
   if (action === 'open-notifications') {
     navigate('notifications');
     return;
@@ -1893,6 +1994,10 @@ app.addEventListener('click', (event) => {
         await api.moderateClaim(claimId, status, '', takedown ? 'remove' : undefined);
         await loadModerationClaims();
         render();
+        // the button just pressed was rebuilt by the render — put the
+        // keyboard back on the same claim so the queue can be worked
+        // without reaching for the mouse
+        app.querySelector(`[data-action="moderate-claim"][data-claim-id="${claimId}"]:not([disabled])`)?.focus();
         notify(takedown ? 'Claim resolved — annotation taken down.' : `Claim marked ${status.replace('_', ' ')}.`);
       } catch (error) { notify(error.message || 'Claim status could not be saved.'); }
     })();
@@ -2059,12 +2164,11 @@ app.addEventListener('click', (event) => {
     return;
   }
   if (action === 'close-lightbox') {
-    state.lightbox = null;
-    render();
+    closeLightbox();
     return;
   }
   if (action === 'submit-claim') { submitClaim(); return; }
-  if (action === 'logout') { api.logout().then(() => { state.user = null; render(); notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
+  if (action === 'logout') { state.meMenuOpen = false; api.logout().then(() => { state.user = null; render(); notify('Signed out.'); }).catch((error) => notify(error.message || 'Sign out failed.')); return; }
 });
 
 // The mobile flick: a horizontal swipe on the feed moves between Recent,
@@ -2097,10 +2201,30 @@ app.addEventListener('timeupdate', (event) => {
 }, true);
 
 app.addEventListener('keydown', (event) => {
+  if (state.publishMoment && event.key === 'Escape') {
+    event.preventDefault();
+    dismissPublishMoment();
+    return;
+  }
+  if (state.meMenuOpen) {
+    const items = [...app.querySelectorAll('.me-menu [role="menuitem"]')];
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      state.meMenuOpen = false;
+      render();
+      app.querySelector('[data-action="toggle-me-menu"]')?.focus();
+      return;
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const index = items.indexOf(document.activeElement);
+      items[event.key === 'ArrowDown' ? (index + 1) % items.length : (index - 1 + items.length) % items.length]?.focus();
+      return;
+    }
+  }
   if (state.lightbox && event.key === 'Escape') {
     event.preventDefault();
-    state.lightbox = null;
-    render();
+    closeLightbox();
     return;
   }
   if (state.claimOpen || state.signinOpen) {

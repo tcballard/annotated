@@ -88,6 +88,27 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 3px; }
 .chrome :focus-visible { outline-color: #F5F4F0; }
 
+/* The first Tab stop on every page: invisible until it has focus, then a
+   chrome-coloured pill above everything. Jumps past the bar to the view. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  background: var(--chrome);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 99px;
+  transform: translateY(-200%);
+}
+.skip-link:focus-visible { transform: none; outline-color: #F5F4F0; }
+
+/* The view region receives focus from the skip link and after navigation —
+   a programmatic landing, not an interactive control, so no ring. */
+.page:focus, .page:focus-visible { outline: none; }
+
 .icon svg { width: 15px; height: 15px; stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; vertical-align: -2px; }
 
 /* ── chrome bar ─────────────────────────────────────────────────────── */
@@ -151,7 +172,45 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .chrome .search input::placeholder { color: #8B919A; }
 
-.chrome .auth { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.chrome .auth { display: flex; align-items: center; gap: 10px; flex-shrink: 0; position: relative; }
+
+/* the avatar opens a small menu — identity, profile, library, and only
+   then sign out; the same anatomy the panel's D4 menu proved */
+.me-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  min-width: 180px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lift);
+}
+
+.me-menu .me-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--meta);
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--hair);
+  margin-bottom: 4px;
+}
+
+.me-menu [role="menuitem"] {
+  text-align: left;
+  font-size: 13px;
+  color: var(--ink);
+  padding: 8px;
+  border-radius: 6px;
+  min-height: 32px;
+  transition: background .12s ease;
+}
+
+.me-menu [role="menuitem"]:hover { background: var(--hover-row); }
 .chrome .auth:last-child { margin-left: auto; }
 .chrome .search { margin-left: auto; }
 .chrome .search + .auth { margin-left: 0; }

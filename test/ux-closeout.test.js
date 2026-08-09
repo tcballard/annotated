@@ -116,3 +116,36 @@ test('headline full stops come from the identity system, never twice', () => {
     );
   }
 });
+
+test('the keyboard can arrive, move, and never gets lost by a render', () => {
+  // the first Tab stop is a skip link, and its target is the view region
+  assert.match(mainSource, /class="skip-link" href="#main" data-action="skip-to-content"/u);
+  assert.match(mainSource, /page\.id = 'main'; page\.tabIndex = -1;/u);
+  assert.match(styles, /\.skip-link:focus-visible \{ transform: none/u);
+  // navigation parks focus on the view instead of the top of the document
+  assert.match(mainSource, /pendingViewFocus = true;/u);
+  assert.match(mainSource, /pendingViewFocus = false;\s*page\?\.focus\(\);/u);
+  // every render restores the focused control by its data signature — a
+  // toast expiring three seconds after an action must not dump the
+  // keyboard back on <body>
+  assert.match(mainSource, /const restoreFocus = captureFocus\(\);/u);
+  assert.match(mainSource, /app\.innerHTML = [\s\S]*?restoreFocus\(\);/u);
+  assert.match(mainSource, /focus\(\{ preventScroll: true \}\)/u);
+  // the lightbox pulls focus in on open and hands it back to the shot that
+  // opened it; the publish celebration yields to Escape
+  assert.match(mainSource, /const closeLightbox = /u);
+  assert.match(mainSource, /state\.publishMoment && event\.key === 'Escape'/u);
+  // the moderation queue keeps the keyboard on the claim it just judged
+  assert.match(mainSource, /\[data-action="moderate-claim"\]\[data-claim-id="\$\{claimId\}"\]:not\(\[disabled\]\)/u);
+});
+
+test('the avatar opens an account menu — never a one-click sign-out', () => {
+  assert.match(mainSource, /data-action="toggle-me-menu" aria-haspopup="menu" aria-expanded/u);
+  assert.doesNotMatch(mainSource, /class="me \$\{[^}]*\}" data-action="logout"/u);
+  assert.match(mainSource, /const meMenu = /u);
+  assert.match(mainSource, /role="menuitem" data-action="logout"/u);
+  // Escape closes and returns to the avatar; arrows move between items
+  assert.match(mainSource, /state\.meMenuOpen = false;\s*render\(\);\s*app\.querySelector\('\[data-action="toggle-me-menu"\]'\)\?\.focus\(\);/u);
+  assert.match(mainSource, /event\.key === 'ArrowDown' \|\| event\.key === 'ArrowUp'/u);
+  assert.match(styles, /\.me-menu \[role="menuitem"\]/u);
+});
