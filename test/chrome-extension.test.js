@@ -545,8 +545,8 @@ test('extension settings surface explains the API boundary and recovery states',
 test('Chrome Web Store record covers every manifest permission and the privacy gate', async () => {
   const manifest = JSON.parse(await read('manifest.json'));
   const packageVersion = JSON.parse(await readFile(path.join(projectRoot, 'package.json'), 'utf8')).version;
-  const listing = await readFile(path.join(projectRoot, 'CHROMEWEBSTORE.md'), 'utf8');
-  const release = await readFile(path.join(projectRoot, 'RELEASE.md'), 'utf8');
+  const listing = await readFile(path.join(projectRoot, 'docs', 'CHROMEWEBSTORE.md'), 'utf8');
+  const release = await readFile(path.join(projectRoot, 'docs', 'RELEASE.md'), 'utf8');
   assert.equal(manifest.version, packageVersion);
   assert.match(listing, /Chrome Web Store Listing/);
   assert.match(listing, new RegExp(`\`?${manifest.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\`?`));
@@ -607,7 +607,7 @@ test('nothing is injected and no URL is resolved while you are reading a feed', 
 
 test('the store listing and the options page describe that gate, not a softer one', async () => {
   const [listing, options] = await Promise.all([
-    readFile(new URL('../CHROMEWEBSTORE.md', import.meta.url), 'utf8'),
+    readFile(new URL('../docs/CHROMEWEBSTORE.md', import.meta.url), 'utf8'),
     read('options.html'),
   ]);
   for (const [name, text] of [['CHROMEWEBSTORE.md', listing], ['options.html', options]]) {

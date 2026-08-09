@@ -27,7 +27,7 @@ The browser capture path stages recorded audio in IndexedDB before upload. This 
 Steps 1–3 have landed:
 
 1. API paths and validation semantics stayed stable throughout.
-2. PostgreSQL replaced the JSON adapter behind the same store contract. Hot-path writes are row-native — a like lands in about a millisecond at fifty thousand rows, with a 25 ms budget enforced in CI ([`test/hot-path.integration.test.js`](test/hot-path.integration.test.js)) — feeds page by keyset cursor, share cards and the notification badge revalidate with ETags, and deploys run migrations before they serve.
+2. PostgreSQL replaced the JSON adapter behind the same store contract. Hot-path writes are row-native — a like lands in about a millisecond at fifty thousand rows, with a 25 ms budget enforced in CI ([`test/hot-path.integration.test.js`](../test/hot-path.integration.test.js)) — feeds page by keyset cursor, share cards and the notification badge revalidate with ETags, and deploys run migrations before they serve.
 3. Source metadata fetching and media extraction run as bounded worker jobs, recoverable by lease, in a standalone process (`npm run worker`) whose read cache is invalidated cross-instance over LISTEN/NOTIFY.
 
 Still deliberately ahead, gated on real traffic:

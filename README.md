@@ -19,8 +19,8 @@ rots.
 
 > **v0.1.0 is a draft release baseline.** Local development and a
 > Railway POC staging service are real and evidenced; a public production
-> release and a Chrome Web Store submission are not. [RELEASE.md](RELEASE.md)
-> names every gate still open.
+> release and a Chrome Web Store submission are not.
+> [RELEASE.md](docs/RELEASE.md) names every gate still open.
 
 ## Try it in two minutes
 
@@ -81,8 +81,8 @@ browser until upload.
 
 Under the hood the write path is row-native PostgreSQL: a like lands in about
 a millisecond at fifty thousand rows, and CI fails the build if it crosses 25.
-[PERFORMANCE.md](PERFORMANCE.md) has the architecture and what deliberately
-waits for real traffic.
+[docs/PERFORMANCE.md](docs/PERFORMANCE.md) has the architecture and what
+deliberately waits for real traffic.
 
 ## For reviewers
 
@@ -111,28 +111,31 @@ refuse to run in production without `ANNOTATED_SEED_PERSONAS=allow`.
 
 ## Where the line is
 
-[RELEASE.md](RELEASE.md) states the exact v0.1.0 status, the repeatable
-checks, and the external gates that still prevent a public release. The live
-brief comparison is [BRIEF_ACCEPTANCE.md](BRIEF_ACCEPTANCE.md) — that document
-is the acceptance source, not this README.
+[docs/RELEASE.md](docs/RELEASE.md) states the exact v0.1.0 status, the
+repeatable checks, and the external gates that still prevent a public release.
+The live brief comparison is
+[docs/BRIEF_ACCEPTANCE.md](docs/BRIEF_ACCEPTANCE.md) — that document is the
+acceptance source, not this README.
 
 ## Useful references
 
+- [The 90-second demo script](docs/DEMO.md)
 - [Approved brand kit](assets/brand/annotated-brand-kit/README.md)
 - [Brand guidelines](assets/brand/annotated-brand-kit/guidelines/annotated-brand-guidelines.pdf)
-- [Product contract](PRODUCT.md)
-- [Acceptance evidence](ACCEPTANCE_EVIDENCE.md)
-- [Dated acceptance-gap audit](ACCEPTANCE_GAP_AUDIT_2026-08-04.md)
-- [Extension surface map](EXTENSION_SURFACE_MAP.md)
-- [Mobile shell (Expo)](MOBILE.md)
-- [Chrome Web Store readiness](CHROMEWEBSTORE.md)
-- [Storage boundary](STORAGE.md)
-- [Deployment boundary](DEPLOYMENT.md)
-- [Performance architecture](PERFORMANCE.md)
+- [Product contract](docs/PRODUCT.md)
+- [Acceptance evidence](docs/ACCEPTANCE_EVIDENCE.md)
+- [Extension surface map](docs/EXTENSION_SURFACE_MAP.md)
+- [Mobile shell (Expo)](docs/MOBILE.md)
+- [Chrome Web Store readiness](docs/CHROMEWEBSTORE.md)
+- [Storage boundary](docs/STORAGE.md)
+- [Deployment boundary](docs/DEPLOYMENT.md)
+- [Performance architecture](docs/PERFORMANCE.md)
+- [UX direction](docs/UX_DIRECTION.md)
 
 For a production-shaped run, start from [`.env.example`](.env.example) and
-follow [DEPLOYMENT.md](DEPLOYMENT.md). Provider credentials never belong in
-the extension, and local file storage is not production persistence.
+follow [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). Provider credentials never
+belong in the extension, and local file storage is not production
+persistence.
 
 Found something slower, rougher, or less honest than this README claims?
 [Open an issue](https://github.com/tcballard/annotated/issues) — specifics

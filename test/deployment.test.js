@@ -34,7 +34,7 @@ test('production server bind host is configurable for container networking', asy
 });
 
 test('deployment documents persisted media-worker leases', async () => {
-  const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
+  const deployment = await readFile(new URL('../docs/DEPLOYMENT.md', import.meta.url), 'utf8');
   const env = await readFile(new URL('../.env.example', import.meta.url), 'utf8');
   assert.match(deployment, /worker leases live in the configured repository/);
   assert.match(deployment, /managed queue when independent worker scaling is required/);
@@ -44,8 +44,8 @@ test('deployment documents persisted media-worker leases', async () => {
 });
 
 test('deployment documents the shared production rate-limit ledger', async () => {
-  const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
-  const storage = await readFile(new URL('../STORAGE.md', import.meta.url), 'utf8');
+  const deployment = await readFile(new URL('../docs/DEPLOYMENT.md', import.meta.url), 'utf8');
+  const storage = await readFile(new URL('../docs/STORAGE.md', import.meta.url), 'utf8');
   const migration = await readFile(new URL('../server/migrations/004_rate_limit_buckets.sql', import.meta.url), 'utf8');
   const env = await readFile(new URL('../.env.example', import.meta.url), 'utf8');
   assert.match(deployment, /004_rate_limit_buckets/);
@@ -56,7 +56,7 @@ test('deployment documents the shared production rate-limit ledger', async () =>
 });
 
 test('deployment documents the non-destructive production backup audit', async () => {
-  const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
+  const deployment = await readFile(new URL('../docs/DEPLOYMENT.md', import.meta.url), 'utf8');
   const workflow = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
   const backup = await readFile(new URL('../scripts/backup-production.mjs', import.meta.url), 'utf8');
@@ -96,8 +96,8 @@ test('operator backup archive requires a distinct retained archive bucket', asyn
 });
 
 test('deployment documents the private Railway Buckets POC profile', async () => {
-  const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
-  const storage = await readFile(new URL('../STORAGE.md', import.meta.url), 'utf8');
+  const deployment = await readFile(new URL('../docs/DEPLOYMENT.md', import.meta.url), 'utf8');
+  const storage = await readFile(new URL('../docs/STORAGE.md', import.meta.url), 'utf8');
   const env = await readFile(new URL('../.env.example', import.meta.url), 'utf8');
   assert.match(deployment, /## Railway POC staging/);
   assert.match(deployment, /S3_REGION=\$\{\{media\.REGION\}\}/);
@@ -110,8 +110,8 @@ test('deployment documents the private Railway Buckets POC profile', async () =>
 
 test('release docs distinguish verified Railway staging from public release', async () => {
   const readme = await readFile(new URL('../README.md', import.meta.url), 'utf8');
-  const release = await readFile(new URL('../RELEASE.md', import.meta.url), 'utf8');
-  const deployment = await readFile(new URL('../DEPLOYMENT.md', import.meta.url), 'utf8');
+  const release = await readFile(new URL('../docs/RELEASE.md', import.meta.url), 'utf8');
+  const deployment = await readFile(new URL('../docs/DEPLOYMENT.md', import.meta.url), 'utf8');
   assert.match(readme, /Railway POC staging/);
   assert.match(readme, /annotated-staging\.up\.railway\.app/);
   assert.match(release, /Railway POC staging is deployed and\s+> evidenced/);
@@ -133,7 +133,7 @@ test('provider egress settings are visible in the local configuration contract',
 
 test('web build includes a privacy policy with the extension data boundary', async () => {
   const policy = await readFile(new URL('../public/privacy.html', import.meta.url), 'utf8');
-  const listing = await readFile(new URL('../CHROMEWEBSTORE.md', import.meta.url), 'utf8');
+  const listing = await readFile(new URL('../docs/CHROMEWEBSTORE.md', import.meta.url), 'utf8');
   assert.match(policy, /Privacy policy/);
   assert.match(policy, /browser-local IndexedDB/);
   assert.match(policy, /Google or X/);

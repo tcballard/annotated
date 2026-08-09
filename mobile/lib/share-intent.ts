@@ -3,7 +3,7 @@
 // .web variant stubs it so the app runs as a react-native-web preview.
 // Expo Go is a third runtime: the native module does not exist there and
 // even importing it throws, so Go gets the web preview's inert shape and
-// the share sheet stays a real-build feature (see MOBILE.md boundaries).
+// the share sheet stays a real-build feature (see docs/MOBILE.md boundaries).
 import Constants from 'expo-constants';
 
 type ShareIntentHook = (options?: { debug?: boolean; resetOnBackground?: boolean }) => {
