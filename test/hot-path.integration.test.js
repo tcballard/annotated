@@ -136,3 +136,17 @@ test(`the write path stays flat at ${SEED_LIKES.toLocaleString()} rows — the G
     assert.ok(follow < 25, `a follow must stay under 25ms (got ${follow.toFixed(1)}ms)`);
   });
 });
+
+test('sessions are rows: create sweeps the expired, sign-out deletes one', gated, async () => {
+  await withDatabase(async (repository, pool) => {
+    const expired = { id: 's-old', tokenHash: 'hash-old', userId: 'u-1', createdAt: '2026-01-01T00:00:00.000Z', expiresAt: '2026-01-02T00:00:00.000Z' };
+    await pool.query(`INSERT INTO annotated_records (collection, record_id, payload) VALUES ('sessions', $1, $2::jsonb)`, [expired.id, JSON.stringify(expired)]);
+    const live = { id: 's-new', tokenHash: 'hash-new', userId: 'u-1', createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86_400_000).toISOString() };
+    await repository.putSession(live);
+    let rows = await pool.query(`SELECT record_id FROM annotated_records WHERE collection = 'sessions' ORDER BY record_id`);
+    assert.deepEqual(rows.rows.map((row) => row.record_id), ['s-new'], 'creating a session sweeps expired ones');
+    await repository.deleteSessionByTokenHash('hash-new');
+    rows = await pool.query(`SELECT count(*) FROM annotated_records WHERE collection = 'sessions'`);
+    assert.equal(Number(rows.rows[0].count), 0, 'sign-out removes exactly the session');
+  });
+});

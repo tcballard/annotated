@@ -24,11 +24,27 @@ export const trendingScore = (annotation, { likes = 0, comments = 0 } = {}, now 
   return engagement / ((age + 2) ** HOT_GRAVITY);
 };
 
+// The count maps are O(likes + comments) to build and were rebuilt on
+// every feed request. Gate 1's read cache hands us the perfect memo key:
+// the state object's identity changes exactly when a write lands, so the
+// maps cache until the data actually moves. Scores still take a live
+// `now`, so the gravity decay itself never goes stale.
+const countsMemo = new WeakMap();
+export const engagementCounts = (store) => {
+  let counts = countsMemo.get(store);
+  if (!counts) {
+    const likesByAnnotation = new Map();
+    for (const like of store.likes || []) likesByAnnotation.set(like.annotationId, (likesByAnnotation.get(like.annotationId) || 0) + 1);
+    const commentsByAnnotation = new Map();
+    for (const comment of store.comments || []) commentsByAnnotation.set(comment.annotationId, (commentsByAnnotation.get(comment.annotationId) || 0) + 1);
+    counts = { likesByAnnotation, commentsByAnnotation };
+    countsMemo.set(store, counts);
+  }
+  return counts;
+};
+
 export const sortByTrending = (annotations, store, now = Date.now()) => {
-  const likesByAnnotation = new Map();
-  for (const like of store.likes || []) likesByAnnotation.set(like.annotationId, (likesByAnnotation.get(like.annotationId) || 0) + 1);
-  const commentsByAnnotation = new Map();
-  for (const comment of store.comments || []) commentsByAnnotation.set(comment.annotationId, (commentsByAnnotation.get(comment.annotationId) || 0) + 1);
+  const { likesByAnnotation, commentsByAnnotation } = engagementCounts(store);
   return [...annotations]
     .map((annotation) => ({
       annotation,

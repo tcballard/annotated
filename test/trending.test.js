@@ -48,3 +48,15 @@ test('trending sources aggregate by host with decay and a bounded list', () => {
   assert.equal(ranked[0].annotationCount, 2);
   assert.equal(ranked[1].host, 'paulgraham.com', 'a fresh source outranks decayed volume');
 });
+
+test('engagement counts memoize on state identity and refresh on change', async () => {
+  const { engagementCounts } = await import('../server/trending.js');
+  const store = { likes: [{ annotationId: 'a1', userId: 'u1' }], comments: [] };
+  const first = engagementCounts(store);
+  assert.equal(engagementCounts(store), first, 'same state object must reuse the maps');
+  assert.equal(first.likesByAnnotation.get('a1'), 1);
+  const next = { ...store, likes: [...store.likes, { annotationId: 'a1', userId: 'u2' }] };
+  const fresh = engagementCounts(next);
+  assert.notEqual(fresh, first, 'a new state object recomputes');
+  assert.equal(fresh.likesByAnnotation.get('a1'), 2);
+});

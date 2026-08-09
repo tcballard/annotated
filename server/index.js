@@ -4,13 +4,13 @@ import http from 'node:http';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { checkStore, closeStore, incrementOpenCount, readStore, storageDescription, toggleFollow, toggleLike, updateStore } from './store.js';
 import { normalizeAudioMimeType, normalizeImageMimeType, removeStoredMedia, serveStoredMedia, writeIncomingImage, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
-import { followingFeedRequiresAuth, matchesFeedQuery, matchesFeedUrl, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey } from './feed.js';
+import { afterKeysetCursor, followingFeedRequiresAuth, keysetCursorFor, matchesFeedQuery, matchesFeedUrl, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey, parseKeysetCursor } from './feed.js';
 import { ogCardData, renderOgCardCached } from './og-card.js';
 import { escapeHtml, injectAnnotationMeta } from './permalink-meta.js';
 import { allowsIndexing, canViewAnnotation, isPubliclyListed, VISIBILITIES } from './visibility.js';
@@ -259,11 +259,19 @@ const handleApi = async (request, response, pathname) => {
       ? TOPICS.map(({ slug, label }) => ({ slug, label, count: filtered.filter((item) => item.topic === slug).length })).filter((entry) => entry.count > 0)
       : undefined;
     const scoped = topic ? filtered.filter((item) => item.topic === topic) : filtered;
-    const candidates = trending
-      ? sortByTrending(scoped, store)
-      : scoped.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    const page = candidates.slice(offset, offset + limit);
-    return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null, query: search || null, ...(topicCounts ? { topics: topicCounts, topic } : {}) });
+    if (trending) {
+      const candidates = sortByTrending(scoped, store);
+      const page = candidates.slice(offset, offset + limit);
+      return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null, query: search || null, ...(topicCounts ? { topics: topicCounts, topic } : {}) });
+    }
+    // Recent is keyset-paginated: an insert mid-scroll can no longer make
+    // readers skip or double-see items (Gate 1b). Legacy numeric cursors
+    // still work as offsets while old clients drain.
+    const candidates = scoped.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+    const keyset = parseKeysetCursor(query.get('cursor'));
+    const remaining = keyset ? afterKeysetCursor(candidates, keyset) : candidates.slice(offset);
+    const page = remaining.slice(0, limit);
+    return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: remaining.length > limit ? keysetCursorFor(page[page.length - 1]) : null, query: search || null });
   }
 
   // Source hub: a host's public annotations and its annotators, discovery by
@@ -826,12 +834,22 @@ const serveClaimForm = async (request, response, slug) => {
   return sendClaimPage(response, 200, { annotation, mode: 'received' });
 };
 
-const serveOgCard = async (response, slug, { download = false } = {}) => {
+const serveOgCard = async (request, response, slug, { download = false } = {}) => {
   const found = await publishedAnnotationBySlug(decodeURIComponent(slug)).catch(() => null);
   if (!found) return notFound(response);
   const { annotation, author } = found;
   try {
     const cacheKey = [annotation.id, annotation.mediaStatus, annotation.openCount || 0, annotation.editedAt || '', annotation.visibility || 'public', annotation.screenshotAssetId || ''].join(':');
+    // Crawlers refetch share cards on every unfurl. The ETag is the cache
+    // key that already names everything the pixels depend on, so an
+    // unchanged card answers 304 before any render happens — and s-maxage
+    // lets a CDN hold it for a day while browsers keep an hour.
+    const etag = `"og-${createHash('sha256').update(cacheKey).digest('hex').slice(0, 24)}"`;
+    const cacheHeaders = { etag, 'cache-control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400' };
+    if (request.headers['if-none-match'] === etag) {
+      response.writeHead(304, { ...cacheHeaders, ...securityHeaders({ api: true }) });
+      return response.end();
+    }
     const png = await renderOgCardCached(cacheKey, async () => {
       const data = ogCardData(annotation, author);
       // Screenshot captures put the actual image on the card. PNG only (the
@@ -852,7 +870,7 @@ const serveOgCard = async (response, slug, { download = false } = {}) => {
       return data;
     });
     response.writeHead(200, {
-      'content-type': 'image/png', 'content-length': png.length, 'cache-control': 'public, max-age=3600',
+      'content-type': 'image/png', 'content-length': png.length, ...cacheHeaders,
       ...(download ? { 'content-disposition': `attachment; filename="annotated-${annotation.slug}.png"` } : {}),
       ...securityHeaders({ api: true }),
     });
@@ -917,7 +935,7 @@ const server = http.createServer(async (request, response) => {
     if (request.method === 'OPTIONS' && url.pathname.startsWith('/api/')) return send(response, 204, '');
     if (request.method === 'GET' && url.pathname.startsWith('/media/')) return serveMedia(response, url.pathname.slice('/media/'.length));
     const ogMatch = request.method === 'GET' ? url.pathname.match(/^\/og\/([^/]+)\.png$/) : null;
-    if (ogMatch) return serveOgCard(response, ogMatch[1], { download: url.searchParams.has('download') });
+    if (ogMatch) return serveOgCard(request, response, ogMatch[1], { download: url.searchParams.has('download') });
     // The mobile shell finishes sign-in here: its one-time ticket becomes the
     // same cookie session the web app uses, then the WebView returns to the
     // surface it came from. `next` is honoured only as a local path — a
