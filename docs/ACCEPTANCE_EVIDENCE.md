@@ -27,8 +27,9 @@ objects, and probe files. The guarded PostgreSQL limiter also passed with
 `shared: true`, `allowed: [true, true, false]`, and a positive `Retry-After`,
 then deleted its temporary bucket.
 
-The remaining product-validation items are collected as a browser-only
-checklist in [`ACCEPTANCE_GAP_AUDIT_2026-08-04.md`](./ACCEPTANCE_GAP_AUDIT_2026-08-04.md).
+The remaining product-validation items were collected as a browser-only
+checklist in the dated gap audit (`ACCEPTANCE_GAP_AUDIT_2026-08-04.md`,
+preserved in git history and removed in the docs cleanup).
 Separate release-infrastructure gates remain explicit: deployed YouTube
 extraction needs an approved proxy/cookie boundary, Railway Buckets reject
 versioning, and no retained archive destination or scheduler is configured.
