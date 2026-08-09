@@ -5,8 +5,6 @@
   </picture>
 </p>
 
-# annotated — keep the moment
-
 <p align="center">
   <a href="https://github.com/tcballard/annotated/actions/workflows/ci.yml"><img src="https://github.com/tcballard/annotated/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
