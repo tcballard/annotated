@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { OG_WORDMARK } from './og-wordmark.js';
 
 // OG card (1200x630) for annotation permalinks — a miniature permalink page.
 // Identity rules: ink chrome bar, paper ground, bordered white module, the
@@ -18,6 +19,19 @@ const T = {
 
 const el = (type, style, children) => ({ type, props: { style, children } });
 const txt = (style, value) => el('div', style, value);
+
+// The lockup rides in as the finished drawing — the same outlined paths the
+// web header ships — because satori would otherwise draw "annotated." in
+// whatever font the container carries (DejaVu, in production): a fourth
+// rendering of the brand on its most-shared surface.
+const wordmark = (height) => ({
+  type: 'img',
+  props: {
+    src: `data:image/svg+xml;base64,${Buffer.from(OG_WORDMARK.svg).toString('base64')}`,
+    width: Math.round((OG_WORDMARK.width / OG_WORDMARK.height) * height),
+    height,
+  },
+});
 
 const clip = (value, max) => {
   const text = String(value || '').trim();
@@ -111,8 +125,7 @@ export function annotationCard(data) {
       height: 62, backgroundColor: T.chrome, display: 'flex',
       alignItems: 'center', padding: '0 34px', flexShrink: 0,
     }, [
-      txt({ fontSize: 29, fontWeight: 700, color: '#FFFFFF', letterSpacing: -0.5 }, 'annotated'),
-      txt({ fontSize: 29, fontWeight: 700, color: T.logoDot }, '.'),
+      wordmark(26),
       txt({ fontSize: 16, color: T.chromeText, marginLeft: 18, letterSpacing: 2 }, 'SOURCE-FIRST NOTES'),
     ]),
 

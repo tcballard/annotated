@@ -1,7 +1,9 @@
 /* annotated side panel — handoff v2 identity (v5_sidepanel).
-   Same laws as the web surfaces: terracotta marks the moment only, the
-   source speaks in serif, mono chips are tabular, no shadows, 3/6/8/99px
-   radii. 360px reference width, supports 320–500. */
+   Shares the web's palette, voice, and accent law: terracotta marks the
+   moment only, the source speaks in serif, mono chips are tabular.
+   Elevation deliberately diverges: the web reads on 18px cards with soft
+   shadows; this panel is dense tool chrome and stays flat — 3/6/8/99px
+   radii, no shadows. 360px reference width, supports 320–500. */
 
 :root {
   --chrome: #33383F;

@@ -103,3 +103,79 @@ test('one terracotta, one dark paper — the palette matches across surfaces', (
     assert.match(css, /@media \(prefers-color-scheme: dark\)/, `${surface} answers the OS scheme`);
   }
 });
+
+test('the moment chip is the same component on every surface', () => {
+  // Law 1's first entry: the chip marks the moment — mono type, accent-ink
+  // on accent-soft, 3px radius. The native timeline wore grey here while
+  // web and panel wore terracotta; the same tokens bind all three now.
+  const webChip = webCss.match(/\n\.chip \{[\s\S]*?\n\}/)?.[0] || '';
+  const panelChip = panelCss.match(/\n\.chip \{[\s\S]*?\n\}/)?.[0] || '';
+  for (const [surface, chip] of [['web', webChip], ['panel', panelChip]]) {
+    assert.match(chip, /color: var\(--accent-ink\)/, `${surface} chip text must be accent-ink`);
+    assert.match(chip, /background: var\(--accent-soft\)/, `${surface} chip wash must be accent-soft`);
+    assert.match(chip, /border-radius: 3px/, `${surface} chip radius must be 3px`);
+  }
+  const nativeChip = timeline.match(/\n  chip: \{.*\n/)?.[0] || '';
+  assert.match(nativeChip, /color: tokens\['accent-ink'\]/, 'the native chip text must be accent-ink');
+  assert.match(nativeChip, /backgroundColor: tokens\['accent-soft'\]/, 'the native chip wash must be accent-soft');
+  assert.match(nativeChip, /borderRadius: 3,/, 'the native chip radius must be 3');
+});
+
+test('one lockup: the wordmark is the same drawing everywhere', async () => {
+  const [brandMark, welcome, ogCard] = await Promise.all([
+    read('mobile/components/BrandMark.tsx'),
+    read('mobile/components/welcome/speak-language.tsx'),
+    read('server/og-card.js'),
+  ]);
+  // The web ships the lockup outlined from Inter ExtraBold at -2.1%
+  // (locked in brand-identity.test.js). The app must name that face —
+  // an unnamed fontFamily drew SF on iOS and Roboto on Android — and
+  // every native rendering tracks at the same -2.1%.
+  assert.match(brandMark, /fontFamily: 'Inter_800ExtraBold'/, 'BrandMark must name the face, not inherit the platform default');
+  assert.match(brandMark, /letterSpacing: size \* -0\.021/);
+  assert.match(welcome, /letterSpacing: size \* -0\.021/, 'the welcome lockup tracks like the brand');
+  // The share card embeds the outlined drawing itself — retyping the
+  // wordmark hands the brand to whatever font the container carries.
+  assert.match(ogCard, /OG_WORDMARK/, 'the share card must embed the outlined lockup');
+  assert.doesNotMatch(ogCard, /'annotated'\)/, 'the card must not retype the wordmark in container fonts');
+});
+
+test('the account menu has the same skeleton on web and panel', () => {
+  // The avatar never signs you out directly on any surface — it opens a
+  // menu: identity first, View profile next, Sign out always last. The
+  // middle entry is surface-appropriate (panel: Settings; web: library).
+  for (const [surface, source] of [['web', web], ['panel', panelHtml]]) {
+    assert.match(source, /aria-haspopup="menu"/, `${surface} avatar declares the menu`);
+    assert.match(source, /role="menu" aria-label="Account"/, `${surface} menu is named Account`);
+    const menu = source.match(/role="menu" aria-label="Account"[\s\S]*?Sign out/)?.[0] || '';
+    assert.match(menu, /me-name/, `${surface} menu opens with the identity line`);
+    assert.ok(menu.indexOf('View profile') < menu.indexOf('Sign out'), `${surface} keeps sign out last`);
+  }
+});
+
+test('focus is the same ink ring on web and panel', () => {
+  const ring = ':focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 3px; }';
+  for (const [surface, css] of [['web', webCss], ['panel', panelCss]]) {
+    assert.ok(css.includes(ring), `${surface} draws the ink focus ring`);
+    assert.match(css, /:focus-visible \{ outline-color: #F5F4F0; \}/, `${surface} flips to paper on the dark chrome`);
+  }
+});
+
+test('one clock: web and panel share the same motion tokens', () => {
+  // Affordance motion runs on the panel's proven tokens on both surfaces.
+  // Authored sequences (the publish celebration's locked beat, ambient
+  // loops, the welcome's timeline) deliberately keep their own clocks.
+  const clock = [
+    '--t-press: 60ms', '--t-hover: 120ms', '--t-fade: 180ms', '--t-move: 240ms',
+    '--e-ink: cubic-bezier(.25, .1, .25, 1)',
+    '--e-enter: cubic-bezier(.2, .7, .3, 1)',
+    '--e-exit: cubic-bezier(.4, 0, .7, 1)',
+    '--e-hold: ease-in-out',
+  ];
+  for (const token of clock) {
+    assert.ok(webCss.includes(token), `web must carry ${token}`);
+    assert.ok(panelCss.includes(token), `panel must carry ${token}`);
+  }
+  // and the web actually runs on them — no raw transition timings left
+  assert.doesNotMatch(webCss, /transition: [^;]*\.\d+s/, 'web transitions must use the tokens');
+});
