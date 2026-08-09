@@ -50,8 +50,8 @@ The extension reads the URL, title, and selected text from the active page so it
 PERMISSIONS
 • Active-page access — needed to show the current source, read a selected passage, and let you choose a media range from any site you visit.
 • Storage — needed to preserve bounded drafts, retry metadata, and the temporary sign-in session.
-• Identity — needed to complete the configured X sign-in handoff (the Google
-  adapter remains available for a future release).
+• Identity — needed to complete the configured X or Google sign-in handoff
+  and receive the one-time extension callback.
 • Alarms — needed to retry queued captures when the browser service resumes.
 
 SUPPORT
@@ -99,7 +99,7 @@ production integrations are available.
 | `tabs` | permissions | Reads the active tab's URL and title, detects tab changes, and supplies the tab context required for selected-text capture. |
 | `scripting` | permissions | Injects into the active tab only while the sidebar's **Capture** surface is open. Two injections are automatic there, because the capture surface exists to describe the page you are on: a read of the page's media element (to detect the source type and show the player's position) and a text-selection watcher (so the capture button can offer the passage you highlighted). The rest happen only on an explicit action — drawing the drag-to-snip overlay, and highlighting a chosen annotation's quoted passage. Nothing is injected while you are reading a feed, and no injected code sends page content anywhere on its own. |
 | `storage` | permissions | Stores bounded drafts, API configuration, retry metadata, compact published-result metadata, and the temporary browser session. It never stores media Blobs in key/value storage. |
-| `identity` | permissions | Opens the configured X sign-in handoff and receives the one-time extension callback; the Google adapter remains available for a future release. |
+| `identity` | permissions | Opens the configured X or Google sign-in handoff and receives the one-time extension callback. |
 | `alarms` | permissions | Wakes the extension periodically to retry queued captures without relying on a persistent background page. |
 | `contextMenus` | permissions | Adds a single right-click item on selected text — "Annotate …" — that opens the side panel with that selection captured. Created once at install; no other menu surfaces are touched. |
 | `favicon` | permissions | Reads Chrome's local favicon cache (the `_favicon/` extension endpoint) so each source in the panel's timeline shows its site icon. No network requests are made and no browsing data leaves the browser — the icons come from Chrome's own cache. |
@@ -166,9 +166,9 @@ remain external gates.
 
 - Current screenshots, public privacy-policy URL verification, and a monitored publisher email are still required before submission. The approved, checksummed brand kit is preserved at `assets/brand/annotated-brand-kit/`; the extension icons are copied verbatim from its Chrome-specific exports by `scripts/generate-extension-icons.mjs`, and the supplied promo artwork is staged in `store-assets/`. The policy source is included in `public/privacy.html` and copied into `dist/` by the Vite build.
 - The release build defaults to `https://annotated-staging.up.railway.app`; local development may use `http://localhost:8787`, and other deployed API origins must be HTTPS.
-- X OAuth, PostgreSQL/S3 media delivery, real provider fixture extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates. Google is intentionally disabled for this POC. Queued captures now remain visible when authentication expires and can be retried after sign-in. The production image now includes a pinned, SHA-256-verified `yt-dlp` runtime, but that does not replace a real provider fixture run.
+- Deployed OAuth round-trip proof (X and Google are both configured and reported live on staging; the consent/callback/logout evidence is what remains), PostgreSQL/S3 media delivery, real provider fixture extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates. Queued captures now remain visible when authentication expires and can be retried after sign-in. The production image now includes a pinned, SHA-256-verified `yt-dlp` runtime, but that does not replace a real provider fixture run.
 - The broad page host permissions are intentional because the product works on the user-selected active page, but the sidebar only reads and publishes data after an explicit user action.
-- If Google sign-in is enabled for the extension, update the OAuth client with the Chrome Web Store-assigned extension ID after publishing.
+- Google sign-in is enabled: update the Google OAuth client with the Chrome Web Store-assigned extension ID after publishing.
 
 ### Packaging
 
