@@ -480,7 +480,10 @@ const styles = StyleSheet.create({
   note: { color: ink, fontSize: 14.5, lineHeight: 20, marginTop: 2 },
   srccard: { marginTop: 8, backgroundColor: tokens.strip, borderWidth: 1, borderColor: tokens.hair, borderRadius: radiusInner, padding: 10 },
   srchead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  chip: { fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }), fontSize: 11, color: tokens['ink-soft'], backgroundColor: tokens.soft, borderRadius: 5, paddingHorizontal: 5, paddingVertical: 2, overflow: 'hidden' },
+  // The moment chip is terracotta on every surface — law 1's first entry.
+  // It wore grey here while web and panel wore accent-ink on accent-soft;
+  // same tokens now, and the 3px chip radius the identity specifies.
+  chip: { fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }), fontSize: 11, color: tokens['accent-ink'], backgroundColor: tokens['accent-soft'], borderRadius: 3, paddingHorizontal: 5, paddingVertical: 2, overflow: 'hidden' },
   srcname: { fontFamily: serif, fontSize: 14, color: ink, flexShrink: 1 },
   srchost: { color: meta, fontSize: 12, marginTop: 6 },
   media: { marginTop: 8, borderRadius: 10, overflow: 'hidden', position: 'relative' },

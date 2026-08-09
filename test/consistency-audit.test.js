@@ -103,3 +103,20 @@ test('one terracotta, one dark paper — the palette matches across surfaces', (
     assert.match(css, /@media \(prefers-color-scheme: dark\)/, `${surface} answers the OS scheme`);
   }
 });
+
+test('the moment chip is the same component on every surface', () => {
+  // Law 1's first entry: the chip marks the moment — mono type, accent-ink
+  // on accent-soft, 3px radius. The native timeline wore grey here while
+  // web and panel wore terracotta; the same tokens bind all three now.
+  const webChip = webCss.match(/\n\.chip \{[\s\S]*?\n\}/)?.[0] || '';
+  const panelChip = panelCss.match(/\n\.chip \{[\s\S]*?\n\}/)?.[0] || '';
+  for (const [surface, chip] of [['web', webChip], ['panel', panelChip]]) {
+    assert.match(chip, /color: var\(--accent-ink\)/, `${surface} chip text must be accent-ink`);
+    assert.match(chip, /background: var\(--accent-soft\)/, `${surface} chip wash must be accent-soft`);
+    assert.match(chip, /border-radius: 3px/, `${surface} chip radius must be 3px`);
+  }
+  const nativeChip = timeline.match(/\n  chip: \{.*\n/)?.[0] || '';
+  assert.match(nativeChip, /color: tokens\['accent-ink'\]/, 'the native chip text must be accent-ink');
+  assert.match(nativeChip, /backgroundColor: tokens\['accent-soft'\]/, 'the native chip wash must be accent-soft');
+  assert.match(nativeChip, /borderRadius: 3,/, 'the native chip radius must be 3');
+});
