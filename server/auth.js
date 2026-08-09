@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { readStore, updateStore } from './store.js';
+import { deleteSessionByTokenHash, putSession, readStore, updateStore } from './store.js';
 import { rateLimitAsync } from './rate-limit.js';
 
 const sessionTtlSeconds = Number(process.env.AUTH_SESSION_TTL_SECONDS || 2_592_000);
@@ -201,7 +201,9 @@ const upsertUser = async (identity) => {
 const createSession = async (user) => {
   const sessionToken = base64url(randomBytes(32));
   const expiresAt = new Date(Date.now() + sessionTtlSeconds * 1000).toISOString();
-  await updateStore((store) => ({ ...store, sessions: [...(store.sessions || []).filter((session) => new Date(session.expiresAt) > new Date()), { id: randomUUID(), tokenHash: hashToken(sessionToken), userId: user.id, createdAt: new Date().toISOString(), expiresAt }] }));
+  // Row-native (Gate 1b): one inserted row plus an expired-session sweep —
+  // signing in no longer rewrites the whole state.
+  await putSession({ id: randomUUID(), tokenHash: hashToken(sessionToken), userId: user.id, createdAt: new Date().toISOString(), expiresAt });
   return { token: sessionToken, expiresAt };
 };
 
@@ -283,7 +285,7 @@ export const currentUser = async (request) => {
 
 export const logout = async (request) => {
   const token = requestToken(request);
-  if (token) await updateStore((store) => ({ ...store, sessions: (store.sessions || []).filter((session) => session.tokenHash !== hashToken(token)) }));
+  if (token) await deleteSessionByTokenHash(hashToken(token)); // row-native (Gate 1b)
   return cookie(cookieName, '', { clear: true });
 };
 

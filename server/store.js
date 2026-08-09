@@ -206,7 +206,26 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
     return result.rowCount > 0;
   });
 
-  return { read, update, check, toggleLike, toggleFollow, incrementOpenCount, close: () => pool.end(), mode: 'postgres' };
+  const putSession = (record) => withSharedLock(async (client) => {
+    await client.query(
+      `INSERT INTO annotated_records (collection, record_id, payload) VALUES ('sessions', $1, $2::jsonb)
+       ON CONFLICT (collection, record_id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()`,
+      [record.id, JSON.stringify(record)],
+    );
+    await client.query(
+      `DELETE FROM annotated_records WHERE collection = 'sessions' AND payload->>'expiresAt' < $1`,
+      [new Date().toISOString()],
+    );
+  });
+
+  const deleteSessionByTokenHash = (tokenHash) => withSharedLock(async (client) => {
+    await client.query(
+      `DELETE FROM annotated_records WHERE collection = 'sessions' AND payload->>'tokenHash' = $1`,
+      [tokenHash],
+    );
+  });
+
+  return { read, update, check, toggleLike, toggleFollow, incrementOpenCount, putSession, deleteSessionByTokenHash, close: () => pool.end(), mode: 'postgres' };
 };
 
 // The read-through cache. Every request used to materialise the entire
@@ -262,6 +281,15 @@ const fileStore = {
         : (store.follows || []).filter((follow) => !key(follow));
       return { ...store, follows };
     });
+  },
+  putSession: async (record) => {
+    await fileStore.update((store) => ({
+      ...store,
+      sessions: [...(store.sessions || []).filter((session) => session.id !== record.id && new Date(session.expiresAt) > new Date()), record],
+    }));
+  },
+  deleteSessionByTokenHash: async (tokenHash) => {
+    await fileStore.update((store) => ({ ...store, sessions: (store.sessions || []).filter((session) => session.tokenHash !== tokenHash) }));
   },
   incrementOpenCount: async (annotationId) => {
     let found = false;
@@ -329,6 +357,25 @@ export function toggleFollow(followerId, followingId, on) {
     } else if (!on && exists) {
       cachedState = { ...cachedState, follows: cachedState.follows.filter((follow) => !(follow.followerId === followerId && follow.followingId === followingId)) };
     }
+  });
+}
+
+// Sessions are the sign-in path's rows: creating one inserts one row and
+// sweeps the expired, ending one deletes one row — never a state rewrite.
+export function putSession(record) {
+  return enqueue(async () => {
+    await selectedStore.putSession(record);
+    if (!cachedState) return;
+    const now = new Date();
+    cachedState = { ...cachedState, sessions: [...(cachedState.sessions || []).filter((session) => session.id !== record.id && new Date(session.expiresAt) > now), record] };
+  });
+}
+
+export function deleteSessionByTokenHash(tokenHash) {
+  return enqueue(async () => {
+    await selectedStore.deleteSessionByTokenHash(tokenHash);
+    if (!cachedState) return;
+    cachedState = { ...cachedState, sessions: (cachedState.sessions || []).filter((session) => session.tokenHash !== tokenHash) };
   });
 }
 
