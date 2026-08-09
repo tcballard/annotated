@@ -1,13 +1,21 @@
-# annotated
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/brand/logo-inverse.svg">
+    <img src="public/brand/logo-primary.svg" alt="annotated wordmark" width="178">
+  </picture>
+</p>
 
-**Keep the moment before it disappears. Annotated is a Chrome side panel that
-captures a passage, a bounded clip, or a snip of the page, adds your context,
-and publishes a page that keeps the original source attached.**
+# annotated — keep the moment
 
-A bookmark saves an address. Annotated saves the moment itself — the ninety
-seconds that mattered, the paragraph worth arguing with — transcoded, hosted,
-and playing right in the feed, with **Open original** deep-linked to the exact
-second or sentence. Not an embed. Not a link that rots.
+[![CI](https://github.com/tcballard/annotated/actions/workflows/ci.yml/badge.svg)](https://github.com/tcballard/annotated/actions/workflows/ci.yml)
+
+**A Chrome side panel that captures a passage, a bounded clip, or a snip of
+the page, adds your context, and publishes a page that keeps the original
+source attached.** A bookmark saves an address; Annotated saves the moment
+itself — the ninety seconds that mattered, the paragraph worth arguing with —
+transcoded, hosted, and playing right in the feed, with **Open original**
+deep-linked to the exact second or sentence. Not an embed. Not a link that
+rots.
 
 > **v0.1.0 is a draft release baseline.** Local development and a
 > Railway POC staging service are real and evidenced; a public production
