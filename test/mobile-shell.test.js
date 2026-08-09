@@ -105,7 +105,7 @@ test('shell mode strips web chrome and returns the feed switcher to the top', ()
   assert.match(main, /get\('shell'\) === '1'/);
   assert.match(main, /sessionStorage\.setItem\('annotated-shell', '1'\)/, 'shell mode survives in-page reloads');
   assert.match(main, /classList\.add\('shell-mode'\)/);
-  assert.match(main, /\$\{SHELL_MODE \? '' : chromeBar\(\)\}/, 'no web nav inside the native app');
+  assert.match(main, /\$\{SHELL_MODE \? '' : '<a class="skip-link"[^`]*' \+ chromeBar\(\)\}/, 'no web nav — and no skip link to it — inside the native app');
   assert.match(main, /\$\{SHELL_MODE \? '' : footerView\(\)\}/, 'no web footer inside the native app');
   assert.match(main, /SHELL_MODE \? `<button class="ghost" data-action="logout">Sign out<\/button>` : ''/, 'sign-out lives on the Library surface when the chrome bar is gone');
   assert.match(webCss, /html\.shell-mode \.feedhead \{\s*position: sticky;\s*top: 0;/, 'the switcher docks top — the bottom belongs to the native tab bar');

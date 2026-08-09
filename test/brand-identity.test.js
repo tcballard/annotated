@@ -18,8 +18,19 @@ test('the wordmark leads the web while the supplied mark owns compact entry poin
   assert.match(index, /\/brand\/favicon-16\.png/);
   assert.match(main, /class="logo"[\s\S]*src="\/brand\/logo-inverse\.svg"/);
   assert.match(styles, /\.chrome \.logo img[\s\S]*width: 88px/);
-  assert.match(wordmarkPrimary, />annotated<tspan[^>]*>\.<\/tspan><\/text>/);
+  // The wordmark is outlined paths, never live <text>: a logo drawn in the
+  // viewer's own fonts is a different logo on every OS — under Linux's
+  // DejaVu the old <text> version needed ~102 units of an 88-unit viewBox,
+  // clipping mid-"d" and dropping the terracotta full stop entirely.
+  for (const [name, wordmark] of [['primary', wordmarkPrimary], ['inverse', wordmarkInverse]]) {
+    assert.doesNotMatch(wordmark, /<text|font-family/, `logo-${name} must not depend on the viewer's fonts`);
+    assert.match(wordmark, /<path/, `logo-${name} must carry the lockup as outlined paths`);
+    assert.match(wordmark, /role="img" aria-labelledby="title desc"/, `logo-${name} keeps its accessible name`);
+  }
+  // One geometry, two colourways — the dot pairing the app and panel use:
+  // full terracotta on light paper, the tint on the permanently dark chrome.
   assert.match(wordmarkPrimary, /fill="#26292F"/);
+  assert.match(wordmarkPrimary, /fill="#B0674D"/);
   assert.match(wordmarkInverse, /fill="#FFFFFF"/);
   assert.match(wordmarkInverse, /fill="#E0A48E"/);
   assert.match(main, /src="\/brand\/app-icon-light-128\.png"/);

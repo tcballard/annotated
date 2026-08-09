@@ -90,3 +90,62 @@ test('the keyboard path covers publish and clear on the capture surface', () => 
   assert.match(mainSource, /publishAnnotation\(\)/u);
   assert.match(mainSource, /event\.key === 'Escape' && !event\.target\.closest\('input, textarea'\)/u);
 });
+
+test('headline full stops come from the identity system, never twice', () => {
+  // .card h2 (and its ::after siblings) append the terracotta full stop, so
+  // heading copy destined for those containers must not carry its own —
+  // "All quiet." rendered "All quiet.." on the notifications empty state.
+  assert.match(styles, /\.card h2::after,[\s\S]*?content: "\."; color: var\(--accent\);/u);
+  assert.match(mainSource, /<h2>All quiet<\/h2>/u);
+
+  // Headings that end in a period are only legal where no ::after dot will
+  // land. Each entry below was checked against the ::after selector list;
+  // a new period-ending heading fails here until someone does the same.
+  const reviewedOutsideAccentScope = new Set([
+    'This annotation was removed after a rights claim.', // .perma-empty
+    'Your library is waiting.',                          // .perma-empty
+    'This source could not be loaded.',                  // .perma-empty
+    'We could not load this profile.',                   // .perma-empty
+    'Moderation access is required.',                    // .feed-empty
+    'Nothing to ring about yet.',                        // .perma-empty
+  ]);
+  for (const match of mainSource.matchAll(/<h[12][^>]*>([^<]*\.)<\/h[12]>/gu)) {
+    assert.ok(
+      reviewedOutsideAccentScope.has(match[1]),
+      `"${match[1]}" ends in a period — if it renders inside a .card/.responses/.capcard/.libhead/.modhead heading, the ::after dot makes it a double stop. Drop the period or review the container and extend the list.`,
+    );
+  }
+});
+
+test('the keyboard can arrive, move, and never gets lost by a render', () => {
+  // the first Tab stop is a skip link, and its target is the view region
+  assert.match(mainSource, /class="skip-link" href="#main" data-action="skip-to-content"/u);
+  assert.match(mainSource, /page\.id = 'main'; page\.tabIndex = -1;/u);
+  assert.match(styles, /\.skip-link:focus-visible \{ transform: none/u);
+  // navigation parks focus on the view instead of the top of the document
+  assert.match(mainSource, /pendingViewFocus = true;/u);
+  assert.match(mainSource, /pendingViewFocus = false;\s*page\?\.focus\(\);/u);
+  // every render restores the focused control by its data signature — a
+  // toast expiring three seconds after an action must not dump the
+  // keyboard back on <body>
+  assert.match(mainSource, /const restoreFocus = captureFocus\(\);/u);
+  assert.match(mainSource, /app\.innerHTML = [\s\S]*?restoreFocus\(\);/u);
+  assert.match(mainSource, /focus\(\{ preventScroll: true \}\)/u);
+  // the lightbox pulls focus in on open and hands it back to the shot that
+  // opened it; the publish celebration yields to Escape
+  assert.match(mainSource, /const closeLightbox = /u);
+  assert.match(mainSource, /state\.publishMoment && event\.key === 'Escape'/u);
+  // the moderation queue keeps the keyboard on the claim it just judged
+  assert.match(mainSource, /\[data-action="moderate-claim"\]\[data-claim-id="\$\{claimId\}"\]:not\(\[disabled\]\)/u);
+});
+
+test('the avatar opens an account menu — never a one-click sign-out', () => {
+  assert.match(mainSource, /data-action="toggle-me-menu" aria-haspopup="menu" aria-expanded/u);
+  assert.doesNotMatch(mainSource, /class="me \$\{[^}]*\}" data-action="logout"/u);
+  assert.match(mainSource, /const meMenu = /u);
+  assert.match(mainSource, /role="menuitem" data-action="logout"/u);
+  // Escape closes and returns to the avatar; arrows move between items
+  assert.match(mainSource, /state\.meMenuOpen = false;\s*render\(\);\s*app\.querySelector\('\[data-action="toggle-me-menu"\]'\)\?\.focus\(\);/u);
+  assert.match(mainSource, /event\.key === 'ArrowDown' \|\| event\.key === 'ArrowUp'/u);
+  assert.match(styles, /\.me-menu \[role="menuitem"\]/u);
+});
