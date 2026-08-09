@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { createPostgresStore, fileStore, storageDescription } from '../server/store.js';
+import { createPostgresStore, fileStore, latestMigrationVersion, storageDescription } from '../server/store.js';
 import { LocalObjectStore, S3ObjectStore } from '../server/object-store.js';
 
 test('development defaults to the explicit file adapter', () => {
@@ -16,7 +16,7 @@ test('postgres repository serializes the existing store contract transactionally
     async query(sql) {
       statements.push(sql);
       if (sql.startsWith('SELECT state FROM annotated_state')) return { rows: [{ state }] };
-      if (sql.startsWith('SELECT version FROM annotated_schema_migrations')) return { rows: [{ version: '004_rate_limit_buckets' }] };
+      if (sql.startsWith('SELECT version FROM annotated_schema_migrations')) return { rows: [{ version: latestMigrationVersion }] };
       return { rows: [] };
     },
     async connect() {
