@@ -139,3 +139,24 @@ test('one lockup: the wordmark is the same drawing everywhere', async () => {
   assert.match(ogCard, /OG_WORDMARK/, 'the share card must embed the outlined lockup');
   assert.doesNotMatch(ogCard, /'annotated'\)/, 'the card must not retype the wordmark in container fonts');
 });
+
+test('the account menu has the same skeleton on web and panel', () => {
+  // The avatar never signs you out directly on any surface — it opens a
+  // menu: identity first, View profile next, Sign out always last. The
+  // middle entry is surface-appropriate (panel: Settings; web: library).
+  for (const [surface, source] of [['web', web], ['panel', panelHtml]]) {
+    assert.match(source, /aria-haspopup="menu"/, `${surface} avatar declares the menu`);
+    assert.match(source, /role="menu" aria-label="Account"/, `${surface} menu is named Account`);
+    const menu = source.match(/role="menu" aria-label="Account"[\s\S]*?Sign out/)?.[0] || '';
+    assert.match(menu, /me-name/, `${surface} menu opens with the identity line`);
+    assert.ok(menu.indexOf('View profile') < menu.indexOf('Sign out'), `${surface} keeps sign out last`);
+  }
+});
+
+test('focus is the same ink ring on web and panel', () => {
+  const ring = ':focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 3px; }';
+  for (const [surface, css] of [['web', webCss], ['panel', panelCss]]) {
+    assert.ok(css.includes(ring), `${surface} draws the ink focus ring`);
+    assert.match(css, /:focus-visible \{ outline-color: #F5F4F0; \}/, `${surface} flips to paper on the dark chrome`);
+  }
+});
