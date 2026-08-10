@@ -42,7 +42,8 @@ test('sign-in is one door: every affordance opens the shared modal, both provide
   assert.match(mainSource, /Add your name to the margin/u);
   assert.match(mainSource, /One account across the extension, the web, and the app\./u);
   assert.match(mainSource, /Continue with \$\{providerLabel\(provider\)\}/u);
-  assert.match(mainSource, /Sign in with X or Google when you are ready/u, 'the library pitch keeps naming both providers');
+  assert.match(mainSource, /enabledProviders\(state\.authProviders\)\.map\(providerLabel\)\.join\(' or '\)/u, 'the library pitch names only providers reported by the deployment');
+  assert.doesNotMatch(mainSource, /Sign in with X or Google when you are ready/u, 'the library pitch must not hard-code provider availability');
   // no scattered per-provider sign-in links outside the modal
   assert.doesNotMatch(mainSource, /Sign in with \$\{providerLabel/u);
   // every trigger opens the same door; the shared keyboard trap covers it

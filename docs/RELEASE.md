@@ -32,13 +32,18 @@ Run the following from a clean checkout:
 ```bash
 npm ci
 npm run build
+npm run check:release-truth
 npm test
 npm run package:extension
 for file in server/*.js src/*.js extension/*.js test/*.js scripts/*.js; do node --check "$file" || exit 1; done
 git diff --check
 ```
 
-The test suite covers the local API, release metadata alignment, source and
+The build also emits a deterministic, checksummed extension at
+`dist/release/annotated-extension-v0.1.0.zip`; staging serves that exact file.
+`config/capabilities.json` is the versioned claim record, while
+`/api/capabilities` overlays runtime deployment, provider and proof-world
+evidence. The test suite covers the local API, release metadata alignment, source and
 media policy, identity boundaries, social and moderation paths, extension
 contracts, and production-adapter integration when PostgreSQL/S3-compatible
 services are configured. [ACCEPTANCE_EVIDENCE.md](ACCEPTANCE_EVIDENCE.md)

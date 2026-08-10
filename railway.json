@@ -1,7 +1,7 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "deploy": {
-    "preDeployCommand": "node scripts/migrate.js",
+    "preDeployCommand": "node scripts/migrate.js && node scripts/seed-proof-world.mjs",
     "healthcheckPath": "/api/ready"
   }
 }

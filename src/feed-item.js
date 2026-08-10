@@ -86,6 +86,7 @@ export const annotationToFeedItem = (annotation) => ({
     screenshotUrl: annotation.screenshotUrl || '',
     editedAt: annotation.editedAt || '',
     createdAt: annotation.createdAt || '',
+    isDemo: Boolean(annotation.isDemo || annotation.author?.isDemo),
 });
 export const chipFor = (item) => item.type === 'article'
     ? (item.anchorParagraph ? `¶ ${item.anchorParagraph}` : '¶')

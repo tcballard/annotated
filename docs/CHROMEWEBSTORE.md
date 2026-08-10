@@ -172,10 +172,12 @@ remain external gates.
 
 ### Packaging
 
-Run `npm run package:extension` from the repository root. The script packages only
-the `extension/` runtime directory, excludes `.DS_Store`, and writes
-`annotated-extension-v0.1.0.zip` outside the extension source. It does not include
-the repository, dependencies, tests, or this document.
+Run `npm run package:extension` from the repository root. The deterministic
+script packages only the `extension/` runtime directory, normalizes timestamps,
+excludes `.DS_Store`, and writes `annotated-extension-v0.1.0.zip` plus its
+`.sha256` checksum outside the extension source. `npm run build` publishes the
+same versioned pair under `dist/release/` with `release.json` metadata. It does
+not include the repository, dependencies, tests, or this document.
 
 ### Rejection History
 

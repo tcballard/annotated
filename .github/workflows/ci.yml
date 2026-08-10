@@ -70,6 +70,8 @@ jobs:
           exit 1
       - name: Build web app
         run: npm run build
+      - name: Verify release claims and downloadable artifact
+        run: npm run check:release-truth
       - name: Run tests
         run: npm test
       - name: Check JavaScript syntax

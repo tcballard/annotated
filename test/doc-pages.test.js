@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const main = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
 const css = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8');
+const capabilityManifest = JSON.parse(await readFile(new URL('../config/capabilities.json', import.meta.url), 'utf8'));
 
 test('every public doc page is routed, rendered, and linked from the footer', () => {
   for (const [view, path] of [['about', '/about'], ['extension', '/extension'], ['audit', '/audit'], ['rights', '/rights'], ['terms', '/terms'], ['transparency', '/transparency']]) {
@@ -17,13 +18,14 @@ test('every public doc page is routed, rendered, and linked from the footer', ()
   }
 });
 
-test('the audit page carries all 11 brief requirements and the hosted-not-embedded stance', () => {
-  const rows = main.slice(main.indexOf('const auditRows = ['), main.indexOf('const auditView'));
-  const count = (rows.match(/\n  \['/g) || []).length;
-  assert.equal(count, 11, `expected 11 audit rows, found ${count}`);
-  assert.match(rows, /Hosted 240p clips — not third-party embeds/);
-  assert.match(rows, /probe-verified/);
-  assert.match(main, /rather than embedding third-party players/);
+test('the audit page renders all 11 evidence-backed requirements from the capability manifest', () => {
+  assert.equal(capabilityManifest.capabilities.length, 11);
+  const hosted = capabilityManifest.capabilities.find((item) => item.id === 'hosted-clips');
+  assert.equal(hosted.label, 'Hosted 240p clips');
+  assert.match(hosted.summary, /rather than embedding/i);
+  assert.match(hosted.evidenceUrl, /media-worker\.js/);
+  assert.match(main, /truth\?\.capabilities/);
+  assert.match(main, /Implemented, deployed and externally verified are separate states/);
 });
 
 test('doc navigation stays in the SPA and old stub actions are gone', () => {

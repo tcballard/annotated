@@ -150,6 +150,7 @@ const initialState = {
   transparencyLoading: false,
   user: null,
   authProviders: {},
+  capabilities: null,
   authRequired: false,
   authNotice: '',
   serverStatus: 'checking',
@@ -479,9 +480,13 @@ const bootstrap = async () => {
   try {
     await api.health();
     state.serverStatus = 'online';
-    const providers = await api.providers().catch(() => ({ providers: {}, required: false }));
+    const [providers, capabilities] = await Promise.all([
+      api.providers().catch(() => ({ providers: {}, required: false })),
+      api.capabilities().catch(() => null),
+    ]);
     state.authProviders = providers.providers || {};
     state.authRequired = Boolean(providers.required);
+    state.capabilities = capabilities;
     state.user = await api.me().then((result) => result.user).catch(() => null);
     if (canModerate() && state.activeView === 'moderation') await loadModerationClaims();
     if (state.publishedSlug) {
@@ -634,7 +639,7 @@ const feedPost = (item) => {
   <article class="post" data-action="open-annotation" data-slug="${escapeHTML(item.slug || '')}">
     ${avatarHtml(item)}
     <div class="content">
-      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a><span class="meta">· ${escapeHTML(annotationVerb(item.type))}${item.editedAt ? ' · edited' : ''}</span>${item.topic ? `<button class="topic-tag" data-action="feed-topic" data-topic="${escapeHTML(item.topic)}" title="See what's trending in ${escapeHTML(topicLabel(item.topic))}">${escapeHTML(topicLabel(item.topic))}</button>` : ''}<span class="meta posttime">${escapeHTML(item.time)}</span></div>
+      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a>${item.isDemo ? '<span class="demo-badge" title="Demonstration data, not real user activity">demo</span>' : ''}<span class="meta">· ${escapeHTML(annotationVerb(item.type))}${item.editedAt ? ' · edited' : ''}</span>${item.topic ? `<button class="topic-tag" data-action="feed-topic" data-topic="${escapeHTML(item.topic)}" title="See what's trending in ${escapeHTML(topicLabel(item.topic))}">${escapeHTML(topicLabel(item.topic))}</button>` : ''}<span class="meta posttime">${escapeHTML(item.time)}</span></div>
       ${note}
       ${srcCard(item)}
       <div class="actions">
@@ -663,7 +668,7 @@ const skeletonPost = () => `
 const railView = () => {
   const signCard = state.user
     ? `<div class="card"><h2>Your library</h2><p>Everything you publish keeps a live link back to its source.</p><button class="btn btn-wide" data-action="set-view" data-view="library">Open your library</button></div>`
-    : `<div class="card"><h2>Build your public library</h2><p>Capture now. Sign in with X or Google when you are ready to publish, follow, or respond.</p>${enabledProviders(state.authProviders).length ? '' : '<p>No sign-in provider is configured.</p>'}</div>`;
+    : `<div class="card"><h2>Build your public library</h2><p>Capture now. ${enabledProviders(state.authProviders).length ? `Sign in with ${enabledProviders(state.authProviders).map(providerLabel).join(' or ')} when you are ready to publish, follow, or respond.` : state.serverStatus === 'checking' ? 'Checking sign-in availability…' : 'Sign-in is unavailable on this deployment.'}</p></div>`;
   const trendingCard = state.trendingSources.length ? `
     <div class="card"><h2>Trending sources</h2><p>Where attention is going right now — ranked by opens of the original.</p>${state.trendingSources.map((source) => `
       <div class="trend-row"><a href="/s/${encodeURIComponent(source.host)}" data-action="open-hub" data-host="${escapeHTML(source.host)}">${escapeHTML(source.host)}</a><span class="trend-stat"><strong>${Number(source.opens) || 0}</strong> opens · ${Number(source.annotationCount) || 0} ${source.annotationCount === 1 ? 'note' : 'notes'}</span></div>`).join('')}</div>` : '';
@@ -1096,7 +1101,15 @@ const aboutView = () => docPage('What this is', 'source-first notes', `
   <p class="doc-footnote">Questions or issues: the <a href="https://github.com/tcballard/annotated/issues" target="_blank" rel="noreferrer">public tracker</a>. Rights holders: <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>.</p>
 `);
 
-const extensionView = () => docPage('The Chrome side panel', 'the primary surface', `
+const extensionView = () => {
+  const artifact = state.capabilities?.distribution?.directArtifact;
+  const storeStatus = state.capabilities?.distribution?.store?.status || 'unknown';
+  const install = artifact?.available ? `
+    <p><a class="btn artifact-download" href="${escapeHTML(artifact.path)}" download>Download extension v${escapeHTML(artifact.version || '')}</a></p>
+    <p class="artifact-meta">SHA-256 <code>${escapeHTML(artifact.sha256 || '')}</code> · ${Math.ceil(Number(artifact.bytes || 0) / 1024)} kB · <a href="${escapeHTML(artifact.checksumPath)}">checksum file</a></p>
+    <ol class="doc-steps"><li>Download and unzip the exact build above.</li><li>Open <span class="kbd-mono">chrome://extensions</span> and turn on <strong>Developer mode</strong>.</li><li>Choose <strong>Load unpacked</strong> and select the unzipped folder.</li><li>Open any page, click the annotated icon, and pin the side panel.</li></ol>`
+    : '<p>The direct build is being prepared. Until it appears, clone the repository and load the <span class="kbd-mono">extension/</span> folder unpacked.</p>';
+  return docPage('The Chrome side panel', 'the primary surface', `
   <div class="card"><h2>What it does</h2>
     <p>annotated lives in Chrome&rsquo;s side panel, docked next to the page you are reading. Four full-height modes — <strong>Capture &middot; Recent &middot; Following &middot; This page</strong> — with Capture first on open.</p>
     <ul class="doc-list">
@@ -1114,43 +1127,32 @@ const extensionView = () => docPage('The Chrome side panel', 'the primary surfac
     </tbody></table>
   </div>
   <div class="card"><h2>Install</h2>
-    <p>The Chrome Web Store listing is in review. Until it lands, load it unpacked in under a minute:</p>
-    <ol class="doc-steps">
-      <li>Clone or download <a href="https://github.com/tcballard/annotated" target="_blank" rel="noreferrer">the repository</a>.</li>
-      <li>Open <span class="kbd-mono">chrome://extensions</span> and turn on <strong>Developer mode</strong>.</li>
-      <li>Choose <strong>Load unpacked</strong> and select the <span class="kbd-mono">extension/</span> folder.</li>
-      <li>Open any page, click the annotated icon, and pin the side panel.</li>
-    </ol>
+    <p>Chrome Web Store status: <strong>${escapeHTML(storeStatus)}</strong>. This build is distributed directly while browser E2E and Store submission remain open release gates.</p>
+    ${install}
     <p>The panel talks to this deployment by default; point it elsewhere from its options page.</p>
   </div>
 `);
+};
 
-const auditRows = [
-  ['Chrome sidebar is the primary surface', 'A Manifest V3 side panel with four full-height modes; capture is the default state, not a pop-up.'],
-  ['Clip text, screenshots, and media from the page', 'Passage selection with paragraph and text-quote anchors, visible-tab screenshots, and in/out marks read from the page&rsquo;s own player.'],
-  ['Hosted 240p clips — not third-party embeds', 'The bounded excerpt is transcoded (<span class="kbd-mono">scale=-2:240</span>) and hosted here. Output is probe-verified &le;240p before it can publish; a failed probe fails the clip, never relaxes it.'],
-  ['90-second maximum, enforced server-side', 'A 91-second range is rejected with 422 at the API; the transcoder clamps; the probe re-verifies the artifact. Recorded audio commentary is held to the same ceiling.'],
-  ['Text and recorded audio commentary', 'A Text &middot; Audio toggle in the panel and the capture desk; audio is staged in the browser and uploaded on publish.'],
-  ['Every annotation links its original', 'Deep links land on the moment — <span class="kbd-mono">&amp;t=</span> for media, <span class="kbd-mono">#:~:text=</span> for passages — and opens of the original are counted and ranked.'],
-  ['A landing page per clip', 'Every annotation gets <span class="kbd-mono">/a/:slug</span> with server-injected social meta and a rendered share card at <span class="kbd-mono">/og/:slug.png</span>.'],
-  ['Public feed, follow, comment', 'A public timeline with Recent and Following, responses on every page, profiles, per-source hubs, and curators ranked by opens driven back to sources.'],
-  ['Sign in with X or Google only', 'Both providers ship enabled; production refuses to boot unless both credential pairs are configured.'],
-  ['Dispute fair use on every annotation page', 'A clearly visible button on every page, plus a no-JS form for rights holders without an account. Disputes persist, deduplicate, and feed a moderation queue that can resolve into a real takedown — a public tombstone with the hosted media deleted.'],
-  ['YouTube, podcasts, and articles', 'YouTube via the extractor pipeline, podcasts from RSS enclosures and direct audio, articles through a bounded resolver — one annotation model across all three.'],
-];
-
-const auditView = () => docPage('The brief, enforced', `${auditRows.length} requirements &middot; enforced in code, not policy`, `
+const auditView = () => {
+  const truth = state.capabilities;
+  const rows = truth?.capabilities || [];
+  const proof = truth?.proofWorld;
+  return docPage('Capability audit', `${rows.length || '—'} capabilities · runtime truth`, `
   <div class="card"><h2>Where we stand</h2>
-    <p>Every requirement below is live in this build and enforced at the server boundary — the UI is polite about limits, but the API is the law. The one deliberate reading: &ldquo;hosted clips&rdquo; means <em>hosted</em>. annotated transcodes the bounded excerpt and serves it from its own storage with a required link back, rather than embedding third-party players and calling it a clip.</p>
+    <p>This page renders from the same versioned capability manifest as <code>/api/capabilities</code>. Implemented, deployed and externally verified are separate states; an open gate stays visible.</p>
+    ${truth ? `<p class="release-line">v${escapeHTML(truth.release.version)} · ${escapeHTML((truth.release.gitSha || 'SHA unavailable').slice(0, 12))} · ${escapeHTML(truth.release.environment)} · canonical deployment: <strong>${truth.isCanonicalDeployment ? 'yes' : 'no'}</strong></p>` : '<p>Capability evidence is temporarily unavailable.</p>'}
   </div>
   <table class="doc-table audit-table"><tbody>
-    ${auditRows.map(([requirement, enforcement]) => `<tr><td class="audit-req">${requirement}</td><td>${enforcement}</td></tr>`).join('')}
+    ${rows.map((item) => `<tr><td class="audit-req">${escapeHTML(item.label)}<div class="status-pills"><span class="status-pill ${item.implemented ? 'is-ready' : ''}">implemented</span><span class="status-pill ${item.deployed ? 'is-ready' : ''}">deployed</span><span class="status-pill ${item.browserVerified || item.providerVerified ? 'is-ready' : ''}">verified</span></div></td><td>${escapeHTML(item.summary)}${item.blocker ? `<div class="audit-blocker">Open gate: ${escapeHTML(item.blocker)}</div>` : ''}<div><a href="${escapeHTML(item.evidenceUrl)}" target="_blank" rel="noreferrer">Evidence</a>${item.verifiedAt ? ` · reviewed ${escapeHTML(item.verifiedAt)}` : ''}</div></td></tr>`).join('') || '<tr><td>Capability evidence is unavailable.</td></tr>'}
   </tbody></table>
-  <div class="card"><h2>Open items, honestly</h2>
-    <p>The Chrome Web Store listing is awaiting review (the panel loads unpacked today — see <a href="/extension" data-action="set-view" data-view="extension">the extension page</a>). Provider egress for YouTube transcodes is configured per deployment. Both are deployment gates, not code gaps; the enforcement above ships either way.</p>
+  <div class="card"><h2>Proof world</h2>
+    <p><span class="demo-badge">demo</span> ${escapeHTML(proof?.label || 'Demonstration status unavailable')} · <strong>${proof?.ready ? 'ready' : 'incomplete'}</strong>. ${proof?.missing?.length ? `Missing: ${proof.missing.map(escapeHTML).join(', ')}.` : ''}</p>
+    <p>Store status: <strong>${escapeHTML(truth?.distribution?.store?.status || 'unknown')}</strong>. Direct artifact: <strong>${truth?.distribution?.directArtifact?.available ? 'available' : 'unavailable'}</strong>.</p>
   </div>
   <p class="doc-footnote">The dated engineering record behind this page lives in the repository: acceptance evidence, staging smokes, and the failure modes we chose to keep visible.</p>
 `);
+};
 
 const rightsView = () => docPage('Rights &amp; claims', 'for source owners', `
   <div class="card"><h2>Our posture</h2>
@@ -1302,7 +1304,7 @@ const footerView = () => `
     <a href="/transparency" data-action="set-view" data-view="transparency">Transparency</a>
     <a href="/terms" data-action="set-view" data-view="terms">Terms</a>
     <a href="/privacy.html">Privacy</a>
-    <span class="footer-note">annotated © 2026 · source-first notes</span>
+    <span class="footer-note">annotated © 2026 · source-first notes${state.capabilities?.release ? ` · <a href="/audit" data-action="set-view" data-view="audit">v${escapeHTML(state.capabilities.release.version)} ${escapeHTML((state.capabilities.release.gitSha || '').slice(0, 7))} · ${escapeHTML(state.capabilities.release.environment)}</a>` : ''}</span>
   </footer>`;
 
 const render = () => {

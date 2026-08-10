@@ -147,11 +147,11 @@ await updateStore((store) => {
 
   for (const persona of PERSONAS) {
     const existing = users.find((user) => user.handle === persona.handle);
-    if (existing) { userIds[persona.key] = existing.id; continue; }
+    if (existing) { existing.isDemo = true; userIds[persona.key] = existing.id; continue; }
     const user = {
       id: randomUUID(), provider: 'demo', providerId: `demo-${persona.handle}`,
       handle: persona.handle, displayName: persona.displayName, bio: persona.bio,
-      email: null, avatarUrl: null, createdAt: hoursAgo(24 * 14),
+      email: null, avatarUrl: null, isDemo: true, createdAt: hoursAgo(24 * 14),
     };
     users.push(user);
     userIds[persona.key] = user.id;
@@ -162,7 +162,7 @@ await updateStore((store) => {
   for (const seed of ANNOTATIONS) {
     const clientRequestId = `persona-${seed.key}`;
     const existing = annotations.find((item) => item.clientRequestId === clientRequestId);
-    if (existing) { annotationIds[seed.key] = existing.id; continue; }
+    if (existing) { existing.isDemo = true; annotationIds[seed.key] = existing.id; continue; }
     const { errors, normalized } = validateAnnotation({
       sourceType: 'article', sourceUrl: seed.sourceUrl, canonicalUrl: seed.sourceUrl,
       sourceTitle: seed.sourceTitle, sourceHost: new URL(seed.sourceUrl).hostname.replace(/^www\./, ''),
@@ -175,7 +175,7 @@ await updateStore((store) => {
     annotations.push({
       id, slug: `${slugBase}-${id.slice(0, 6)}`, status: 'published',
       createdAt: hoursAgo(seed.hours), authorId: userIds[seed.author],
-      mediaStatus: 'not-applicable', openCount: seed.opens, ...normalized,
+      mediaStatus: 'not-applicable', openCount: seed.opens, isDemo: true, ...normalized,
     });
     annotationIds[seed.key] = id;
     summary.annotations += 1;

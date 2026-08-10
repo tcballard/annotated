@@ -31,10 +31,12 @@ test('persona seeding is idempotent and production-guarded', async () => {
 
     const store = JSON.parse(await readFile(path.join(dataDirectory, 'store.json'), 'utf8'));
     assert.equal(store.users.filter((user) => user.provider === 'demo').length, 4);
+    assert.ok(store.users.filter((user) => user.provider === 'demo').every((user) => user.isDemo), 'persona users must be labelled as demonstration data');
     const persona = store.annotations.find((item) => item.clientRequestId === 'persona-priya-textfragments');
     assert.ok(persona, 'persona annotations must carry deterministic clientRequestIds');
     assert.equal(persona.status, 'published');
     assert.equal(persona.visibility, 'public');
+    assert.equal(persona.isDemo, true);
     assert.ok(persona.sourceExcerpt.startsWith('Text fragments link directly'));
 
     const guarded = await run({ ANNOTATED_DATA_DIR: dataDirectory, NODE_ENV: 'production' });
