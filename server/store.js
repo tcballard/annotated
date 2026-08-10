@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
+import { latestMigrationVersion } from './migration-version.js';
 
 // Names this process in cross-instance invalidation: NOTIFY carries it so
 // an instance ignores its own writes (it already patched or refreshed).
@@ -63,8 +64,6 @@ const postgresSchema = `
     ON annotated_records ((payload->>'authorId'), (payload->>'clientRequestId'))
     WHERE collection = 'annotations';
 `;
-export const latestMigrationVersion = '005_hot_path_indexes';
-
 const recordCollections = Object.keys(emptyStore);
 const recordId = (collection, value, index) => String(value?.id || value?.tokenHash || `${collection}-${index}`);
 
@@ -79,6 +78,8 @@ const stateFromRecords = (rows) => {
 
 const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.PG_POOL_MAX || 10), idleTimeoutMillis: 30_000, connectionTimeoutMillis: 5_000, ssl: process.env.PGSSL === 'disable' ? false : undefined }) } = {}) => {
   let schemaReady;
+  let invalidationClient = null;
+  let closing = false;
   const ensureSchema = async () => {
     schemaReady ||= pool.query(postgresSchema);
     await schemaReady;
@@ -236,19 +237,59 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
   // is delivered on commit; our own instanceId is ignored because the
   // wrappers already patched or refreshed the cache more precisely.
   const startInvalidationListener = async () => {
+    if (closing || invalidationClient) return;
     const client = await pool.connect();
+    if (closing) { client.release(); return; }
     if (typeof client.on !== 'function') { client.release(); return; }
+    invalidationClient = client;
     await client.query('LISTEN annotated_changed');
     client.on('notification', (message) => {
       if (message.payload !== instanceId) invalidateReadCache();
     });
     client.on('error', () => {
+      if (invalidationClient === client) invalidationClient = null;
       try { client.release(); } catch { /* already gone */ }
-      setTimeout(() => startInvalidationListener().catch(() => {}), 5_000);
+      if (!closing) setTimeout(() => startInvalidationListener().catch(() => {}), 5_000);
     });
   };
 
-  return { read, update, check, toggleLike, toggleFollow, incrementOpenCount, putSession, deleteSessionByTokenHash, startInvalidationListener, close: () => pool.end(), mode: 'postgres' };
+  const close = async () => {
+    closing = true;
+    const client = invalidationClient;
+    invalidationClient = null;
+    if (client) {
+      await client.query('UNLISTEN *').catch(() => {});
+      try { client.release(); } catch { /* already released */ }
+    }
+    await pool.end();
+  };
+
+  // Query-native repositories share this pool but own their transactions.
+  // They deliberately take no product-wide advisory lock: correctness comes
+  // from relational constraints, row locks, and atomic SQL statements.
+  const query = async (text, parameters = []) => {
+    await ensureSchema();
+    return pool.query(text, parameters);
+  };
+  const transaction = async (work) => {
+    await ensureSchema();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET CONSTRAINTS ALL DEFERRED');
+      const result = await work(client);
+      await client.query("SELECT pg_notify('annotated_changed', $1)", [instanceId]);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  };
+
+  return { read, update, check, toggleLike, toggleFollow, incrementOpenCount, putSession, deleteSessionByTokenHash, query, transaction, startInvalidationListener, close, mode: 'postgres' };
 };
 
 // The read-through cache. Every request used to materialise the entire
@@ -420,4 +461,12 @@ if (storageMode === 'postgres') selectedStore.startInvalidationListener?.().catc
 
 export const closeStore = () => selectedStore.close();
 export const storageDescription = () => selectedStore.mode;
-export { createPostgresStore, dataDirectory, emptyStore, fileStore, storePath };
+export const queryDatabase = (text, parameters = []) => {
+  if (selectedStore.mode !== 'postgres') throw new Error('Query-native database access requires PostgreSQL storage.');
+  return selectedStore.query(text, parameters);
+};
+export const transactDatabase = (work) => {
+  if (selectedStore.mode !== 'postgres') throw new Error('Query-native database transactions require PostgreSQL storage.');
+  return selectedStore.transaction(work);
+};
+export { createPostgresStore, dataDirectory, emptyStore, fileStore, latestMigrationVersion, storePath };

@@ -1,7 +1,6 @@
-// The media worker as its own service: the same leased queue the API can
-// drive in-process, polled here on an interval so transcode CPU never
-// shares a core with request latency. The lease semantics (workerId +
-// leaseUntil, claims under the store) already make multiple workers safe —
+// The media worker as its own service: an atomic PostgreSQL lease queue polled
+// here so transcode CPU never shares a core with request latency. The lease
+// semantics (workerId + leaseUntil + SKIP LOCKED) make multiple workers safe —
 // run as many as the queue depth earns.
 //
 // This process boundary is also the language seam: everything the worker
@@ -10,16 +9,18 @@
 // Rust, say) against the same claims and leases without the API noticing.
 //
 // Run: MEDIA_WORKER_CONCURRENCY=4 node server/media-worker-main.js
-import { checkStore, closeStore, invalidateReadCache } from './store.js';
+import { checkStore, closeStore } from './store.js';
 
 process.env.ANNOTATED_PROCESS_ROLE = 'media-worker';
 const {
   checkMediaRuntime,
   mediaWorkerExecution,
+  mediaWorkerId,
   mediaWorkerRetryPolicy,
   recoverMediaJobs,
 } = await import('./media-worker.js');
 const { resolveS3MaxAttempts } = await import('./object-store.js');
+const { mediaQueueSnapshot } = await import('./media-job-repository.js');
 
 const intervalMs = Math.max(2_000, Number(process.env.MEDIA_WORKER_POLL_MS || 15_000));
 
@@ -27,6 +28,7 @@ await checkStore(); // refuses a stale schema, exactly like the API's readiness 
 const runtime = await checkMediaRuntime();
 console.log(JSON.stringify({
   event: 'media_worker_started',
+  workerId: mediaWorkerId,
   intervalMs,
   concurrency: mediaWorkerExecution.concurrency,
   mediaJobMaxAttempts: mediaWorkerRetryPolicy.maxAttempts,
@@ -35,11 +37,8 @@ console.log(JSON.stringify({
 }));
 
 const poll = async () => {
-  // Jobs are enqueued by the API process; without this, our read cache
-  // would never learn they exist. LISTEN/NOTIFY also drops it on writes —
-  // this is the belt to that suspender for missed notifications.
-  invalidateReadCache();
   await recoverMediaJobs();
+  console.log(JSON.stringify({ event: 'media_worker_heartbeat', workerId: mediaWorkerId, queue: await mediaQueueSnapshot() }));
 };
 
 await poll();

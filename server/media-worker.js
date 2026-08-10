@@ -5,24 +5,44 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mediaWorkDirectory, removeMediaFile, removeStoredMedia, storeMediaFile } from './media-store.js';
 import { extractAudioPeaks } from './audio-peaks.js';
-import { readStore, updateStore } from './store.js';
 import { assertPublicUrl } from './ssrf.js';
 import { parseSourceUrl } from './source-resolver.js';
+import {
+  cancelMediaRecord,
+  claimMediaRecord,
+  completeMediaRecord,
+  deferMediaRecord,
+  enqueueMediaRecord,
+  failMediaRecord,
+  mediaJobCancelled,
+  recoverableMediaJobIds,
+  retryMediaRecord,
+} from './media-job-repository.js';
 
 const processRole = process.env.ANNOTATED_PROCESS_ROLE || (process.env.NODE_ENV === 'production' ? 'api' : 'development');
 const defaultConcurrency = processRole === 'media-worker' ? 2 : process.env.NODE_ENV === 'production' ? 0 : 2;
 const maxConcurrentJobs = Number(process.env.MEDIA_WORKER_CONCURRENCY ?? defaultConcurrency);
 if (!Number.isSafeInteger(maxConcurrentJobs) || maxConcurrentJobs < 0) throw new Error('MEDIA_WORKER_CONCURRENCY must be a non-negative integer.');
 if (processRole === 'media-worker' && maxConcurrentJobs < 1) throw new Error('The standalone media worker requires MEDIA_WORKER_CONCURRENCY to be at least 1.');
+if (process.env.NODE_ENV === 'production' && processRole !== 'media-worker' && maxConcurrentJobs !== 0) throw new Error('The production API is queue-only; MEDIA_WORKER_CONCURRENCY must be 0.');
 export const mediaWorkerExecution = Object.freeze({ processRole, concurrency: maxConcurrentJobs, inProcess: maxConcurrentJobs > 0 });
 const ytdlpBinary = process.env.YTDLP_BIN || 'yt-dlp';
 const maxAttempts = Number(process.env.MEDIA_WORKER_MAX_ATTEMPTS || 3);
 if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1) throw new Error('MEDIA_WORKER_MAX_ATTEMPTS must be a positive integer.');
 export const mediaWorkerRetryPolicy = Object.freeze({ maxAttempts });
-const retryDelayMs = Math.max(100, Number(process.env.MEDIA_WORKER_RETRY_DELAY_MS || 1500));
+const positiveIntegerSetting = (name, fallback, minimum) => {
+  const value = Number(process.env[name] ?? fallback);
+  if (!Number.isSafeInteger(value) || value < minimum) throw new Error(`${name} must be an integer of at least ${minimum}.`);
+  return value;
+};
+const retryDelayMs = positiveIntegerSetting('MEDIA_WORKER_RETRY_DELAY_MS', 1500, 100);
 const workerId = process.env.MEDIA_WORKER_ID || randomUUID();
-const leaseMs = Math.max(30_000, Number(process.env.MEDIA_WORKER_LEASE_MS || 600_000));
-const processTimeoutMs = Math.max(10_000, Number(process.env.MEDIA_WORKER_PROCESS_TIMEOUT_MS || 300_000));
+export const mediaWorkerId = workerId;
+const leaseMs = positiveIntegerSetting('MEDIA_WORKER_LEASE_MS', 600_000, 30_000);
+const processTimeoutMs = positiveIntegerSetting('MEDIA_WORKER_PROCESS_TIMEOUT_MS', 300_000, 10_000);
+const providerConcurrency = positiveIntegerSetting('MEDIA_WORKER_PROVIDER_CONCURRENCY', 2, 1);
+const breakerFailureThreshold = positiveIntegerSetting('MEDIA_WORKER_BREAKER_FAILURES', 5, 1);
+const breakerCooldownMs = positiveIntegerSetting('MEDIA_WORKER_BREAKER_COOLDOWN_MS', 60_000, 1_000);
 const ytdlpProxy = String(process.env.YTDLP_PROXY || '').trim();
 const ytdlpCookiesFile = String(process.env.YTDLP_COOKIES_FILE || '').trim();
 const ytdlpJsRuntime = String(process.env.YTDLP_JS_RUNTIME || 'node').trim();
@@ -31,6 +51,63 @@ const queue = [];
 const activeProcesses = new Map();
 const cancelledJobs = new Set();
 let activeJobs = 0;
+
+const mediaLog = (event, job, details = {}) => console.info(JSON.stringify({
+  event,
+  traceId: job?.traceId || job?.id || null,
+  jobId: job?.id || null,
+  annotationId: job?.annotationId || null,
+  workerId: event === 'media_job_queued' ? null : workerId,
+  provider: job?.provider || job?.sourceType || 'direct',
+  ...details,
+}));
+
+const providerKey = (job) => String(job.provider || job.sourceType || 'direct').toLowerCase();
+export const createProviderGate = ({ concurrency, failureThreshold, cooldownMs, now = () => Date.now() }) => {
+  for (const [name, value] of Object.entries({ concurrency, failureThreshold, cooldownMs })) {
+    if (!Number.isSafeInteger(value) || value < 1) throw new Error(`${name} must be a positive integer.`);
+  }
+  const states = new Map();
+  const acquire = (job) => {
+    const key = providerKey(job);
+    const state = states.get(key) || { active: 0, failures: 0, openUntil: 0 };
+    const currentTime = now();
+    if (state.openUntil > currentTime) return { allowed: false, key, delayMs: state.openUntil - currentTime, reason: 'provider-circuit-open' };
+    if (state.active >= concurrency) return { allowed: false, key, delayMs: 1_000, reason: 'provider-concurrency' };
+    state.active += 1;
+    if (state.openUntil && state.openUntil <= currentTime) state.openUntil = 0;
+    states.set(key, state);
+    return { allowed: true, key };
+  };
+  const release = (key, { succeeded = false, failed = false } = {}) => {
+    if (!key) return;
+    const state = states.get(key) || { active: 0, failures: 0, openUntil: 0 };
+    state.active = Math.max(0, state.active - 1);
+    if (succeeded) state.failures = 0;
+    if (failed) {
+      state.failures += 1;
+      if (state.failures >= failureThreshold) state.openUntil = now() + cooldownMs;
+    }
+    states.set(key, state);
+  };
+  const snapshot = (key) => ({ ...(states.get(String(key).toLowerCase()) || { active: 0, failures: 0, openUntil: 0 }) });
+  return Object.freeze({ acquire, release, snapshot });
+};
+const providerControl = createProviderGate({ concurrency: providerConcurrency, failureThreshold: breakerFailureThreshold, cooldownMs: breakerCooldownMs });
+const providerGate = providerControl.acquire;
+const releaseProvider = providerControl.release;
+
+export const classifyMediaFailure = (error) => {
+  const message = String(error?.message || error || '').toLowerCase();
+  if (message.includes('cancel')) return 'cancelled';
+  if (message.includes('timed out') && (message.includes('provider') || message.includes('yt-dlp'))) return 'provider-timeout';
+  if (message.includes('timed out')) return 'transcode-timeout';
+  if (message.includes('s3') || message.includes('object') || message.includes('bucket') || message.includes('upload')) return 'object-storage';
+  if (message.includes('provider') || message.includes('playable stream') || message.includes('extractor')) return 'provider';
+  if (message.includes('duration') || message.includes('stream') || message.includes('240p')) return 'media-validation';
+  if (message.includes('ffmpeg') || message.includes('ffprobe') || message.includes('codec')) return 'transcode';
+  return 'unknown';
+};
 
 const directMediaUrl = (value) => /\.(?:mp4|webm|mov|m3u8|mp3|m4a|wav|ogg|aac|flac)(?:$|\?)/i.test(value);
 const outputFor = (sourceType, id) => sourceType === 'video'
@@ -113,6 +190,10 @@ export const validateMediaProbe = (sourceType, probe) => {
 };
 
 const run = (command, args, { maxOutput = 64_000, jobId = '', timeoutMs = processTimeoutMs } = {}) => new Promise((resolve, reject) => {
+  if (process.env.NODE_ENV === 'production' && processRole !== 'media-worker') {
+    reject(new Error('Media binaries are disabled in the production API process.'));
+    return;
+  }
   const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   if (jobId) activeProcesses.set(jobId, child);
   let stdout = '';
@@ -221,31 +302,23 @@ export async function validatePlayableInput(value, { lookup } = {}) {
   return (await assertPublicUrl(parseSourceUrl(value).toString(), { lookup })).toString();
 }
 
-const updateAnnotation = (annotationId, changes) => updateStore((store) => ({
-  ...store,
-  annotations: store.annotations.map((annotation) => annotation.id === annotationId ? { ...annotation, ...changes } : annotation),
-}));
-
 const claimMediaJob = async (job) => {
-  let claimed = false;
-  await updateStore((store) => {
-    const current = (store.mediaJobs || []).find((item) => item.id === job.id);
-    if (!shouldClaimMediaJob(current, workerId)) return store;
-    claimed = true;
-    return {
-      ...store,
-      mediaJobs: store.mediaJobs.map((item) => item.id === job.id ? { ...item, status: 'processing', workerId, leaseUntil: new Date(Date.now() + leaseMs).toISOString() } : item),
-    };
-  });
-  return claimed;
+  return claimMediaRecord({ jobId: typeof job === 'string' ? job : job.id, workerId, leaseMs, maxAttempts });
 };
 
-const runJob = async (job) => {
-  const current = await readStore();
-  const annotation = current.annotations.find((item) => item.id === job.annotationId);
-  if (!annotation || annotation.mediaStatus === 'cancelled') return;
-  if (!await claimMediaJob(job)) return;
-  await updateAnnotation(job.annotationId, { mediaStatus: 'processing', mediaError: null });
+const runJob = async (jobId) => {
+  const job = await claimMediaJob(jobId);
+  if (!job) return;
+  mediaLog('media_job_claimed', job, { pickupMs: Math.max(0, Date.now() - Date.parse(job.createdAt || '')) });
+  const gate = providerGate(job);
+  if (!gate.allowed) {
+    const retryAt = await deferMediaRecord(job, gate.delayMs, gate.reason);
+    mediaLog('media_job_deferred', job, { reason: gate.reason, retryAt });
+    setTimeout(() => { queue.push(job.id); drain(); }, Math.max(0, Date.parse(retryAt) - Date.now()));
+    return;
+  }
+  let providerSucceeded = false;
+  let providerFailed = false;
   const assetId = randomUUID();
   const output = outputFor(job.sourceType, assetId);
   const key = `clips/${output.fileName}`;
@@ -255,14 +328,16 @@ const runJob = async (job) => {
   try {
     await mkdir(mediaWorkDirectory, { recursive: true });
     const input = await resolveInput(job);
+    mediaLog('media_provider_resolved', job);
     const args = buildFfmpegArgs(job, input, outputPath);
     await run('ffmpeg', args, { jobId: job.id });
+    mediaLog('media_transcode_completed', job);
     const probeResult = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type,height', '-of', 'json', outputPath], { jobId: job.id });
     let probe;
     try { probe = JSON.parse(probeResult.stdout); } catch { throw new Error('Media output inspection returned invalid data.'); }
     validateMediaProbe(job.sourceType, probe);
-    const completed = await readStore();
-    if (shouldAbortMediaJob(job, completed)) {
+    mediaLog('media_probe_validated', job);
+    if (cancelledJobs.has(job.id) || await mediaJobCancelled(job.id)) {
       await removeMediaFile(outputPath);
       cancelledJobs.delete(job.id);
       return;
@@ -286,17 +361,11 @@ const runJob = async (job) => {
       }
     }
     const asset = await storeMediaFile(outputPath, { id: assetId, key, mimeType: output.mimeType });
+    mediaLog('media_object_stored', job, { assetId, bytes: asset.bytes, objectAttempts: asset.attempts || 1 });
     storedAsset = { id: assetId, key, fileName: asset.fileName || key, mimeType: output.mimeType };
-    let published = false;
-    await updateStore((store) => {
-      if (shouldAbortMediaJob(job, store)) return store;
-      published = true;
-      return {
-        ...store,
-        media: [...(store.media || []), { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, peaks, kind: 'clip', createdAt: new Date().toISOString() }, ...(posterStored ? [posterStored] : [])],
-        annotations: store.annotations.map((annotation) => annotation.id === job.annotationId ? { ...annotation, mediaAssetId: assetId, posterAssetId: posterStored?.id || null, mediaStatus: 'ready', mediaError: null } : annotation),
-        mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: 'ready', workerId: null, leaseUntil: null, completedAt: new Date().toISOString() } : item),
-      };
+    const published = await completeMediaRecord(job, {
+      asset: { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, peaks, kind: 'clip', createdAt: new Date().toISOString() },
+      poster: posterStored,
     });
     if (!published) {
       await removeStoredMedia(storedAsset).catch(() => {});
@@ -305,50 +374,45 @@ const runJob = async (job) => {
       cancelledJobs.delete(job.id);
       return;
     }
+    providerSucceeded = true;
+    mediaLog('media_job_ready', job, { assetId, processingMs: Math.max(0, Date.now() - Date.parse(job.startedAt || job.createdAt || '')) });
     await removeMediaFile(outputPath);
   } catch (error) {
     if (storedAsset) await removeStoredMedia(storedAsset).catch(() => {});
     if (posterStored) await removeStoredMedia(posterStored).catch(() => {});
     await removeMediaFile(outputPath);
     const boundedError = String(error?.message || 'Media processing failed.').slice(0, 500);
-    const latest = await readStore();
-    if (shouldAbortMediaJob(job, latest)) {
+    if (cancelledJobs.has(job.id) || await mediaJobCancelled(job.id)) {
       cancelledJobs.delete(job.id);
       return;
     }
-    const attempts = Number(job.attempts || 0) + 1;
-    const retry = attempts < maxAttempts;
-    let recordedFailure = false;
-    await updateStore((store) => {
-      if (shouldAbortMediaJob(job, store)) return store;
-      recordedFailure = true;
-      return {
-        ...store,
-        annotations: store.annotations.map((item) => item.id === job.annotationId ? { ...item, mediaStatus: retry ? 'queued' : 'failed', mediaError: retry ? `Retrying media processing (${attempts}/${maxAttempts}).` : boundedError } : item),
-        mediaJobs: (store.mediaJobs || []).map((item) => item.id === job.id ? { ...item, status: retry ? 'queued' : 'failed', workerId: null, leaseUntil: null, attempts, error: boundedError, retryAt: retry ? new Date(Date.now() + retryDelayMs * attempts).toISOString() : null, completedAt: retry ? null : new Date().toISOString() } : item),
-      };
-    });
-    if (!recordedFailure) {
+    const failureClass = classifyMediaFailure(error);
+    providerFailed = ['provider', 'provider-timeout'].includes(failureClass);
+    const failure = await failMediaRecord(job, { error: boundedError, failureClass, maxAttempts, retryDelayMs });
+    if (!failure.recorded) {
       cancelledJobs.delete(job.id);
       return;
     }
-    if (retry) setTimeout(() => { queue.push({ ...job, attempts, status: 'queued' }); drain(); }, retryDelayMs * attempts);
+    mediaLog(failure.retry ? 'media_job_retry_scheduled' : 'media_job_dead_lettered', job, { failureClass, attempts: failure.attempts, retryAt: failure.retryAt || null });
+    if (failure.retry) setTimeout(() => { queue.push(job.id); drain(); }, Math.max(0, Date.parse(failure.retryAt) - Date.now()));
+  } finally {
+    releaseProvider(gate.key, { succeeded: providerSucceeded, failed: providerFailed });
   }
 };
 
 const drain = () => {
   while (activeJobs < maxConcurrentJobs && queue.length) {
-    const job = queue.shift();
+    const jobId = queue.shift();
     activeJobs += 1;
-    void runJob(job).finally(() => { activeJobs -= 1; drain(); });
+    void runJob(jobId).finally(() => { activeJobs -= 1; drain(); });
   }
 };
 
 export async function enqueueMediaJob(input) {
-  const job = { id: randomUUID(), ...input, attempts: 0, status: 'queued', createdAt: new Date().toISOString() };
-  await updateStore((store) => ({ ...store, mediaJobs: [...(store.mediaJobs || []), job], annotations: store.annotations.map((annotation) => annotation.id === input.annotationId ? { ...annotation, mediaStatus: 'queued', mediaError: null } : annotation) }));
+  const job = await enqueueMediaRecord(input);
+  mediaLog('media_job_queued', job);
   if (maxConcurrentJobs > 0) {
-    queue.push(job);
+    queue.push(job.id);
     drain();
   }
   return job;
@@ -358,59 +422,22 @@ export const canRetryMediaJob = (job, annotation, userId) => Boolean(
   job
   && annotation
   && job.annotationId === annotation.id
-  && job.status === 'failed'
+  && ['failed', 'dead-letter'].includes(job.status)
   && annotation.authorId === userId
 );
 
 export async function retryMediaJobForAnnotation(annotationId, userId) {
-  let job = null;
-  await updateStore((store) => {
-    const annotation = (store.annotations || []).find((item) => item.id === annotationId);
-    const failed = [...(store.mediaJobs || [])]
-      .reverse()
-      .find((item) => canRetryMediaJob(item, annotation, userId));
-    if (!failed) return store;
-    job = {
-      id: randomUUID(),
-      annotationId: failed.annotationId,
-      sourceUrl: failed.sourceUrl,
-      sourceType: failed.sourceType,
-      sourceMediaUrl: failed.sourceMediaUrl,
-      mediaUrl: failed.mediaUrl,
-      provider: failed.provider,
-      clipStart: failed.clipStart,
-      clipEnd: failed.clipEnd,
-      attempts: 0,
-      status: 'queued',
-      createdAt: new Date().toISOString(),
-    };
-    return {
-      ...store,
-      annotations: store.annotations.map((item) => item.id === annotationId ? { ...item, mediaStatus: 'queued', mediaError: null } : item),
-      mediaJobs: [...(store.mediaJobs || []).map((item) => item.id === failed.id ? { ...item, status: 'superseded', completedAt: new Date().toISOString() } : item), job],
-    };
-  });
+  const job = await retryMediaRecord(annotationId, userId);
   if (!job) return null;
   if (maxConcurrentJobs > 0) {
-    queue.push(job);
+    queue.push(job.id);
     drain();
   }
   return job;
 }
 
 export async function cancelMediaJob(jobId, userId) {
-  let cancelled = false;
-  await updateStore((store) => {
-    const job = (store.mediaJobs || []).find((item) => item.id === jobId);
-    const annotation = job && store.annotations.find((item) => item.id === job.annotationId);
-    if (!job || !annotation || annotation.authorId !== userId || ['ready', 'failed', 'cancelled'].includes(job.status)) return store;
-    cancelled = true;
-    return {
-      ...store,
-      annotations: store.annotations.map((item) => item.id === annotation.id ? { ...item, mediaStatus: 'cancelled', mediaError: 'Processing cancelled by the owner.' } : item),
-      mediaJobs: (store.mediaJobs || []).map((item) => item.id === jobId ? { ...item, status: 'cancelled', workerId: null, leaseUntil: null, completedAt: new Date().toISOString() } : item),
-    };
-  });
+  const cancelled = await cancelMediaRecord(jobId, userId);
   if (cancelled) {
     const child = activeProcesses.get(jobId);
     if (child) {
@@ -424,14 +451,6 @@ export async function cancelMediaJob(jobId, userId) {
 
 export async function recoverMediaJobs() {
   if (maxConcurrentJobs <= 0) return;
-  const store = await readStore();
-  for (const annotation of store.annotations.filter((item) => item.status === 'published' && ['queued', 'processing'].includes(item.mediaStatus))) {
-    const job = (store.mediaJobs || []).find((item) => item.annotationId === annotation.id && shouldRecoverMediaJob(item) && Number(item.attempts || 0) < maxAttempts);
-    if (!job) continue;
-    const retryAt = Date.parse(job.retryAt || '');
-    const delay = Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : 0;
-    if (delay) setTimeout(() => { queue.push({ ...job, status: 'queued' }); drain(); }, delay);
-    else queue.push({ ...job, status: 'queued' });
-  }
+  for (const jobId of await recoverableMediaJobIds(Math.max(100, maxConcurrentJobs * 4))) if (!queue.includes(jobId)) queue.push(jobId);
   drain();
 }

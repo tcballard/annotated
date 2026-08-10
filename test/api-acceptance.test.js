@@ -96,6 +96,7 @@ test('local API serves the acceptance-critical health, identity, publish, social
   const extensionId = 'omlikcdpcdhfmdojdalfdeihgjmgikkg';
   const extensionOrigin = `chrome-extension://${extensionId}`;
   const baseUrl = `http://127.0.0.1:${port}`;
+  const operatorToken = 'acceptance-operator-token-1234';
   const child = spawn(process.execPath, ['server/index.js'], {
     cwd: repoRoot,
     env: {
@@ -109,6 +110,7 @@ test('local API serves the acceptance-critical health, identity, publish, social
       ANNOTATED_ASSET_STORAGE: 'local',
       ANNOTATED_DATA_DIR: dataDirectory,
       MEDIA_WORKER_CONCURRENCY: '0',
+      OPERATOR_METRICS_TOKEN: operatorToken,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -141,6 +143,14 @@ test('local API serves the acceptance-critical health, identity, publish, social
   assert.equal(deniedExtension.response.status, 403);
   assert.equal(health.response.headers.get('access-control-allow-origin'), allowedOrigin);
   assert.ok(health.response.headers.get('x-request-id'));
+
+  const hiddenMetrics = await request(baseUrl, '/api/operator/metrics');
+  assert.equal(hiddenMetrics.response.status, 404);
+  const operatorMetricsResponse = await fetch(`${baseUrl}/api/operator/metrics`, { headers: { authorization: `Bearer ${operatorToken}` } });
+  const operatorMetrics = await operatorMetricsResponse.json();
+  assert.equal(operatorMetricsResponse.status, 200);
+  assert.equal(typeof operatorMetrics.process.requests, 'number');
+  assert.equal(typeof operatorMetrics.mediaQueue.statuses, 'object');
 
   const ready = await request(baseUrl, '/api/ready', { origin: allowedOrigin });
   assert.equal(ready.response.status, 200);

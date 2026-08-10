@@ -17,9 +17,9 @@ The extension never stores audio/video Blobs in `chrome.storage`. The web app ne
 
 ## Production target
 
-- PostgreSQL for users, annotations, comments, claims, follows, likes, sessions, media, and media-job records. The repository now persists each API collection as a durable entity record in `annotated_records`, reconstructs the stable store contract, and keeps the legacy state document as a compatibility fallback during migration. Updates use an advisory transaction lock; versioned SQL migrations are tracked in `annotated_schema_migrations`. Production mutation and OAuth limits use the separate `annotated_rate_limit_buckets` ledger with hashed keys and atomic window upserts.
+- PostgreSQL for users, sources, annotations, comments, claims, follows, likes, sessions, media, product events, and media jobs. Migration `006_relational_core` owns typed constraints and indexes; public reads and worker claims use bounded SQL rather than loading `annotated_records`. The EAV table remains a transactionally updated rollback journal for one migration window, documented in [RELATIONAL_MIGRATION.md](RELATIONAL_MIGRATION.md). Only that legacy fallback uses the product-wide compatibility lock. Production mutation and OAuth limits use the separate `annotated_rate_limit_buckets` ledger with hashed keys and atomic window upserts.
 - S3/R2-compatible object storage for uploaded audio and derived clips. The web process streams uploads to S3, serves signed/public delivery URLs, and deletes derived objects when a cancelled or failed job has already uploaded them; it does not persist production media under `data/media/`.
-- Signed or public CDN URLs for playback; the API acknowledges uploads without proxying large media through the web process.
+- Signed or public CDN URLs for playback; the API acknowledges uploads without proxying large media through the web process. A configured public CDN must expose the purge webhook contract documented in DEPLOYMENT so a rights takedown invalidates the exact UUID object after origin deletion.
 - `chrome.storage.local` only for small draft metadata, preferences, and pending IDs.
 - `chrome.storage.session` for ephemeral runtime state; no long-lived provider secrets in extension storage.
 - The extension's bearer session token is ephemeral `chrome.storage.session` state; pending capture payloads are bounded metadata in `chrome.storage.local` and are retried by the service worker. A successful media upload is recorded as an asset ID before the annotation retry; a bounded client request ID makes the publish idempotent; eight failed or non-retryable attempts become a metadata-only blocked item for explicit recovery instead of an infinite loop.
@@ -42,7 +42,7 @@ npm run db:migrate
 ANNOTATED_STORAGE=postgres ANNOTATED_ASSET_STORAGE=s3 NODE_ENV=production npm start
 ```
 
-The migration runner applies every ordered SQL file once and records the version in `annotated_schema_migrations`; it is safe to rerun during deploys. Migration `004_rate_limit_buckets` is required before a production instance can use the shared abuse-control boundary.
+The migration runner applies every ordered SQL file once and records the version in `annotated_schema_migrations`; it is safe to rerun during deploys. Run `npm run check:relational-integrity` after migration and throughout the rollback window. A mismatch blocks read cutover and rollback.
 
 The local adapter remains the default for `npm run dev:server`, tests, and offline UI work. Do not claim production readiness from a file-backed run.
 

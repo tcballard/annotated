@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { parseFile } from 'music-metadata';
 
 // Audio commentary shares the 90-second policy with clips. The capture UIs cap
 // the recorder, and this probe enforces the same limit at the API boundary so
@@ -14,34 +14,7 @@ const policyError = (message) => {
   return error;
 };
 
-const runFfprobe = (filePath, timeoutMs = 15_000) => new Promise((resolve, reject) => {
-  const child = spawn('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'json', filePath], { stdio: ['ignore', 'pipe', 'pipe'] });
-  let stdout = '';
-  let stderr = '';
-  let settled = false;
-  const timer = setTimeout(() => {
-    if (settled) return;
-    settled = true;
-    child.kill('SIGKILL');
-    reject(new Error('Audio inspection timed out.'));
-  }, timeoutMs);
-  child.stdout.on('data', (chunk) => { stdout = `${stdout}${chunk}`.slice(-16_000); });
-  child.stderr.on('data', (chunk) => { stderr = `${stderr}${chunk}`.slice(-16_000); });
-  child.on('error', (error) => {
-    if (settled) return;
-    settled = true;
-    clearTimeout(timer);
-    error.unavailable = error.code === 'ENOENT';
-    reject(error);
-  });
-  child.on('close', (code) => {
-    if (settled) return;
-    settled = true;
-    clearTimeout(timer);
-    if (code === 0) resolve(stdout);
-    else reject(new Error(stderr.trim() || `ffprobe exited with code ${code}.`));
-  });
-});
+const inspectAudio = async (filePath) => Number((await parseFile(filePath, { duration: true, skipCovers: true })).format.duration) || null;
 
 export const parseProbedDuration = (output) => {
   let parsed;
@@ -53,19 +26,22 @@ export const parseProbedDuration = (output) => {
 export const audioDurationWithinPolicy = (duration) => duration === null
   || duration <= MAX_AUDIO_UPLOAD_SECONDS + AUDIO_DURATION_TOLERANCE_SECONDS;
 
-// Returns the probed duration in seconds. In production every upload must be
-// inspectable and inside the 90-second policy; in development a missing
-// ffprobe binary or a synthetic test payload degrades to null instead of
-// blocking local work.
-export async function assertAudioDurationPolicy(filePath, { runCommand = runFfprobe, strict = production() } = {}) {
-  let output;
+// Returns the inspected duration in seconds. In production every upload must
+// be parseable and inside the 90-second policy; in development a synthetic or
+// unsupported test payload degrades to null instead of blocking local work.
+export async function assertAudioDurationPolicy(filePath, { runCommand = inspectAudio, strict = production() } = {}) {
+  let inspected;
   try {
-    output = await runCommand(filePath);
+    inspected = await runCommand(filePath);
   } catch (error) {
     if (strict) throw policyError('The uploaded audio could not be inspected. Upload a standard audio recording.');
     return null;
   }
-  const duration = parseProbedDuration(output);
+  const duration = typeof inspected === 'number'
+    ? (Number.isFinite(inspected) && inspected > 0 ? inspected : null)
+    : typeof inspected === 'string'
+      ? parseProbedDuration(inspected)
+      : Number.isFinite(Number(inspected?.format?.duration)) && Number(inspected.format.duration) > 0 ? Number(inspected.format.duration) : null;
   if (duration === null) {
     if (strict) throw policyError('The uploaded audio has no measurable duration.');
     return null;
