@@ -554,7 +554,9 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
   overflow-wrap: anywhere;
 }
 
-/* note + recorder */
+/* typed source relationship + note + recorder */
+.relation-select { display: grid; gap: 4px; margin-bottom: 8px; color: var(--meta); font-size: 10px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
+.relation-select select { width: 100%; min-height: 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--ink); padding: 0 9px; font: 12px var(--sans); text-transform: none; letter-spacing: 0; }
 .cap-note {
   display: block;
   width: 100%;

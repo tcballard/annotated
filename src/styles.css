@@ -1233,6 +1233,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 footer { max-width: 940px; margin: 0 auto; padding: 14px 16px 32px; font-size: 12px; color: var(--meta); display: flex; gap: 14px; flex-wrap: wrap; }
 footer a { color: var(--meta); }
+footer .footer-data { min-height: 40px; border: 0; padding: 0; background: transparent; color: var(--meta); text-decoration: underline; }
 footer .footer-note { margin-left: auto; }
 
 /* ── public doc pages ───────────────────────────────────────────────── */
@@ -1395,6 +1396,59 @@ footer .footer-note { margin-left: auto; }
 }
 
 .pub-moment .pub-hint { color: var(--meta); font-size: 12.5px; }
+
+/* ── no-install capture panel demo ─────────────────────────────────── */
+.panel-demo-shell { width: min(100%, 470px); margin: 18px auto 48px; padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: var(--paper-2); box-shadow: var(--shadow); display: grid; gap: 16px; }
+.panel-demo-shell h1 { margin: 0; font: 600 30px/1.05 var(--serif); }
+.demo-kicker { color: var(--ink-soft); font: 700 10px/1.4 var(--sans); letter-spacing: .11em; text-transform: uppercase; }
+.demo-tabs, .mode-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; }
+.demo-tabs button, .mode-toggle button { min-height: 38px; border: 0; border-radius: 7px; background: transparent; color: var(--meta); }
+.demo-tabs button[aria-selected="true"], .mode-toggle button[aria-pressed="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 4px rgb(0 0 0 / .08); }
+.demo-fixture { display: grid; grid-template-columns: auto 1fr; gap: 5px 9px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+.demo-fixture small { grid-column: 2; color: var(--meta); }
+.demo-fixture blockquote, .demo-fixture .demo-timeline, .demo-fixture .demo-source-action, .demo-fixture .chip { grid-column: 1 / -1; }
+.demo-fixture blockquote { margin: 8px 0 0; padding: 10px 12px; border-left: 2px solid var(--ink-soft); color: var(--ink-soft); }
+.demo-source-action { justify-self: start; margin-top: 8px; border: 0; color: var(--ink-soft); background: transparent; font-weight: 700; padding: 7px 0; }
+.demo-timeline { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; color: var(--meta); font-size: 11px; }
+.demo-timeline div { height: 6px; position: relative; border-radius: 8px; background: var(--line); overflow: hidden; }
+.demo-timeline i { position: absolute; inset-block: 0; background: var(--ink-soft); }
+.demo-label { display: grid; gap: 6px; color: var(--meta); font-size: 12px; }
+.demo-label select { min-height: 42px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); color: var(--ink); padding: 0 10px; }
+.demo-audio, .demo-disclosure { padding: 12px; border-radius: 9px; background: var(--paper); color: var(--meta); font-size: 12px; }
+.demo-receipt { display: grid; gap: 6px; padding: 15px; border: 1px solid var(--line); border-radius: 11px; background: var(--paper); }
+.demo-receipt span { color: var(--meta); font-size: 12px; }
+.panel-demo-shell > .ghost { justify-self: start; }
+
+/* ── exact-source graph, receipts, sharing, publisher desk ─────────── */
+.source-graph, .publisher-desk, .publisher-setup { display: grid; gap: 20px; }
+.source-graph-head, .publisher-desk > header, .publisher-setup { padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper-2); }
+.source-graph-head h1, .publisher-desk h1, .publisher-setup h1 { margin: 6px 0; font: 600 32px/1.1 var(--serif); }
+.source-axis { display: grid; gap: 14px; border-left: 2px solid var(--line); padding-left: 22px; }
+.evidence-node { position: relative; padding: 18px; border: 1px solid var(--line); border-radius: 13px; background: var(--paper); }
+.evidence-node::before { content: ''; position: absolute; left: -29px; top: 25px; width: 11px; height: 11px; border-radius: 50%; background: var(--ink-soft); border: 3px solid var(--paper); }
+.evidence-node h2 { margin: 5px 0; font-size: 15px; }
+.evidence-node blockquote { margin: 12px 0; color: var(--ink-soft); font-family: var(--serif); }
+.evidence-relation { color: var(--meta); font: 700 10px/1.4 var(--sans); letter-spacing: .09em; text-transform: uppercase; }
+.evidence-receipt { display: grid; gap: 5px; padding: 10px; background: var(--paper-2); border-radius: 8px; color: var(--meta); font-size: 11px; overflow-wrap: anywhere; }
+.permalink-receipt { margin: 14px 0; }
+.permalink-receipt summary { cursor: pointer; color: var(--ink); font-weight: 700; }
+.share-tray { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper-2); }
+.share-tray button, .share-tray a { min-height: 36px; display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 7px; padding: 0 10px; background: var(--paper); color: var(--ink); text-decoration: none; font-size: 12px; }
+.publisher-setup label { display: grid; gap: 6px; }
+.publisher-setup input { min-height: 44px; border: 1px solid var(--line); border-radius: 9px; padding: 0 12px; background: var(--paper); color: var(--ink); }
+.publisher-setup code { overflow-wrap: anywhere; }
+.publisher-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+.publisher-stats div { display: grid; gap: 4px; padding: 16px; border: 1px solid var(--line); border-radius: 11px; background: var(--paper-2); }
+.publisher-stats b { font: 600 28px/1 var(--serif); }
+.publisher-stats span, .publisher-row span { color: var(--meta); font-size: 11px; }
+.publisher-row { display: flex; justify-content: space-between; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.publisher-row div { display: grid; gap: 4px; }
+.publisher-row textarea { min-height: 70px; margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 9px; background: var(--paper); color: var(--ink); resize: vertical; }
+.publisher-reply { margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-2); }
+.publisher-reply p { margin: 8px 0; }
+.publisher-reply span { color: var(--meta); font-size: 11px; }
+
+@media (max-width: 520px) { .panel-demo-shell { margin-top: 0; border-inline: 0; border-radius: 0; } .publisher-stats { grid-template-columns: 1fr; } }
 
 /* ── shell mode (native app) ────────────────────────────────────────── */
 

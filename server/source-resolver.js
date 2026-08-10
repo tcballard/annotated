@@ -1,4 +1,5 @@
 import { assertPublicUrl, blockedHostname } from './ssrf.js';
+import { sourceIdentity } from './source-identity.js';
 
 const YOUTUBE_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'youtu.be', 'www.youtu.be']);
 const PODCAST_HOST_HINTS = ['podcast', 'overcast', 'spotify', 'soundcloud', 'transistor.fm', 'simplecast'];
@@ -211,7 +212,8 @@ const fetchText = async (url, timeoutMs = 8000, { lookup } = {}) => {
 export async function resolveSource(value, { lookup } = {}) {
   const url = parseSourceUrl(value);
   const kind = classifySource(value);
-  const base = { sourceUrl: url.toString(), canonicalUrl: url.toString(), sourceType: kind, host: url.hostname.replace(/^www\./, '') };
+  const initialIdentity = sourceIdentity(url.toString());
+  const base = { sourceId: initialIdentity.id, sourceUrl: url.toString(), canonicalUrl: initialIdentity.canonicalUrl, sourceType: kind, host: initialIdentity.host };
   if (VIDEO_EXTENSIONS.test(url.pathname) || AUDIO_EXTENSIONS.test(url.pathname)) base.mediaUrl = url.toString();
 
   if (base.mediaUrl) return { ...base, title: base.host, author: base.host, description: null, imageUrl: null, excerpt: null, processing: 'ready-for-range' };
@@ -230,12 +232,18 @@ export async function resolveSource(value, { lookup } = {}) {
     const html = await fetchText(url.toString(), 8000, { lookup });
     if (kind === 'podcast' && /<(?:rss|feed|channel|item|entry|enclosure)\b/i.test(html)) {
       const feed = parsePodcastFeed(html, url.toString());
-      if (feed) return { ...base, ...feed };
+      if (feed) {
+        const resolved = { ...base, ...feed };
+        const identity = sourceIdentity(resolved.canonicalUrl);
+        return { ...resolved, sourceId: identity.id, canonicalUrl: identity.canonicalUrl, host: identity.host };
+      }
     }
-    const canonicalUrl = canonicalFromHTML(html, url.toString()) || base.canonicalUrl;
+    const identity = sourceIdentity(canonicalFromHTML(html, url.toString()) || base.canonicalUrl);
     return {
       ...base,
-      canonicalUrl,
+      sourceId: identity.id,
+      canonicalUrl: identity.canonicalUrl,
+      host: identity.host,
       title: meta(html, 'og:title') || titleFromHTML(html) || 'Untitled source',
       author: meta(html, 'author', 'name') || meta(html, 'article:author') || meta(html, 'og:site_name') || base.host,
       description: meta(html, 'og:description') || meta(html, 'description', 'name') || null,

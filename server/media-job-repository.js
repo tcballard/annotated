@@ -170,6 +170,7 @@ export async function completeMediaRecord(job, { asset, poster = null }) {
     if (!annotationResult.rows[0]) return false;
     const annotation = mapAnnotation(annotationResult.rows[0]);
     await writeLegacy(client, 'media', asset.id, asset);
+    await client.query(`UPDATE annotated_media_artifacts SET sha256=$2,width=$3,height=$4,probe=$5::jsonb,verified_at=$6,rights_state=$7 WHERE id=$1`, [asset.id, asset.sha256 || null, asset.width || null, asset.height || null, JSON.stringify(asset.probe || null), asset.verifiedAt || null, asset.rightsState || 'unreviewed']);
     if (poster) await writeLegacy(client, 'media', poster.id, poster);
     await writeLegacy(client, 'annotations', annotation.id, { ...annotation, mediaAssetId: asset.id, posterAssetId: poster?.id || null, mediaStatus: 'ready', mediaError: null });
     await writeLegacy(client, 'mediaJobs', current.id, { ...current, status: 'ready', workerId: null, leaseUntil: null, completedAt: new Date().toISOString() });

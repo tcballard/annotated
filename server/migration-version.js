@@ -1,1 +1,1 @@
-export const latestMigrationVersion = '006_relational_core';
+export const latestMigrationVersion = '007_product_moat';

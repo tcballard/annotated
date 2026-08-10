@@ -31,6 +31,8 @@ export const CORE_MODULES = {
   'share-capture': ['src/share-capture.js'],
   'auth-ui': ['src/auth-ui.js'],
   'avatar': ['src/avatar.js', 'extension/avatar.js'],
+  'capture-state': ['src/capture-state.js', 'extension/capture-state.js'],
+  'share-kit': ['src/share-kit.js', 'extension/share-kit.js'],
 };
 
 export const MOBILE_CORE_DIR = 'mobile/lib/core';

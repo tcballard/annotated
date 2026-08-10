@@ -27,6 +27,10 @@ import { validateClaimTransition } from './moderation.js';
 import { canEditCommentary, removalTombstone, validateModerationAction } from './annotation-lifecycle.js';
 import { isChromeExtensionRedirectUrl, resolveCorsOrigin } from './cors.js';
 import { getCapabilities } from './capabilities.js';
+import { exactSourceGraph } from './evidence-graph.js';
+import { recordProductEvent, productFunnel } from './product-events.js';
+import { addPublisherReply, createPublisherChallenge, publisherClaimIds, publisherWorkspace, verifyPublisherChallenge } from './publisher-workspace.js';
+import { annotationEmbedHtml, annotationQrSvg, annotationShareDescriptor } from './share-surfaces.js';
 import {
   addComment,
   createAnnotation,
@@ -226,7 +230,85 @@ const handleApi = async (request, response, pathname) => {
 
   if (request.method === 'POST' && pathname === '/api/sources/resolve') {
     const payload = await readJson(request);
-    return send(response, 200, { source: await resolveSource(payload.url) });
+    const source = await resolveSource(payload.url);
+    return send(response, 200, { source });
+  }
+
+  const exactSourceMatch = pathname.match(/^\/api\/sources\/exact\/(src_[A-Za-z0-9_-]+)$/);
+  if (exactSourceMatch && request.method === 'GET') {
+    const viewer = await currentUser(request);
+    const query = new URL(request.url || '/', publicOrigin).searchParams;
+    const graph = await exactSourceGraph(exactSourceMatch[1], viewer?.id || '', { limit: normalizeFeedLimit(query.get('limit')), cursor: query.get('cursor') || '' });
+    return graph.source ? send(response, 200, graph) : notFound(response);
+  }
+
+  if (request.method === 'POST' && pathname === '/api/events') {
+    const actor = await currentUser(request);
+    if (!(await mutationAllowed(request, actor, 'product-event', 180))) return send(response, 429, { error: 'Too many events.' }, { 'retry-after': '60' });
+    const payload = await readJson(request);
+    return send(response, 202, await recordProductEvent({ ...payload, actorId: actor?.id || '', isBot: /bot|crawler|spider/i.test(String(request.headers['user-agent'] || '')) }));
+  }
+
+  if (request.method === 'GET' && pathname === '/api/operator/funnel') {
+    if (!operatorMetricsAllowed(request)) return forbidden(response);
+    return send(response, 200, await productFunnel({ workspaceId: new URL(request.url || '/', publicOrigin).searchParams.get('workspaceId') || '' }));
+  }
+
+  if (request.method === 'POST' && pathname === '/api/publishers/challenges') {
+    const actor = await currentUser(request);
+    if (!actor) return unauthorized(response);
+    if (!(await mutationAllowed(request, actor, 'publisher-challenge', 10))) return send(response, 429, { error: 'Too many publisher challenges.' });
+    try { return send(response, 201, { challenge: await createPublisherChallenge({ ...(await readJson(request)), actorId: actor.id }) }); }
+    catch (error) { return send(response, 422, { error: error.message }); }
+  }
+
+  const publisherVerifyMatch = pathname.match(/^\/api\/publishers\/challenges\/([^/]+)\/verify$/);
+  if (publisherVerifyMatch && request.method === 'POST') {
+    const actor = await currentUser(request);
+    if (!actor) return unauthorized(response);
+    try { return send(response, 200, { workspace: await verifyPublisherChallenge({ challengeId: publisherVerifyMatch[1], actorId: actor.id, ...(await readJson(request)) }) }); }
+    catch (error) { return send(response, 422, { error: error.message }); }
+  }
+
+  const publisherWorkspaceMatch = pathname.match(/^\/api\/publishers\/workspaces\/([^/]+)$/);
+  if (publisherWorkspaceMatch && request.method === 'GET') {
+    const actor = await currentUser(request);
+    if (!actor) return unauthorized(response);
+    const query = new URL(request.url || '/', publicOrigin).searchParams;
+    const workspace = await publisherWorkspace(publisherWorkspaceMatch[1], actor.id, { limit: normalizeFeedLimit(query.get('limit')), cursor: query.get('cursor') || '' });
+    return workspace ? send(response, 200, workspace) : notFound(response);
+  }
+
+  const publisherReplyMatch = pathname.match(/^\/api\/publishers\/workspaces\/([^/]+)\/annotations\/([^/]+)\/reply$/);
+  if (publisherReplyMatch && request.method === 'POST') {
+    const actor = await currentUser(request);
+    if (!actor) return unauthorized(response);
+    try {
+      const reply = await addPublisherReply({ workspaceId: publisherReplyMatch[1], annotationId: publisherReplyMatch[2], actorId: actor.id, ...(await readJson(request)) });
+      return reply ? send(response, 201, { reply }) : notFound(response);
+    } catch (error) { return send(response, 422, { error: error.message }); }
+  }
+
+  const publisherClaimsMatch = pathname.match(/^\/api\/publishers\/workspaces\/([^/]+)\/claims\/bulk$/);
+  if (publisherClaimsMatch && request.method === 'POST') {
+    const actor = await currentUser(request);
+    if (!actor) return unauthorized(response);
+    const payload = await readJson(request);
+    const ids = await publisherClaimIds(publisherClaimsMatch[1], actor.id, Array.isArray(payload.claimIds) ? payload.claimIds : []);
+    if (!ids.length) return send(response, 404, { error: 'No matching workspace claims were found.' });
+    const claims = await Promise.all(ids.map((id) => findClaim(id)));
+    for (const currentClaim of claims) {
+      const transitionError = validateClaimTransition(currentClaim?.status, payload.status);
+      const actionError = validateModerationAction(payload.status, payload.action);
+      if (transitionError || actionError) return send(response, 422, { error: transitionError || actionError });
+    }
+    const results = [];
+    for (const id of ids) {
+      const result = await moderateClaim(id, { actorId: actor.id, status: payload.status, note: String(payload.note || '').slice(0, 2000), action: payload.action === 'remove' ? 'remove' : null, auditId: randomUUID() });
+      for (const media of result?.removedAssets || []) await removeStoredMedia(media).catch((error) => console.error('publisher takedown media removal failed', error.message));
+      if (result) results.push(result.claim);
+    }
+    return send(response, 200, { claims: results, processed: results.length });
   }
 
   if (request.method === 'POST' && pathname === '/api/media/audio') {
@@ -242,7 +324,7 @@ const handleApi = async (request, response, pathname) => {
       if (error.statusCode === 422) return send(response, 422, { error: error.message });
       throw error;
     }
-    await putMedia({ id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, peaks: media.peaks || null, ownerId: actor?.id || 'local-tom', createdAt: media.createdAt });
+    await putMedia({ id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, peaks: media.peaks || null, sha256: media.sha256, verifiedAt: media.verifiedAt, rightsState: media.rightsState, ownerId: actor?.id || 'local-tom', createdAt: media.createdAt });
     return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, peaks: media.peaks || null, url: `${publicOrigin}/media/${media.id}` } });
   }
 
@@ -255,7 +337,7 @@ const handleApi = async (request, response, pathname) => {
     try { mimeType = normalizeImageMimeType(request.headers['content-type']); } catch (error) { return send(response, 415, { error: error.message }); }
     if (!(await mutationAllowed(request, actor, 'screenshot-upload', 20))) return send(response, 429, { error: 'Too many screenshot uploads. Try again later.' }, { 'retry-after': '60' });
     const media = await writeIncomingImage(request, mimeType);
-    await putMedia({ id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, kind: 'screenshot', ownerId: actor?.id || 'local-tom', createdAt: media.createdAt });
+    await putMedia({ id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, kind: 'screenshot', sha256: media.sha256, verifiedAt: media.verifiedAt, rightsState: media.rightsState, ownerId: actor?.id || 'local-tom', createdAt: media.createdAt });
     return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, url: `${publicOrigin}/media/${media.id}` } });
   }
 
@@ -346,6 +428,26 @@ const handleApi = async (request, response, pathname) => {
     if (!job) return send(response, 409, { error: 'This annotation has no failed media job available to retry.' });
     const updated = await findAnnotation(annotation.id, actor?.id || 'local-tom');
     return send(response, 202, { annotation: withAssetUrls(updated), job: { id: job.id, status: job.status } });
+  }
+
+  const shareMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/share$/);
+  if (shareMatch && request.method === 'GET') {
+    const actor = await currentUser(request);
+    const annotation = await findAnnotation(decodeURIComponent(shareMatch[1]), actor?.id || '', { includeRemoved: false });
+    if (!annotation || !canViewAnnotation(annotation, actor?.id || '')) return notFound(response);
+    return send(response, 200, { share: annotationShareDescriptor(annotation, publicOrigin) });
+  }
+
+  if (request.method === 'GET' && pathname === '/api/oembed') {
+    const requested = new URL(request.url || '/', publicOrigin).searchParams.get('url') || '';
+    let parsed;
+    try { parsed = new URL(requested); } catch { return send(response, 400, { error: 'A valid annotation URL is required.' }); }
+    if (parsed.origin !== new URL(publicOrigin).origin) return send(response, 400, { error: 'Only this deployment can be embedded.' });
+    const match = parsed.pathname.match(/^\/a\/([^/]+)$/);
+    if (!match) return notFound(response);
+    const annotation = await findAnnotation(decodeURIComponent(match[1]), '', { includeRemoved: false });
+    if (!annotation || annotation.visibility === 'private') return notFound(response);
+    return send(response, 200, { version: '1.0', type: 'rich', provider_name: 'Annotated', provider_url: publicOrigin, title: annotation.sourceTitle, html: `<iframe src="${publicOrigin}/a/${encodeURIComponent(annotation.slug)}/embed?v=1" loading="lazy" title="Annotated source evidence" style="width:100%;height:240px;border:0"></iframe>`, width: 600, height: 240 });
   }
 
   if (request.method === 'POST' && pathname === '/api/annotations') {
@@ -718,6 +820,30 @@ const serveOgCard = async (request, response, slug, { download = false } = {}) =
   }
 };
 
+const shareableAnnotation = async (slug) => {
+  const annotation = await findAnnotation(decodeURIComponent(slug), '', { includeRemoved: false });
+  return annotation && annotation.visibility !== 'private' && canViewAnnotation(annotation, '') ? annotation : null;
+};
+
+const serveAnnotationEmbed = async (request, response, slug) => {
+  if (!(await mutationAllowed(request, null, 'annotation-embed', 120))) return send(response, 429, 'Too many embed requests.', { 'retry-after': '60' });
+  const annotation = await shareableAnnotation(slug);
+  if (!annotation) return notFound(response);
+  const headers = securityHeaders({ api: true });
+  delete headers['x-frame-options'];
+  response.writeHead(200, { ...headers, 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public,max-age=300', 'cross-origin-resource-policy': 'cross-origin', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors *; base-uri 'none'" });
+  return response.end(annotationEmbedHtml(annotation, publicOrigin));
+};
+
+const serveAnnotationQr = async (request, response, slug) => {
+  if (!(await mutationAllowed(request, null, 'annotation-qr', 120))) return send(response, 429, 'Too many QR requests.', { 'retry-after': '60' });
+  const annotation = await shareableAnnotation(slug);
+  if (!annotation) return notFound(response);
+  const svg = await annotationQrSvg(annotation, publicOrigin);
+  response.writeHead(200, { ...securityHeaders({ api: true }), 'content-type': 'image/svg+xml; charset=utf-8', 'cache-control': 'public,max-age=86400', 'cross-origin-resource-policy': 'cross-origin' });
+  return response.end(svg);
+};
+
 // The app shell ships default og:/twitter: images as root-relative paths;
 // crawlers require absolute URLs, so the served shell absolutizes them
 // against this deployment's public origin. Cached against the file's mtime —
@@ -792,6 +918,10 @@ const server = http.createServer(async (request, response) => {
     }
     const claimFormMatch = ['GET', 'POST'].includes(request.method || '') ? url.pathname.match(/^\/a\/([^/]+)\/claim$/) : null;
     if (claimFormMatch) return serveClaimForm(request, response, decodeURIComponent(claimFormMatch[1]));
+    const embedMatch = request.method === 'GET' ? url.pathname.match(/^\/a\/([^/]+)\/embed$/) : null;
+    if (embedMatch) return serveAnnotationEmbed(request, response, embedMatch[1]);
+    const qrMatch = request.method === 'GET' ? url.pathname.match(/^\/a\/([^/]+)\/qr\.svg$/) : null;
+    if (qrMatch) return serveAnnotationQr(request, response, qrMatch[1]);
     const permalinkMatch = request.method === 'GET' ? url.pathname.match(/^\/a\/([^/]+)$/) : null;
     if (permalinkMatch) return servePermalink(response, permalinkMatch[1]);
     // Hub and profile routes can contain dots (hosts, handles), which the

@@ -147,6 +147,12 @@
           </div>
         </div>
 
+        <label class="relation-select">How does this relate to the source?
+          <select id="relationSelect">
+            <option value="response">Response</option><option value="supports">Supports</option><option value="challenges">Challenges</option><option value="adds_context">Adds context</option><option value="corrects">Corrects</option>
+          </select>
+        </label>
+
         <!-- the note -->
         <textarea class="cap-note" id="note" maxlength="280" aria-label="Your note" placeholder="What did you notice?"></textarea>
         <div class="recorder" id="audioComposer" hidden>
