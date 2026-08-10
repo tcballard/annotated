@@ -260,6 +260,10 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     await expect(panel.locator('#error')).toContainText(/permission|denied|not allowed/i);
     await panel.locator('#modeText').click();
     await expect(panel.locator('#note')).toHaveValue('The source stays attached to the context.');
+    await expect.poll(async () => {
+      const session = (await extensionStorageSnapshot(panel)).session;
+      return Object.values(session).find((value) => value?.commentary === 'The source stays attached to the context.') || null;
+    }).toMatchObject({ commentaryMode: 'text', sourceExcerpt: passage });
 
     // Local development auth is supplied through Chrome's actual session
     // storage, then the production publish path hits the real local server.
