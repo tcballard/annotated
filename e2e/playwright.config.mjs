@@ -20,7 +20,10 @@ export default defineConfig({
   ],
   outputDir: process.env.ANNOTATED_E2E_RESULTS || path.join(artifactRoot, 'test-results'),
   use: {
-    trace: 'retain-on-failure',
+    // The spec owns an always-on trace so successful authoritative runs retain
+    // evidence too. Enabling Playwright's automatic trace would double-start
+    // tracing on the persistent extension context.
+    trace: 'off',
     screenshot: 'only-on-failure',
   },
 });
