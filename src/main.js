@@ -3,6 +3,7 @@ import { api } from './api.js';
 import { deleteMediaDraft, readMediaDraft, stageMediaDraft } from './media-draft-store.js';
 import { mediaPresentation } from './media-presentation.js';
 import { publicAnnotationUrl } from './share-links.js';
+import { shareDescriptor } from './share-kit.js';
 import { authNoticeFromSearch, enabledProviders, oauthStartUrl, providerLabel } from './auth-ui.js';
 import { MAX_CLIP_SECONDS } from './clip-range.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
@@ -10,6 +11,8 @@ import { sharedUrlFromParams } from './share-capture.js';
 import { isTopic, TOPICS, topicLabel } from './topics.js';
 import { annotationToFeedItem, annotationVerb, chipFor, formatTime, hostOf, parseTimeInput, relTime, sourceLabels, VISIBILITIES } from './feed-item.js';
 import { avatarColor, avatarInitial } from './avatar.js';
+import { applyPanelDemoAction, createPanelDemoState, demoDraft, panelDemoView } from './panel-demo.js';
+import { captureDraftBlocker } from './capture-state.js';
 
 const app = document.querySelector('#app');
 
@@ -69,6 +72,7 @@ const normalizeSource = (item = {}) => {
     excerpt: item.excerpt || item.sourceExcerpt || '',
     mediaUrl: item.mediaUrl || item.sourceMediaUrl || '',
     provider: item.provider || '',
+    sourceId: item.sourceId || '',
   };
 };
 
@@ -82,6 +86,17 @@ const initialState = {
   hubHost: '',
   hubData: null,
   hubLoading: false,
+  exactSourceId: '',
+  sourceGraphData: null,
+  sourceGraphLoading: false,
+  publisherId: '',
+  publisherData: null,
+  publisherDomain: '',
+  publisherChallenge: null,
+  publisherError: '',
+  publisherReplyDrafts: {},
+  shareOpen: false,
+  analyticsOptOut: (() => { try { return localStorage.getItem('annotated-analytics-opt-out') === '1'; } catch { return false; } })(),
   peopleResults: [],
   curators: [],
   sourceType: 'video',
@@ -91,6 +106,7 @@ const initialState = {
   articleExcerpt: '',
   commentary: '',
   commentaryMode: 'text',
+  relationType: 'response',
   visibility: 'public',
   isRecording: false,
   recordedAudio: false,
@@ -158,10 +174,11 @@ const initialState = {
   sourceError: '',
   isResolvingSource: false,
   isPublishing: false,
+  panelDemo: createPanelDemoState(),
 };
 
 const draftStorageKey = 'annotated-draft-v1';
-const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'articleExcerpt', 'commentary', 'commentaryMode', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId', 'clientRequestId', 'visibility', 'topic'];
+const draftFields = ['sourceType', 'sourceUrl', 'clipStart', 'clipEnd', 'articleExcerpt', 'commentary', 'commentaryMode', 'relationType', 'customSource', 'audioAssetId', 'audioUrl', 'audioDuration', 'audioDraftId', 'clientRequestId', 'visibility', 'topic'];
 
 const saved = (() => {
   try {
@@ -191,6 +208,19 @@ let pendingCommentFocus = false;
 // drops keyboard focus onto <body> — from there Tab restarts at the top of
 // the document and keydown events stop reaching #app's listeners at all.
 let pendingViewFocus = false;
+
+const analyticsIdentity = (() => {
+  try {
+    let value = localStorage.getItem('annotated-anonymous-id');
+    if (!value) { value = crypto.randomUUID(); localStorage.setItem('annotated-anonymous-id', value); }
+    return value;
+  } catch { return ''; }
+})();
+const analyticsSession = (() => { try { let value = sessionStorage.getItem('annotated-session-id'); if (!value) { value = crypto.randomUUID(); sessionStorage.setItem('annotated-session-id', value); } return value; } catch { return ''; } })();
+const recordProductEvent = (eventName, metadata = {}, fields = {}) => {
+  if (state.activeView === 'panelDemo' || navigator.doNotTrack === '1' || state.analyticsOptOut) return;
+  api.event({ eventName, metadata, anonymousId: analyticsIdentity, sessionId: analyticsSession, idempotencyKey: `${analyticsSession}:${eventName}:${crypto.randomUUID()}`, ...fields }).catch(() => {});
+};
 
 // Render rebuilds every element, so the focused control is destroyed by
 // each render — including ones the user never asked for, like a toast
@@ -231,6 +261,7 @@ const persist = () => {
       articleExcerpt: state.articleExcerpt,
       commentary: state.commentary,
       commentaryMode: state.commentaryMode,
+      relationType: state.relationType,
       visibility: state.visibility,
       topic: state.topic,
       audioAssetId: state.audioAssetId,
@@ -250,6 +281,7 @@ const clearDraft = () => {
   state.articleExcerpt = '';
   state.commentary = '';
   state.commentaryMode = 'text';
+  state.relationType = 'response';
   state.visibility = 'public';
   state.topic = '';
   state.clipStart = 0;
@@ -304,6 +336,7 @@ const signinModal = () => {
 };
 
 const openSignin = (context = '') => {
+  recordProductEvent('auth_started', { surface: 'web' });
   state.signinContext = context;
   state.signinOpen = true;
   render();
@@ -378,13 +411,15 @@ const recoverAuthError = (error, message = 'Your session has expired. Sign in ag
 /* ── routing ───────────────────────────────────────────────────────── */
 
 // transparency is routed like a doc page but loads live data via navigate().
-const DOC_VIEWS = { about: '/about', extension: '/extension', audit: '/audit', rights: '/rights', terms: '/terms', transparency: '/transparency' };
+const DOC_VIEWS = { about: '/about', extension: '/extension', panelDemo: '/extension/demo', audit: '/audit', rights: '/rights', terms: '/terms', transparency: '/transparency' };
 
 const routeFor = (view) => view === 'feed' ? '/'
   : view === 'capture' ? '/capture'
   : view === 'library' ? '/library'
   : view === 'notifications' ? '/notifications'
   : view === 'moderation' ? '/moderation'
+  : view === 'sourceGraph' && state.exactSourceId ? `/source/${encodeURIComponent(state.exactSourceId)}`
+  : view === 'publisher' ? (state.publisherId ? `/publisher/${encodeURIComponent(state.publisherId)}` : '/publisher')
   : DOC_VIEWS[view] ? DOC_VIEWS[view]
   : view === 'published' && state.publishedSlug ? `/a/${encodeURIComponent(state.publishedSlug)}`
   : view === 'profile' && state.profileHandle ? `/u/${encodeURIComponent(state.profileHandle)}`
@@ -401,6 +436,8 @@ const navigate = (view, { push = true } = {}) => {
   if (view === 'moderation') loadModerationClaims().then(render);
   if (view === 'library') loadLibrary().then(render);
   if (view === 'hub') loadHub().then(render);
+  if (view === 'sourceGraph') loadSourceGraph().then(render);
+  if (view === 'publisher' && state.publisherId) loadPublisherWorkspace().then(render);
   if (view === 'transparency') loadTransparency().then(render);
   if (view === 'notifications') loadNotifications().then(render);
   render();
@@ -411,10 +448,18 @@ const applyLocation = () => {
   const routeMatch = window.location.pathname.match(/^\/a\/([^/]+)/);
   const profileMatch = window.location.pathname.match(/^\/u\/([^/]+)/);
   const hubMatch = window.location.pathname.match(/^\/s\/([^/]+)/);
+  const sourceGraphMatch = window.location.pathname.match(/^\/source\/(src_[A-Za-z0-9_-]+)/);
+  const publisherMatch = window.location.pathname.match(/^\/publisher(?:\/([^/]+))?$/);
   const requestedView = new URLSearchParams(window.location.search).get('view');
   if (routeMatch) {
     state.publishedSlug = decodeURIComponent(routeMatch[1]);
     state.activeView = 'published';
+  } else if (sourceGraphMatch) {
+    state.exactSourceId = decodeURIComponent(sourceGraphMatch[1]);
+    state.activeView = 'sourceGraph';
+  } else if (publisherMatch) {
+    state.publisherId = publisherMatch[1] ? decodeURIComponent(publisherMatch[1]) : '';
+    state.activeView = 'publisher';
   } else if (hubMatch) {
     state.hubHost = decodeURIComponent(hubMatch[1]);
     state.activeView = 'hub';
@@ -461,6 +506,8 @@ const hydrateAnnotation = (annotation) => {
 
 const recordOpen = (slug) => {
   if (!slug || state.serverStatus !== 'online') return;
+  const annotation = state.publishedAnnotation || state.feedAnnotations.find((item) => item.slug === slug);
+  recordProductEvent('original_opened', { surface: 'web' }, { annotationId: annotation?.id, sourceId: annotation?.sourceId });
   const path = `/api/annotations/${encodeURIComponent(slug)}/open`;
   try {
     if (navigator.sendBeacon && navigator.sendBeacon(path)) return;
@@ -488,6 +535,8 @@ const bootstrap = async () => {
     state.authRequired = Boolean(providers.required);
     state.capabilities = capabilities;
     state.user = await api.me().then((result) => result.user).catch(() => null);
+    if (state.authNotice === 'success') recordProductEvent('auth_completed', { surface: 'web' });
+    if (state.authNotice === 'cancelled' || state.authNotice === 'error') recordProductEvent('auth_cancelled', { surface: 'web', result: state.authNotice });
     if (canModerate() && state.activeView === 'moderation') await loadModerationClaims();
     if (state.publishedSlug) {
       state.publishedLoading = true;
@@ -505,6 +554,8 @@ const bootstrap = async () => {
     if (state.profileHandle) await loadProfile();
     if (state.activeView === 'library') await loadLibrary();
     if (state.activeView === 'hub' && state.hubHost) await loadHub();
+    if (state.activeView === 'sourceGraph' && state.exactSourceId) await loadSourceGraph();
+    if (state.activeView === 'publisher' && state.publisherId) await loadPublisherWorkspace();
     if (state.activeView === 'transparency') await loadTransparency();
     if (state.activeView === 'notifications') await loadNotifications();
     // The bell badge: one light read; opening the view clears it for real.
@@ -766,17 +817,20 @@ const permalinkView = () => {
   const commentaryAudio = annotation.commentaryMode === 'audio' && annotation.audioUrl
     ? `<div class="commentary-audio"><span>${icon('mic')} Their take</span><div class="srcaudio-main">${waveform(annotation.audioPeaks)}<audio controls preload="metadata" src="${escapeHTML(annotation.audioUrl)}"></audio></div></div>`
     : '';
+  const publisherReply = annotation.publisherReply ? `<aside class="publisher-reply"><div class="demo-kicker">Verified source reply · ${escapeHTML(annotation.publisherReply.domain)}</div><p>${escapeHTML(annotation.publisherReply.body)}</p><span>@${escapeHTML(annotation.publisherReply.actor?.handle || annotation.publisherReply.displayName || 'publisher')} · ${escapeHTML(relTime(annotation.publisherReply.createdAt))}</span></aside>` : '';
   const note = state.editingNote && isMine
     ? `<div class="note-edit"><textarea class="cap-note" data-action="edit-note-draft" maxlength="280" aria-label="Edit your note">${escapeHTML(state.editNoteDraft)}</textarea><div class="note-edit-foot"><button class="btn" data-action="save-note">Save</button><button class="ghost" data-action="cancel-note">Cancel</button><span class="count">${state.editNoteDraft.length}/280</span></div></div>`
     : annotation.commentary
       ? `<p class="note">${escapeHTML(annotation.commentary)}</p>`
       : commentaryAudio ? '' : '<p class="note empty-note">An audio annotation of this moment.</p>';
-  const srcstrip = `<div class="srcstrip">${item.type !== 'article' ? `<span class="chip">${escapeHTML(chipFor(item))}</span>` : ''}<span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ' · ' : ''}</span>${hubLink(item.host)}<a class="open" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}">${escapeHTML(openOriginalLabel(item))} ↗</a></div>`;
+  const srcstrip = `<div class="srcstrip">${item.type !== 'article' ? `<span class="chip">${escapeHTML(chipFor(item))}</span>` : ''}<span class="srcname">${escapeHTML(item.sourceTitle)}</span><span>· ${escapeHTML(sourceLabels[item.type] || 'source')}${item.host ? ' · ' : ''}</span>${annotation.sourceId ? `<a href="/source/${encodeURIComponent(annotation.sourceId)}" data-action="open-source-graph" data-source-id="${escapeHTML(annotation.sourceId)}">Evidence graph</a>` : hubLink(item.host)}<a class="open" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}">${escapeHTML(openOriginalLabel(item))} ↗</a></div>`;
   const screenshot = item.screenshotUrl && !isMedia
     ? `<a class="shot" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug)}"><img src="${escapeHTML(item.screenshotUrl)}" alt="Screenshot of ${escapeHTML(item.sourceTitle)}" loading="lazy" /></a>`
     : '';
   const clip = `<div class="clip">${isMedia ? playerBlock(annotation) : screenshot}${srcstrip}</div>`;
   const pull = item.quote ? `<blockquote class="pull">&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
+  const receipt = annotation.receipt ? `<details class="evidence-receipt permalink-receipt"><summary>Evidence receipt</summary><code>${escapeHTML(annotation.receipt.sourceId || annotation.sourceId || '')}</code><span>${annotation.sourceType === 'article' ? `paragraph ${annotation.receipt.range?.paragraph || '—'} · exact text anchor` : `${formatTime(annotation.receipt.range?.start)}–${formatTime(annotation.receipt.range?.end)} · ${formatTime(annotation.receipt.range?.duration)}`}</span><span>${annotation.receipt.artifact ? `${escapeHTML(annotation.receipt.artifact.mimeType)} · ${Number(annotation.receipt.artifact.bytes || 0)} bytes · ${annotation.receipt.artifact.sha256 ? `sha256 ${escapeHTML(annotation.receipt.artifact.sha256)}` : 'digest pending'} · ${escapeHTML(annotation.receipt.artifact.rightsState)}` : 'No hosted artifact; source anchor only.'}</span></details>` : '';
+  const sharing = state.shareOpen ? (() => { const descriptor = shareDescriptor(annotation, window.location.origin); return `<div class="share-tray" role="group" aria-label="Share annotation"><button data-action="share-choice" data-share-type="copy">Copy link</button>${navigator.share ? '<button data-action="share-choice" data-share-type="native">Share…</button>' : ''}<button data-action="share-choice" data-share-type="excerpt">Copy attributed excerpt</button><a href="${escapeHTML(descriptor.imageUrl)}?download=1" download>Save image</a><button data-action="share-choice" data-share-type="embed">Copy embed</button><a href="${escapeHTML(descriptor.url)}/qr.svg?v=1" target="_blank" rel="noreferrer">QR</a></div>`; })() : '';
   const respondArea = state.user || !state.authRequired
     ? `<form class="respform" data-action="comment-form"><input aria-label="Add a response" placeholder="Add a considered response…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" maxlength="500" /><button class="btn" aria-label="Post response">Respond</button></form>`
     : `<div class="respprompt">${enabledProviders(state.authProviders).length ? '<button class="linklike" data-action="open-signin"><b>Sign in</b></button> to add a response.' : 'Sign-in is unavailable right now.'}</div>`;
@@ -798,17 +852,20 @@ const permalinkView = () => {
       ${note}
       ${clip}
       ${pull}
+      ${receipt}
       ${commentaryAudio}
+      ${publisherReply}
       <div class="actions">
         <button class="act" data-action="focus-comment">${icon('respond')}Respond${comments.length ? ` <span class="n">· ${comments.length}</span>` : ''}</button>
         <button class="act ${item.likedByMe ? 'is-liked' : ''}" data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">${icon('heart')}${item.likes ? `<span class="n">${item.likes}</span>` : 'Like'}</button>
-        <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(annotation, window.location.origin))}">${icon('share')}Share</button>
+        <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(annotation, window.location.origin))}" aria-expanded="${state.shareOpen}">${icon('share')}Share</button>
         ${item.visibility !== 'private' ? `<a class="act" href="/og/${encodeURIComponent(item.slug)}.png?download=1" download="annotated-${escapeHTML(item.slug)}.png" title="Download this annotation's share card as an image">Save card</a>` : ''}
         ${isMine && annotation.commentaryMode === 'text' && withinEditWindow(annotation) && !state.editingNote ? `<button class="act" data-action="edit-note">Edit note</button>` : ''}
         ${isMine ? `<button class="act" data-action="delete-annotation" data-slug="${escapeHTML(item.slug)}">Delete</button>` : ''}
         ${openOriginalAction(item)}
         <button class="act claim" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug)}" data-claim-title="${escapeHTML(item.sourceTitle)}" title="Dispute a fair-use breach on this annotation">${icon('claim')}Dispute fair use</button>
       </div>
+      ${sharing}
     </article>
     <section class="responses">
       <h2>Responses</h2>
@@ -916,6 +973,7 @@ const captureView = () => {
       ${urlForm}
       ${sourceLine}
       ${selection}
+      <label class="demo-label">How does your note relate to the source?<select data-action="capture-relation"><option value="response">Response</option><option value="supports" ${state.relationType === 'supports' ? 'selected' : ''}>Supports</option><option value="challenges" ${state.relationType === 'challenges' ? 'selected' : ''}>Challenges</option><option value="adds_context" ${state.relationType === 'adds_context' ? 'selected' : ''}>Adds context</option><option value="corrects" ${state.relationType === 'corrects' ? 'selected' : ''}>Corrects</option></select></label>
       ${noteArea}
       <div class="cap-foot">
         <button class="btn" data-action="publish" ${blocker || state.isPublishing ? 'disabled' : ''}>${state.isPublishing ? 'Publishing…' : 'Publish'}</button>
@@ -992,6 +1050,22 @@ const hubView = () => {
       ${state.hubData.nextCursor ? `<button class="feed-more" data-action="hub-more">${state.hubLoading ? 'Loading…' : 'Load more'}</button>` : ''}
     </main>
   </div>`;
+};
+
+const sourceGraphView = () => {
+  if (state.sourceGraphLoading && !state.sourceGraphData) return `<div class="page single"><div class="permacard">${skeletonPost()}</div></div>`;
+  const graph = state.sourceGraphData;
+  if (!graph?.source) return `<div class="page single"><div class="perma-empty"><h2>Exact source not found</h2><p>This identity may be old, private, or have no public annotations.</p></div></div>`;
+  return `<div class="page single source-graph"><header class="source-graph-head"><div class="demo-kicker">Exact-source evidence graph</div><h1>${escapeHTML(graph.source.title)}</h1><p>${escapeHTML(graph.source.host)} · <code>${escapeHTML(graph.source.id)}</code></p><a class="btn" href="${escapeHTML(graph.source.canonicalUrl)}" target="_blank" rel="noreferrer">Open original ↗</a></header><div class="source-axis">${(graph.annotations || []).map((annotation) => { const range = annotation.receipt?.range || {}; const moment = annotation.sourceType === 'article' ? `¶ ${range.paragraph || '—'} · exact passage` : `${formatTime(range.start)}–${formatTime(range.end)}`; const artifact = annotation.receipt?.artifact; return `<article class="evidence-node"><div class="evidence-relation">${escapeHTML(String(annotation.relationType || 'response').replace('_', ' '))}</div><h2><a href="/a/${encodeURIComponent(annotation.slug)}" data-action="open-annotation-link" data-slug="${escapeHTML(annotation.slug)}">@${escapeHTML(annotation.author?.handle || annotation.authorId)}</a></h2>${annotation.sourceExcerpt ? `<blockquote>“${escapeHTML(annotation.sourceExcerpt)}”</blockquote>` : ''}<p>${escapeHTML(annotation.commentary || 'Audio context')}</p><div class="evidence-receipt"><span>${escapeHTML(moment)}</span><span>${artifact ? `${escapeHTML(artifact.mimeType)} · ${artifact.bytes} bytes · ${artifact.sha256 ? `sha256 ${escapeHTML(artifact.sha256.slice(0, 12))}…` : 'digest pending'} · ${escapeHTML(artifact.rightsState)}` : 'source anchor · no hosted artifact'}</span><span>${artifact?.verifiedAt ? `probe verified ${escapeHTML(relTime(artifact.verifiedAt))}` : 'source identity verified at capture'}</span></div></article>`; }).join('')}</div>${graph.nextCursor ? '<button class="feed-more" data-action="source-graph-more">Load more</button>' : ''}</div>`;
+};
+
+const publisherView = () => {
+  if (!state.user && state.authRequired) return `<div class="page single"><div class="perma-empty"><h2>Publisher workspace</h2><p>Sign in to verify a source domain and respond without controlling criticism.</p><button class="btn" data-action="open-signin">Sign in</button></div></div>`;
+  if (!state.publisherId) return `<div class="page single"><section class="publisher-setup"><div class="demo-kicker">For publishers and creators</div><h1>Claim your source inbox</h1><p>Verify a domain with a revocable DNS TXT challenge. Verification labels replies and unlocks aggregate source-return analytics; it never grants edit, hide, or ranking control over annotations.</p><label>Publisher domain<input data-action="publisher-domain" value="${escapeHTML(state.publisherDomain)}" placeholder="example.com" autocomplete="url"></label><button class="btn" data-action="publisher-challenge">Create DNS challenge</button>${state.publisherChallenge ? `<div class="demo-receipt"><b>Add this DNS TXT record</b><code>${escapeHTML(state.publisherChallenge.recordName)}</code><code>${escapeHTML(state.publisherChallenge.recordValue)}</code><span>Expires ${escapeHTML(state.publisherChallenge.expiresAt)}</span><button class="ghost" data-action="publisher-verify">Check DNS</button></div>` : ''}${state.publisherError ? `<p class="cap-error" role="alert">${escapeHTML(state.publisherError)}</p>` : ''}</section></div>`;
+  const data = state.publisherData;
+  if (!data) return `<div class="page single"><div class="perma-empty"><h2>${state.sourceGraphLoading ? 'Loading publisher desk…' : 'Workspace unavailable'}</h2></div></div>`;
+  const analytics = data.analytics || {};
+  return `<div class="page single publisher-desk"><header><div class="demo-kicker">Verified publisher workspace</div><h1>${escapeHTML(data.workspace.displayName)}</h1><p>${escapeHTML(data.workspace.domain)} · verified ${escapeHTML(relTime(data.workspace.verifiedAt))}</p></header><div class="publisher-stats"><div><b>${Number(analytics.annotations || 0)}</b><span>annotations</span></div><div><b>${Number(analytics.original_opens || analytics.originalOpens || 0)}</b><span>original opens</span></div><div><b>${Number(analytics.verified_replies || analytics.replies || 0)}</b><span>verified replies</span></div></div><section><h2>Source inbox</h2>${(data.annotations || []).map((item) => `<article class="publisher-row"><div><b>${escapeHTML(item.source_title || item.sourceTitle)}</b><span>${escapeHTML(item.source_type || item.sourceType)} · ${Number(item.open_count || item.openCount || 0)} original opens · ${Number(item.replies || 0)} reader replies</span><textarea data-action="publisher-reply-draft" data-annotation-id="${escapeHTML(item.id)}" maxlength="1000" placeholder="Add a verified source reply…">${escapeHTML(state.publisherReplyDrafts[item.id] || '')}</textarea><button class="ghost" data-action="publisher-reply" data-annotation-id="${escapeHTML(item.id)}">Post verified reply</button></div><a href="/a/${encodeURIComponent(item.slug)}" data-action="open-annotation-link" data-slug="${escapeHTML(item.slug)}">Review evidence</a></article>`).join('') || '<p>No annotations from this exact domain yet.</p>'}</section><section><h2>Rights queue</h2><p>${(data.claims || []).length} claim${(data.claims || []).length === 1 ? '' : 's'} attached to this source. Evidence and audit records remain immutable through review.</p>${(data.claims || []).some((claim) => ['open', 'in_review'].includes(claim.status)) ? '<button class="ghost" data-action="publisher-bulk-review">Mark active claims in review</button>' : ''}</section></div>`;
 };
 
 const profileView = () => {
@@ -1123,6 +1197,7 @@ const extensionView = () => {
       <li>Screenshot capture keeps the visible tab as the moment.</li>
       <li>Notes are text or recorded audio; drafts persist per tab; captures made offline queue and publish when the backend returns.</li>
     </ul>
+    <p><a class="btn" href="/extension/demo" data-action="set-view" data-view="panelDemo">Try the panel — no install</a></p>
   </div>
   <div class="card"><h2>Keyboard</h2>
     <table class="doc-table"><tbody>
@@ -1306,9 +1381,11 @@ const footerView = () => `
     <a href="/extension" data-action="set-view" data-view="extension">Extension</a>
     <a href="/audit" data-action="set-view" data-view="audit">Brief audit</a>
     <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>
+    <a href="/publisher" data-action="set-view" data-view="publisher">Publisher desk</a>
     <a href="/transparency" data-action="set-view" data-view="transparency">Transparency</a>
     <a href="/terms" data-action="set-view" data-view="terms">Terms</a>
     <a href="/privacy.html">Privacy</a>
+    <button class="footer-data" data-action="toggle-product-events">Product metrics ${state.analyticsOptOut ? 'off' : 'on'}</button>
     <span class="footer-note">annotated © 2026 · source-first notes${state.capabilities?.release ? ` · <a href="/audit" data-action="set-view" data-view="audit">v${escapeHTML(state.capabilities.release.version)} ${escapeHTML((state.capabilities.release.gitSha || '').slice(0, 7))} · ${escapeHTML(state.capabilities.release.environment)}</a>` : ''}</span>
   </footer>`;
 
@@ -1318,9 +1395,12 @@ const render = () => {
     : state.activeView === 'library' ? libraryView()
     : state.activeView === 'profile' ? profileView()
     : state.activeView === 'hub' ? hubView()
+    : state.activeView === 'sourceGraph' ? sourceGraphView()
+    : state.activeView === 'publisher' ? publisherView()
     : state.activeView === 'moderation' ? moderationView()
     : state.activeView === 'about' ? aboutView()
     : state.activeView === 'extension' ? extensionView()
+    : state.activeView === 'panelDemo' ? panelDemoView(state.panelDemo, escapeHTML)
     : state.activeView === 'audit' ? auditView()
     : state.activeView === 'rights' ? rightsView()
     : state.activeView === 'terms' ? termsView()
@@ -1536,6 +1616,27 @@ const loadHub = async ({ append = false } = {}) => {
   }
 };
 
+const loadSourceGraph = async ({ append = false } = {}) => {
+  if (!state.exactSourceId || state.serverStatus !== 'online') return;
+  state.sourceGraphLoading = true;
+  try {
+    const result = await api.sourceGraph(state.exactSourceId, append ? state.sourceGraphData?.nextCursor : undefined);
+    state.sourceGraphData = append ? { ...result, annotations: [...(state.sourceGraphData?.annotations || []), ...(result.annotations || [])] } : result;
+  } catch { if (!append) state.sourceGraphData = null; }
+  finally { state.sourceGraphLoading = false; }
+};
+
+const loadPublisherWorkspace = async ({ append = false } = {}) => {
+  if (!state.publisherId || state.serverStatus !== 'online') return;
+  state.sourceGraphLoading = true;
+  try {
+    const result = await api.publisherWorkspace(state.publisherId, append ? state.publisherData?.nextCursor : undefined);
+    state.publisherData = append ? { ...result, annotations: [...(state.publisherData?.annotations || []), ...(result.annotations || [])] } : result;
+    recordProductEvent('publisher_inbox_opened', { surface: 'web', workspaceId: state.publisherId });
+  } catch (error) { if (!append) state.publisherData = null; state.publisherError = error.message || ''; }
+  finally { state.sourceGraphLoading = false; }
+};
+
 const loadTransparency = async () => {
   if (state.serverStatus !== 'online') return;
   state.transparencyLoading = true;
@@ -1654,6 +1755,8 @@ const loadSource = async () => {
     }
     state.isResolvingSource = false;
     persist();
+    recordProductEvent('source_resolved', { surface: 'web', sourceType: state.sourceType }, { sourceId: state.customSource.sourceId });
+    recordProductEvent('draft_created', { surface: 'web', sourceType: state.sourceType }, { sourceId: state.customSource.sourceId });
     render();
     notify(`Resolved ${state.customSource.host || 'source'} — mark the moment.`);
   } catch (error) {
@@ -1682,6 +1785,7 @@ const publishAnnotation = async () => {
       clipEnd: state.clipEnd,
       commentary: state.commentaryMode === 'text' ? state.commentary : '',
       commentaryMode: state.commentaryMode,
+      relationType: state.relationType,
       visibility: state.visibility,
       topic: isTopic(state.topic) ? state.topic : undefined,
       audioAssetId: state.commentaryMode === 'audio' ? state.audioAssetId : undefined,
@@ -1691,6 +1795,7 @@ const publishAnnotation = async () => {
       clientRequestId: state.clientRequestId,
     });
     hydrateAnnotation(annotation);
+    recordProductEvent('published', { surface: 'web', sourceType: annotation.sourceType }, { annotationId: annotation.id, sourceId: annotation.sourceId });
     state.isPublishing = false;
     if (state.audioDraftId) await deleteMediaDraft(state.audioDraftId).catch(() => {});
     state.audioDraftId = '';
@@ -1817,6 +1922,7 @@ const openAnnotation = async (slug) => {
   state.publishedRemoved = '';
   state.publishedAnnotation = state.feedAnnotations.find((item) => item.slug === slug) || null;
   state.published = Boolean(state.publishedAnnotation);
+  recordProductEvent('annotation_opened', { surface: 'web' }, { annotationId: state.publishedAnnotation?.id, sourceId: state.publishedAnnotation?.sourceId });
   if (state.publishedAnnotation) {
     state.clipUrl = state.publishedAnnotation.clipUrl || '';
     state.mediaStatus = state.publishedAnnotation.mediaStatus || 'not-applicable';
@@ -1951,6 +2057,13 @@ app.addEventListener('click', (event) => {
     navigate('hub');
     return;
   }
+  if (action === 'open-source-graph') {
+    event.preventDefault();
+    state.exactSourceId = target.dataset.sourceId || '';
+    state.sourceGraphData = null;
+    navigate('sourceGraph');
+    return;
+  }
   if (action === 'open-respond') {
     pendingCommentFocus = true;
     openAnnotation(target.dataset.slug);
@@ -1961,6 +2074,11 @@ app.addEventListener('click', (event) => {
     return; // the anchor's default navigation opens the source in a new tab
   }
   if (action === 'source-type') return; // handled on change
+  if (['demo-fixture', 'demo-passage', 'demo-last30', 'demo-commentary-mode', 'demo-reset', 'demo-publish'].includes(action)) {
+    state.panelDemo = applyPanelDemoAction(state.panelDemo, action, target.dataset.value || '');
+    render();
+    return;
+  }
   if (action === 'clear-passage') {
     state.articleExcerpt = '';
     persist();
@@ -1988,6 +2106,7 @@ app.addEventListener('click', (event) => {
   if (action === 'clear-feed-search') { state.feedQuery = ''; state.feedCursor = null; loadFeed().then(render); return; }
   if (action === 'feed-more') { loadFeed({ append: true }).then(render); return; }
   if (action === 'hub-more') { loadHub({ append: true }).then(render); return; }
+  if (action === 'source-graph-more') { loadSourceGraph({ append: true }).then(render); return; }
   if (action === 'feed-retry') { loadFeed().then(render); return; }
   if (action === 'refresh-moderation') { loadModerationClaims().then(render); return; }
   if (action === 'moderate-claim') {
@@ -2130,7 +2249,56 @@ app.addEventListener('click', (event) => {
     return;
   }
   if (action === 'focus-comment') { document.querySelector('[data-action="comment-draft"]')?.focus(); return; }
-  if (action === 'share') { copyPublicLink(target.dataset.shareUrl || ''); return; }
+  if (action === 'share') {
+    if (state.activeView !== 'published') { copyPublicLink(target.dataset.shareUrl || ''); return; }
+    state.shareOpen = !state.shareOpen; render(); return;
+  }
+  if (action === 'share-choice') {
+    const annotation = state.publishedAnnotation;
+    if (!annotation) return;
+    const descriptor = shareDescriptor(annotation, window.location.origin);
+    const type = target.dataset.shareType;
+    (async () => {
+      try {
+        if (type === 'native' && navigator.share) await navigator.share({ title: descriptor.title, text: descriptor.text, url: descriptor.url });
+        else await navigator.clipboard.writeText(type === 'excerpt' ? descriptor.text : type === 'embed' ? descriptor.embed : descriptor.url);
+        recordProductEvent('shared', { surface: 'web', shareType: type }, { annotationId: annotation.id, sourceId: annotation.sourceId });
+        notify(type === 'embed' ? 'Embed copied.' : type === 'excerpt' ? 'Attributed excerpt copied.' : 'Share ready.');
+      } catch (error) { if (error?.name !== 'AbortError') notify('Sharing was blocked; copy the public link instead.'); }
+    })();
+    return;
+  }
+  if (action === 'publisher-challenge') {
+    if (requestSignIn('verify a publisher domain')) return;
+    state.publisherError = '';
+    api.createPublisherChallenge(state.publisherDomain).then(({ challenge }) => { state.publisherChallenge = challenge; render(); }).catch((error) => { state.publisherError = error.message; render(); });
+    return;
+  }
+  if (action === 'publisher-verify') {
+    if (!state.publisherChallenge) return;
+    state.publisherError = '';
+    api.verifyPublisherChallenge(state.publisherChallenge.id).then(({ workspace }) => { state.publisherId = workspace.id; state.publisherChallenge = null; navigate('publisher'); }).catch((error) => { state.publisherError = error.message; render(); });
+    return;
+  }
+  if (action === 'publisher-reply') {
+    const annotationId = target.dataset.annotationId || '';
+    const body = state.publisherReplyDrafts[annotationId] || '';
+    if (!body.trim()) { notify('Write a source reply first.'); return; }
+    api.publisherReply(state.publisherId, annotationId, body).then(() => { delete state.publisherReplyDrafts[annotationId]; return loadPublisherWorkspace(); }).then(render).then(() => notify('Verified source reply posted.')).catch((error) => notify(error.message || 'The reply could not be posted.'));
+    return;
+  }
+  if (action === 'publisher-bulk-review') {
+    const claimIds = (state.publisherData?.claims || []).filter((claim) => ['open', 'in_review'].includes(claim.status)).map((claim) => claim.id);
+    api.publisherClaimsBulk(state.publisherId, { claimIds, status: 'in_review', note: 'Publisher workspace bulk review' }).then(() => loadPublisherWorkspace()).then(render).then(() => notify(`${claimIds.length} claim${claimIds.length === 1 ? '' : 's'} moved to review.`)).catch((error) => notify(error.message || 'Claims could not be updated.'));
+    return;
+  }
+  if (action === 'toggle-product-events') {
+    state.analyticsOptOut = !state.analyticsOptOut;
+    try { localStorage.setItem('annotated-analytics-opt-out', state.analyticsOptOut ? '1' : '0'); } catch { /* still applies for this tab */ }
+    render();
+    notify(`Privacy-safe product metrics ${state.analyticsOptOut ? 'disabled' : 'enabled'}.`);
+    return;
+  }
   if (action === 'toggle-claim') {
     claimReturnFocus = { slug: target.dataset.claimSlug || '', view: state.activeView };
     state.claimSlug = target.dataset.claimSlug || '';
@@ -2297,12 +2465,22 @@ app.addEventListener('input', (event) => {
     state.claimError = '';
   }
   if (action === 'source-url') { state.sourceUrl = event.target.value; state.sourceError = ''; }
+  if (action === 'publisher-domain') { state.publisherDomain = event.target.value.slice(0, 253); state.publisherError = ''; }
+  if (action === 'publisher-reply-draft') state.publisherReplyDrafts[event.target.dataset.annotationId || ''] = event.target.value.slice(0, 1000);
   if (action === 'article-excerpt') {
     state.articleExcerpt = event.target.value.slice(0, 2000);
     const hint = app.querySelector('[data-passage-hint]');
     if (hint) hint.textContent = `${state.articleExcerpt.trim().length} characters · the landing page deep-links to this passage`;
     persist();
     refreshCaptureBits();
+  }
+  if (action === 'demo-note') {
+    state.panelDemo = applyPanelDemoAction(state.panelDemo, action, event.target.value);
+    const blocker = captureDraftBlocker(demoDraft(state.panelDemo));
+    const button = app.querySelector('[data-action="demo-publish"]');
+    if (button) button.disabled = Boolean(blocker);
+    const hint = event.target.closest('.panel-demo-shell')?.querySelector('.cap-block');
+    if (hint) hint.textContent = blocker || 'Ready — this creates a read-only preview.';
   }
   if (action === 'chrome-search') { /* applied on submit */ }
 });
@@ -2329,6 +2507,11 @@ app.addEventListener('change', (event) => {
   }
   if (action === 'capture-topic') {
     state.topic = isTopic(event.target.value) ? event.target.value : '';
+    persist();
+    return;
+  }
+  if (action === 'capture-relation') {
+    state.relationType = event.target.value;
     persist();
     return;
   }
@@ -2369,6 +2552,10 @@ app.addEventListener('change', (event) => {
     persist();
     render();
   }
+  if (action === 'demo-relation') {
+    state.panelDemo = applyPanelDemoAction(state.panelDemo, action, event.target.value);
+    render();
+  }
 });
 
 app.addEventListener('submit', (event) => {
@@ -2398,6 +2585,8 @@ window.addEventListener('popstate', () => {
   if (state.activeView === 'profile' && state.profileHandle) { loadProfile().then(render); }
   if (state.activeView === 'library') { loadLibrary().then(render); }
   if (state.activeView === 'hub' && state.hubHost) { loadHub().then(render); }
+  if (state.activeView === 'sourceGraph' && state.exactSourceId) { loadSourceGraph().then(render); }
+  if (state.activeView === 'publisher' && state.publisherId) { loadPublisherWorkspace().then(render); }
   if (state.activeView === 'transparency') { loadTransparency().then(render); }
   render();
 });

@@ -34,6 +34,7 @@ export const compactDraft = (draft = {}) => ({
   clipEnd: boundedTimelineSecond(draft.clipEnd),
   commentary: boundedString(draft.commentary, 280),
   commentaryMode: draft.commentaryMode === 'audio' ? 'audio' : 'text',
+  relationType: ['supports', 'challenges', 'adds_context', 'corrects'].includes(draft.relationType) ? draft.relationType : 'response',
   audioAssetId: boundedString(draft.audioAssetId, 80),
   audioDuration: boundedDuration(draft.audioDuration),
   audioDraftId: boundedString(draft.audioDraftId, 80),

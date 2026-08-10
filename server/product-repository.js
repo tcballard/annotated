@@ -12,6 +12,7 @@ import { publicAnnotationsForHost, rankAnnotators } from './discovery.js';
 import { rankTrendingSources, sortByTrending } from './trending.js';
 import { isPubliclyListed } from './visibility.js';
 import { TOPICS } from './topics.js';
+import { sourceIdentity } from './source-identity.js';
 
 const queryNative = storageDescription() === 'postgres' && process.env.ANNOTATED_RELATIONAL_READS !== 'legacy';
 const iso = (value) => value instanceof Date ? value.toISOString() : value ? new Date(value).toISOString() : null;
@@ -52,6 +53,12 @@ const mapMedia = (row) => row ? {
   kind: row.kind,
   durationSeconds: row.duration_seconds === null ? null : number(row.duration_seconds),
   peaks: row.peaks || null,
+  sha256: row.sha256 || null,
+  width: row.width === null ? null : number(row.width),
+  height: row.height === null ? null : number(row.height),
+  probe: row.probe || null,
+  verifiedAt: iso(row.verified_at),
+  rightsState: row.rights_state || 'unreviewed',
   isDemo: boolean(row.is_demo),
   createdAt: iso(row.created_at),
 } : null;
@@ -61,6 +68,7 @@ const mapAnnotation = (row) => row ? {
   slug: row.slug,
   authorId: row.author_id,
   sourceUrl: row.source_url,
+  sourceId: row.source_identity || null,
   canonicalUrl: row.canonical_url,
   sourceHost: row.source_host,
   sourceType: row.source_type,
@@ -99,6 +107,15 @@ const mapAnnotation = (row) => row ? {
   comments: Array.isArray(row.comments) ? row.comments : [],
   audioPeaks: row.audio_peaks || null,
   clipPeaks: row.clip_peaks || null,
+  relationType: row.relation_type || 'response',
+  receipt: {
+    sourceId: row.source_identity || null,
+    range: row.source_type === 'article'
+      ? { paragraph: row.anchor_paragraph, prefix: row.anchor_prefix || '', exact: row.source_excerpt || '', suffix: row.anchor_suffix || '' }
+      : { start: number(row.clip_start), end: number(row.clip_end), duration: Math.max(0, number(row.clip_end) - number(row.clip_start)) },
+    artifact: row.clip_receipt_id ? { id: row.clip_receipt_id, type: row.clip_kind, mimeType: row.clip_mime_type, bytes: number(row.clip_bytes), sha256: row.clip_sha256, resolution: row.clip_width || row.clip_height ? { width: number(row.clip_width), height: number(row.clip_height) } : null, probe: row.clip_probe || null, verifiedAt: iso(row.clip_verified_at), rightsState: row.clip_rights_state || 'unreviewed' } : null,
+  },
+  publisherReply: row.publisher_reply || null,
   opens: number(row.open_count),
 } : null;
 
@@ -120,7 +137,7 @@ const mapClaim = (row) => row ? {
 } : null;
 
 const annotationProjection = `
-  SELECT a.*,
+  SELECT a.*, s.source_identity,
     jsonb_build_object(
       'id', u.id, 'handle', u.handle, 'displayName', u.display_name,
       'avatarUrl', u.avatar_url, 'bio', u.bio,
@@ -130,11 +147,23 @@ const annotationProjection = `
     coalesce(interactions.liked_by_me, false) AS liked_by_me,
     coalesce(interactions.comments, '[]'::jsonb) AS comments,
     audio.peaks AS audio_peaks,
-    clip.peaks AS clip_peaks
+    clip.peaks AS clip_peaks,
+    evidence.id AS clip_receipt_id, evidence.kind AS clip_kind, evidence.mime_type AS clip_mime_type,
+    evidence.bytes AS clip_bytes, evidence.sha256 AS clip_sha256, evidence.width AS clip_width,
+    evidence.height AS clip_height, evidence.probe AS clip_probe, evidence.verified_at AS clip_verified_at,
+    evidence.rights_state AS clip_rights_state,
+    publisher.reply AS publisher_reply
   FROM annotated_annotations a
+  JOIN annotated_sources s ON s.canonical_url = a.source_id
   JOIN annotated_users u ON u.id = a.author_id
   LEFT JOIN annotated_media_artifacts audio ON audio.id = a.audio_asset_id
   LEFT JOIN annotated_media_artifacts clip ON clip.id = a.media_asset_id
+  LEFT JOIN annotated_media_artifacts evidence ON evidence.id = coalesce(a.media_asset_id,a.screenshot_asset_id)
+  LEFT JOIN LATERAL (
+    SELECT jsonb_build_object('id',r.id,'body',r.body,'createdAt',r.created_at,'verified',true,'workspaceId',w.id,'domain',w.domain,'displayName',w.display_name,'actor',jsonb_build_object('id',ru.id,'handle',ru.handle,'displayName',ru.display_name)) reply
+    FROM annotated_publisher_replies r JOIN annotated_publisher_workspaces w ON w.id=r.workspace_id JOIN annotated_users ru ON ru.id=r.actor_id
+    WHERE r.annotation_id=a.id AND w.status='verified' ORDER BY r.created_at LIMIT 1
+  ) publisher ON true
   LEFT JOIN LATERAL (
     SELECT
       (SELECT count(*) FROM annotated_likes l WHERE l.annotation_id = a.id) AS likes_count,
@@ -167,8 +196,19 @@ const annotationProjection = `
       ) ordered) AS comments
   ) interactions ON true`;
 
+const legacyReceipt = (annotation, store) => {
+  const media = (store.media || []).find((item) => item.id === annotation.mediaAssetId) || null;
+  return {
+    sourceId: annotation.sourceId || sourceIdentity(annotation.canonicalUrl || annotation.sourceUrl).id,
+    range: annotation.sourceType === 'article' ? { paragraph: annotation.anchorParagraph || null, prefix: annotation.anchorPrefix || '', exact: annotation.sourceExcerpt || '', suffix: annotation.anchorSuffix || '' } : { start: number(annotation.clipStart), end: number(annotation.clipEnd), duration: Math.max(0, number(annotation.clipEnd) - number(annotation.clipStart)) },
+    artifact: media ? { id: media.id, type: media.kind, mimeType: media.mimeType, bytes: number(media.bytes), sha256: media.sha256 || null, resolution: media.width || media.height ? { width: number(media.width), height: number(media.height) } : null, probe: media.probe || null, verifiedAt: media.verifiedAt || null, rightsState: media.rightsState || 'unreviewed' } : null,
+  };
+};
+
 const legacyRich = (annotation, store, viewerId = '') => ({
   ...annotation,
+  sourceId: annotation.sourceId || sourceIdentity(annotation.canonicalUrl || annotation.sourceUrl).id,
+  relationType: annotation.relationType || 'response',
   author: publicUser((store.users || []).find((user) => user.id === annotation.authorId)) || { id: annotation.authorId, handle: annotation.authorId, displayName: annotation.authorId },
   likes: (store.likes || []).filter((like) => like.annotationId === annotation.id).length,
   likedByMe: Boolean(viewerId && (store.likes || []).some((like) => like.annotationId === annotation.id && like.userId === viewerId)),
@@ -182,6 +222,8 @@ const legacyRich = (annotation, store, viewerId = '') => ({
     })),
   audioPeaks: annotation.audioAssetId ? ((store.media || []).find((item) => item.id === annotation.audioAssetId)?.peaks || null) : null,
   clipPeaks: annotation.mediaAssetId ? ((store.media || []).find((item) => item.id === annotation.mediaAssetId)?.peaks || null) : null,
+  receipt: legacyReceipt(annotation, store),
+  publisherReply: (store.publisherReplies || []).find((reply) => reply.annotationId === annotation.id) || null,
   claims: undefined,
 });
 
@@ -285,12 +327,13 @@ export async function putMedia(media) {
   await transactDatabase(async (client) => {
     await client.query(
       `INSERT INTO annotated_media_artifacts
-        (id, owner_id, object_key, file_name, mime_type, bytes, kind, duration_seconds, peaks, is_demo, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        (id, owner_id, object_key, file_name, mime_type, bytes, kind, duration_seconds, peaks, is_demo, created_at,sha256,width,height,probe,verified_at,rights_state)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17)
        ON CONFLICT (id) DO UPDATE SET owner_id=EXCLUDED.owner_id, object_key=EXCLUDED.object_key,
          file_name=EXCLUDED.file_name, mime_type=EXCLUDED.mime_type, bytes=EXCLUDED.bytes,
-         kind=EXCLUDED.kind, duration_seconds=EXCLUDED.duration_seconds, peaks=EXCLUDED.peaks, is_demo=EXCLUDED.is_demo`,
-      [media.id, media.ownerId || null, media.key || media.fileName, media.fileName || null, media.mimeType, number(media.bytes), media.kind || null, media.durationSeconds ?? null, media.peaks || null, Boolean(media.isDemo), media.createdAt || new Date().toISOString()],
+         kind=EXCLUDED.kind, duration_seconds=EXCLUDED.duration_seconds, peaks=EXCLUDED.peaks, is_demo=EXCLUDED.is_demo,
+         sha256=EXCLUDED.sha256,width=EXCLUDED.width,height=EXCLUDED.height,probe=EXCLUDED.probe,verified_at=EXCLUDED.verified_at,rights_state=EXCLUDED.rights_state`,
+      [media.id, media.ownerId || null, media.key || media.fileName, media.fileName || null, media.mimeType, number(media.bytes), media.kind || null, media.durationSeconds ?? null, media.peaks || null, Boolean(media.isDemo), media.createdAt || new Date().toISOString(), media.sha256 || null, media.width || null, media.height || null, JSON.stringify(media.probe || null), media.verifiedAt || null, media.rightsState || 'unreviewed'],
     );
     await writeLegacy(client, 'media', media.id, media);
   });
@@ -656,6 +699,8 @@ export async function createAnnotation(candidate) {
       if (existing.rows[0]) return { created: false, id: existing.rows[0].id };
     }
     await writeLegacy(client, 'annotations', candidate.id, candidate);
+    await client.query('UPDATE annotated_sources SET source_identity=$1 WHERE canonical_url=$2', [candidate.sourceId, candidate.canonicalUrl]);
+    await client.query('UPDATE annotated_annotations SET relation_type=$1 WHERE id=$2', [candidate.relationType || 'response', candidate.id]);
     return { created: true, id: candidate.id };
   });
   return { ...result, annotation: await findAnnotation(result.id, candidate.authorId) };

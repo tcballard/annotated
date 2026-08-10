@@ -6,6 +6,7 @@ import { MAX_CLIP_SECONDS, moveClipBoundary, normalizeClipRange } from './clip-r
 import { isTopic, TOPICS } from './topics.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
 import { avatarColor, avatarInitial } from './avatar.js';
+import { normalizeCaptureDraft } from './capture-state.js';
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -73,6 +74,7 @@ const timeline = $('#timeline');
 const captureSection = $('#captureSection');
 const visibilitySelect = $('#visibilitySelect');
 const topicSelect = $('#topicSelect');
+const relationSelect = $('#relationSelect');
 const shotButton = $('#shotButton');
 const shotCard = $('#shotCard');
 const shotPreview = $('#shotPreview');
@@ -106,6 +108,7 @@ let playhead = { time: 0, duration: 0, paused: true, adShowing: false, at: 0 };
 let commentaryMode = 'text';
 let visibility = 'public';
 let topic = '';
+let relationType = 'response';
 let screenshotAssetId = '';
 let screenshotPreviewUrl = '';
 let apiOriginCache = '';
@@ -558,6 +561,19 @@ const apiRequest = async (path, options = {}) => {
   return body;
 };
 
+const productEventSession = crypto.randomUUID();
+const recordedDraftEvents = new Set();
+const recordProductEvent = async (eventName, metadata = {}, fields = {}) => {
+  if (navigator.doNotTrack === '1') return;
+  try {
+    const key = 'annotatedAnonymousId';
+    const stored = await chrome.storage.local.get(key);
+    const anonymousId = stored[key] || crypto.randomUUID();
+    if (!stored[key]) await chrome.storage.local.set({ [key]: anonymousId });
+    await apiRequest('/api/events', { method: 'POST', body: JSON.stringify({ eventName, metadata: { surface: 'extension', ...metadata }, anonymousId, sessionId: productEventSession, idempotencyKey: `${productEventSession}:${eventName}:${crypto.randomUUID()}`, ...fields }) });
+  } catch { /* measurement must never interrupt capture */ }
+};
+
 const uploadAudioRequest = async (blob) => {
   let response;
   try {
@@ -587,6 +603,7 @@ const uploadAudioRequest = async (blob) => {
 
 const resolveSourceUrl = async (url, fallbackTitle = '') => {
   const { source } = await apiRequest('/api/sources/resolve', { method: 'POST', body: JSON.stringify({ url }) });
+  void recordProductEvent('source_resolved', { sourceType: source.sourceType }, { sourceId: source.sourceId });
   return {
     url: source.canonicalUrl || source.sourceUrl || url,
     title: source.title || fallbackTitle || source.host || 'Untitled source',
@@ -936,6 +953,10 @@ topicSelect.addEventListener('change', () => {
   topic = isTopic(topicSelect.value) ? topicSelect.value : '';
   saveDraft();
 });
+relationSelect.addEventListener('change', () => {
+  relationType = ['supports', 'challenges', 'adds_context', 'corrects'].includes(relationSelect.value) ? relationSelect.value : 'response';
+  saveDraft();
+});
 
 const syncSource = () => {
   sourceTitle.textContent = currentTab.title || 'Reading this tab…';
@@ -996,15 +1017,21 @@ const syncComposer = () => {
 /* ── per-tab drafts (session storage, keyed by tab id) ─────────────── */
 
 const draftPayload = () => ({
+  ...normalizeCaptureDraft({
   sourceUrl: currentTab.url,
   sourceType: currentTab.sourceType,
-  sourceTitle: currentTab.title,
-  sourceHost: currentTab.host,
   sourceExcerpt: selection.text,
   clipStart: isMediaType() ? marks.start : 0,
   clipEnd: isMediaType() ? marks.end : 0,
   commentary: note.value.trim().slice(0, 280),
   commentaryMode,
+  relationType,
+  anchorParagraph: selection.paragraph || 0,
+  anchorPrefix: selection.prefix || '',
+  anchorSuffix: selection.suffix || '',
+  }),
+  sourceTitle: currentTab.title,
+  sourceHost: currentTab.host,
   audioAssetId,
   audioDuration: audioDurationSeconds,
   audioDraftId,
@@ -1012,9 +1039,6 @@ const draftPayload = () => ({
   visibility,
   topic,
   screenshotAssetId,
-  anchorParagraph: selection.paragraph || 0,
-  anchorPrefix: selection.prefix || '',
-  anchorSuffix: selection.suffix || '',
 });
 
 const saveDraft = () => {
@@ -1025,14 +1049,21 @@ const saveDraft = () => {
   // content it belonged to — never the new tab's key with emptied state.
   const tabId = currentTabId;
   const payload = draftPayload();
+  if (!recordedDraftEvents.has(payload.clientRequestId)) {
+    recordedDraftEvents.add(payload.clientRequestId);
+    void recordProductEvent('draft_created', { sourceType: payload.sourceType });
+  }
   draftSaveTimer = setTimeout(() => { void extensionStorage.saveTabDraft(tabId, payload).catch(() => {}); }, 250);
 };
 
 const restoreDraft = (draft) => {
-  selection = { text: draft.sourceExcerpt || '', paragraph: draft.anchorParagraph || 0, prefix: draft.anchorPrefix || '', suffix: draft.anchorSuffix || '' };
-  marks = { start: draft.clipStart || 0, end: draft.clipEnd || 0, inSet: draft.clipStart > 0 || draft.clipEnd > 0, outSet: draft.clipEnd > 0 };
-  note.value = draft.commentary || '';
-  commentaryMode = draft.commentaryMode || 'text';
+  const normalized = normalizeCaptureDraft(draft);
+  selection = { text: normalized.sourceExcerpt, paragraph: normalized.anchorParagraph || 0, prefix: normalized.anchorPrefix, suffix: normalized.anchorSuffix };
+  marks = { start: normalized.clipStart, end: normalized.clipEnd, inSet: normalized.clipStart > 0 || normalized.clipEnd > 0, outSet: normalized.clipEnd > 0 };
+  note.value = normalized.commentary;
+  commentaryMode = normalized.commentaryMode;
+  relationType = normalized.relationType;
+  relationSelect.value = relationType;
   audioAssetId = draft.audioAssetId || '';
   audioDurationSeconds = Number(draft.audioDuration) > 0 ? clampAudioDuration(draft.audioDuration) : 0;
   audioDraftId = draft.audioDraftId || '';
@@ -1063,7 +1094,9 @@ const resetCaptureState = () => {
   visibility = 'public';
   visibilitySelect.value = 'public';
   topic = '';
+  relationType = 'response';
   topicSelect.value = '';
+  relationSelect.value = 'response';
   screenshotAssetId = '';
   screenshotPreviewUrl = '';
   audioAssetId = '';
@@ -1777,6 +1810,7 @@ publishButton.addEventListener('click', async () => {
     clipEnd: isMediaType() ? marks.end : 0,
     commentary: commentaryMode === 'text' ? note.value.trim().slice(0, 280) : '',
     commentaryMode,
+    relationType,
     visibility,
     topic: isTopic(topic) ? topic : undefined,
     screenshotAssetId: screenshotAssetId || undefined,
@@ -1804,6 +1838,7 @@ publishButton.addEventListener('click', async () => {
   publishHint.textContent = 'Publishing…';
   try {
     const { annotation } = await apiRequest('/api/annotations', { method: 'POST', body: JSON.stringify(payload) });
+    void recordProductEvent('published', { sourceType: annotation.sourceType }, { annotationId: annotation.id, sourceId: annotation.sourceId });
     await extensionStorage.clearTabDraft(currentTabId).catch(() => {});
     if (audioDraftId) await deleteAudioDraft(audioDraftId).catch(() => {});
     resetCaptureState();
@@ -2642,6 +2677,7 @@ const boot = async () => {
   // capture strip is truthful immediately instead of waiting out a cold
   // backend round-trip.
   await Promise.all([checkBackend(), loadCurrentTab()]);
+  if (backendOnline) void recordProductEvent('extension_opened');
   // Source resolution is gated on the backend being online; if the tab won
   // the race, run the light same-tab pass now that the backend answered.
   if (backendOnline && !resolvedSource) await loadCurrentTab();

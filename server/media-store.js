@@ -1,7 +1,7 @@
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, stat, unlink } from 'node:fs/promises';
+import { mkdir, readFile, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { dataDirectory } from './store.js';
 import { getObjectStore, objectStorageMode } from './object-store.js';
 import { assertAudioDurationPolicy } from './media-probe.js';
@@ -90,9 +90,10 @@ export async function writeIncomingMedia(request, mimeType) {
   try {
     const bytes = await bufferRequestToFile(request, workPath, maxMediaBytes);
     const durationSeconds = await assertAudioDurationPolicy(workPath);
+    const sha256 = createHash('sha256').update(await readFile(workPath)).digest('hex');
     const store = getObjectStore();
     const result = await store.putFile(workPath, { id, key, mimeType: normalizedMimeType });
-    return { id, key, fileName: result.fileName || key, mimeType: normalizedMimeType, bytes, durationSeconds, peaks: null, createdAt: new Date().toISOString() };
+    return { id, key, fileName: result.fileName || key, mimeType: normalizedMimeType, bytes, durationSeconds, peaks: null, sha256, verifiedAt: new Date().toISOString(), rightsState: 'unreviewed', createdAt: new Date().toISOString() };
   } finally {
     await unlink(workPath).catch(() => {});
   }
@@ -109,9 +110,10 @@ export async function writeIncomingImage(request, mimeType) {
   await mkdir(mediaWorkDirectory, { recursive: true });
   try {
     const bytes = await bufferRequestToFile(request, workPath, maxImageBytes);
+    const sha256 = createHash('sha256').update(await readFile(workPath)).digest('hex');
     const store = getObjectStore();
     const result = await store.putFile(workPath, { id, key, mimeType: normalizedMimeType });
-    return { id, key, fileName: result.fileName || key, mimeType: normalizedMimeType, bytes, createdAt: new Date().toISOString() };
+    return { id, key, fileName: result.fileName || key, mimeType: normalizedMimeType, bytes, sha256, verifiedAt: new Date().toISOString(), rightsState: 'unreviewed', createdAt: new Date().toISOString() };
   } finally {
     await unlink(workPath).catch(() => {});
   }

@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
 import { constants as fsConstants } from 'node:fs';
-import { access, mkdir } from 'node:fs/promises';
+import { access, mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mediaWorkDirectory, removeMediaFile, removeStoredMedia, storeMediaFile } from './media-store.js';
 import { extractAudioPeaks } from './audio-peaks.js';
 import { assertPublicUrl } from './ssrf.js';
@@ -332,7 +332,7 @@ const runJob = async (jobId) => {
     const args = buildFfmpegArgs(job, input, outputPath);
     await run('ffmpeg', args, { jobId: job.id });
     mediaLog('media_transcode_completed', job);
-    const probeResult = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type,height', '-of', 'json', outputPath], { jobId: job.id });
+    const probeResult = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type,codec_name,width,height', '-of', 'json', outputPath], { jobId: job.id });
     let probe;
     try { probe = JSON.parse(probeResult.stdout); } catch { throw new Error('Media output inspection returned invalid data.'); }
     validateMediaProbe(job.sourceType, probe);
@@ -360,11 +360,13 @@ const runJob = async (jobId) => {
         await removeMediaFile(posterPath);
       }
     }
+    const sha256 = createHash('sha256').update(await readFile(outputPath)).digest('hex');
+    const videoStream = (probe.streams || []).find((stream) => stream.codec_type === 'video');
     const asset = await storeMediaFile(outputPath, { id: assetId, key, mimeType: output.mimeType });
     mediaLog('media_object_stored', job, { assetId, bytes: asset.bytes, objectAttempts: asset.attempts || 1 });
     storedAsset = { id: assetId, key, fileName: asset.fileName || key, mimeType: output.mimeType };
     const published = await completeMediaRecord(job, {
-      asset: { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, peaks, kind: 'clip', createdAt: new Date().toISOString() },
+      asset: { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, peaks, kind: 'clip', sha256, width: Number(videoStream?.width) || null, height: Number(videoStream?.height) || null, probe, verifiedAt: new Date().toISOString(), rightsState: 'unreviewed', createdAt: new Date().toISOString() },
       poster: posterStored,
     });
     if (!published) {

@@ -37,7 +37,7 @@ test('the queued-capture whitelist loses nothing the media worker needs', () => 
   const publishShapedPayload = {
     sourceUrl: 'https://example.com/a', sourceType: 'video', sourceTitle: 't', sourceHost: 'example.com',
     sourceExcerpt: '', canonicalUrl: 'https://example.com/canonical', mediaUrl: 'https://cdn.example.com/v.mp4',
-    provider: 'vimeo', clipStart: 10, clipEnd: 40, commentary: 'note', commentaryMode: 'text',
+    provider: 'vimeo', clipStart: 10, clipEnd: 40, commentary: 'note', commentaryMode: 'text', relationType: 'supports',
     visibility: 'public', topic: '', screenshotAssetId: '', audioAssetId: '', audioDuration: 0,
     audioDraftId: '', clientRequestId: 'r-1', anchorParagraph: 0, anchorPrefix: '', anchorSuffix: '',
   };

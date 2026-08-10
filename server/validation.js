@@ -1,6 +1,7 @@
 const allowedTypes = new Set(['video', 'article', 'podcast']);
 const allowedModes = new Set(['text', 'audio']);
 import { parseSourceUrl } from './source-resolver.js';
+import { normalizeSourceRelation, sourceIdentity, sourceRelationTypes } from './source-identity.js';
 import { isTopic } from './topics.js';
 import { VISIBILITIES } from './visibility.js';
 
@@ -40,16 +41,21 @@ export function validateAnnotation(input) {
   if (!Number.isInteger(anchorParagraph) || anchorParagraph < 0 || anchorParagraph > 9999) errors.push('anchorParagraph must be a small positive integer.');
   if (input.visibility !== undefined && !VISIBILITIES.includes(input.visibility)) errors.push('visibility must be public, unlisted, or private.');
   if (input.topic !== undefined && input.topic !== null && input.topic !== '' && !isTopic(input.topic)) errors.push('topic must be one of the published topics.');
+  if (input.relationType !== undefined && !sourceRelationTypes.includes(input.relationType)) errors.push('relationType must be response, supports, challenges, adds_context, or corrects.');
   for (const field of ['anchorPrefix', 'anchorSuffix']) {
     if (input[field] !== undefined && (typeof input[field] !== 'string' || input[field].length > 300)) errors.push(`${field} must be text of 300 characters or fewer.`);
   }
+  let identity = { canonicalUrl: input?.canonicalUrl || input?.sourceUrl || '', id: null };
+  try { identity = sourceIdentity(identity.canonicalUrl); } catch { /* the validation error above remains authoritative */ }
   return {
     errors,
     normalized: {
       ...input,
       sourceExcerpt,
       clientRequestId: input.clientRequestId || null,
-      canonicalUrl: input.canonicalUrl || input.sourceUrl,
+      canonicalUrl: identity.canonicalUrl,
+      sourceId: identity.id,
+      relationType: normalizeSourceRelation(input.relationType),
       clipStart: start,
       clipEnd: end,
       commentary: String(input.commentary || '').trim().slice(0, 280),

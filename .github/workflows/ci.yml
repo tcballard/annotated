@@ -92,8 +92,10 @@ jobs:
         run: |
           package_version="$(node -p 'require("./extension/manifest.json").version')"
           package_path="annotated-extension-v${package_version}.zip"
-          test "$(unzip -Z1 "$package_path" | grep -vc '/$')" = 24
+          test "$(unzip -Z1 "$package_path" | grep -vc '/$')" = 26
           test "$(unzip -Z1 "$package_path" | grep -c '^clip-range.js$')" = 1
+          test "$(unzip -Z1 "$package_path" | grep -c '^capture-state.js$')" = 1
+          test "$(unzip -Z1 "$package_path" | grep -c '^share-kit.js$')" = 1
           if unzip -Z1 "$package_path" | grep -E '(^|/)(\.env|data/|node_modules/|dist/)'; then
             echo "runtime extension package contains development files" >&2
             exit 1
