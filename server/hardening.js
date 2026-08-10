@@ -7,7 +7,9 @@ const production = process.env.NODE_ENV === 'production';
 export const assertHardeningConfiguration = () => {
   if (!production) return;
   if (!process.env.PUBLIC_ORIGIN) throw new Error('Production requires PUBLIC_ORIGIN.');
-  validateCorsConfiguration();
+  const cors = validateCorsConfiguration();
+  if (!cors.extensionIds.length) throw new Error('Production requires CHROME_EXTENSION_IDS for the packaged extension OAuth and CORS boundary.');
+  if (Number(process.env.MEDIA_WORKER_CONCURRENCY || 0) !== 0) throw new Error('The production API requires MEDIA_WORKER_CONCURRENCY=0; run media jobs in the standalone worker service.');
   for (const [name, value] of [['PUBLIC_ORIGIN', process.env.PUBLIC_ORIGIN]]) {
     let origin;
     try { origin = new URL(value); } catch { throw new Error(`Production requires a valid ${name}.`); }

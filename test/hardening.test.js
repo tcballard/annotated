@@ -43,9 +43,19 @@ test('production hardening rejects wildcard CORS', () => {
 test('production hardening rejects origins with paths', () => {
   const result = spawnSync(process.execPath, ['-e', "import('./server/hardening.js').then((hardening) => hardening.assertHardeningConfiguration())"], {
     cwd: process.cwd(),
-    env: { ...process.env, NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://annotated.example.com/app', CORS_ORIGIN: 'https://annotated.example.com' },
+    env: { ...process.env, NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://annotated.example.com/app', CORS_ORIGIN: 'https://annotated.example.com', CHROME_EXTENSION_IDS: 'omlikcdpcdhfmdojdalfdeihgjmgikkg' },
     encoding: 'utf8',
   });
   assert.notEqual(result.status, 0);
   assert.match(`${result.stderr}${result.stdout}`, /PUBLIC_ORIGIN to be an origin/);
+});
+
+test('production hardening requires an explicit packaged extension identity', () => {
+  const result = spawnSync(process.execPath, ['-e', "import('./server/hardening.js').then((hardening) => hardening.assertHardeningConfiguration())"], {
+    cwd: process.cwd(),
+    env: { ...process.env, NODE_ENV: 'production', PUBLIC_ORIGIN: 'https://annotated.example.com', CORS_ORIGIN: 'https://annotated.example.com', CHROME_EXTENSION_IDS: '' },
+    encoding: 'utf8',
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stderr}${result.stdout}`, /requires CHROME_EXTENSION_IDS/);
 });

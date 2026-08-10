@@ -7,7 +7,7 @@ Before starting a production container:
 1. Load `DATABASE_URL`, `ANNOTATED_STORAGE=postgres`, and the enabled OAuth provider values from the deployment secret manager. The brief requires X **and** Google sign-in, so the default is `OAUTH_PROVIDERS=x,google` and production fails fast at boot unless `X_CLIENT_ID`/`X_CLIENT_SECRET` **and** `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are all present (callbacks default to `PUBLIC_ORIGIN/api/auth/<provider>/callback`; override with `X_REDIRECT_URI`/`GOOGLE_REDIRECT_URI` if the app origin differs). A deploy that boots without Google credentials is a checklist failure, not a working configuration.
 2. Load `ANNOTATED_ASSET_STORAGE=s3`, the S3/R2 bucket/endpoint/credentials, `PUBLIC_ORIGIN`, `APP_ORIGIN`, a non-wildcard `CORS_ORIGINS`, and `CHROME_EXTENSION_IDS` for packaged extension builds.
 3. Run `npm run db:migrate` from the same release artifact against the target database. Migration `004_rate_limit_buckets` creates the shared abuse-control ledger; do not route production traffic until it is applied.
-4. Start the container (the image binds `HOST=0.0.0.0`) and require `/api/ready` to return 200 before routing traffic; readiness now verifies the latest migration, performs a database health query, checks the S3-compatible bucket, and probes `ffmpeg`, `ffprobe`, and the configured `YTDLP_BIN` provider extractor. A missing or non-executable media runtime returns 503 instead of allowing provider jobs to fail after deployment. Audio uploads accept only the supported recorder/media MIME types, enforce the 25 MB payload cap, and use PostgreSQL-backed rate-limit buckets when production is configured with PostgreSQL; local development and tests retain the bounded in-process fallback. Provider extraction, FFmpeg, and FFprobe commands are killed after `MEDIA_WORKER_PROCESS_TIMEOUT_MS` (300 seconds by default), then persisted as retryable failures; keep that deadline below the worker lease. Forward structured `http_request` logs and `/api/health` telemetry to the deployment's log/metrics sink.
+4. Start the API container (the image binds `HOST=0.0.0.0`) and a separate worker service from the same image with command `npm run worker`. The production API is queue-only (`MEDIA_WORKER_CONCURRENCY=0` is enforced); set a positive concurrency only on the worker service. Both processes use the same PostgreSQL and object-storage configuration. Require `/api/ready` to return 200 before routing traffic and require the worker's `media_worker_started` event before accepting media jobs. Readiness verifies the latest migration, performs a database health query, checks the S3-compatible bucket, and probes `ffmpeg`, `ffprobe`, and the configured `YTDLP_BIN` provider extractor. A missing or non-executable media runtime returns 503 instead of allowing provider jobs to fail after deployment. Audio uploads accept only the supported recorder/media MIME types, enforce the 25 MB payload cap, and use PostgreSQL-backed rate-limit buckets when production is configured with PostgreSQL; local development and tests retain the bounded in-process fallback. Provider extraction, FFmpeg, and FFprobe commands are killed after `MEDIA_WORKER_PROCESS_TIMEOUT_MS` (300 seconds by default), then persisted as retryable failures; keep that deadline below the worker lease. Forward structured API and worker logs to the deployment's log/metrics sink.
 
    YouTube extraction also has an explicit egress configuration boundary. The
    image defaults `YTDLP_JS_RUNTIME=node`; if the hosting provider challenges
@@ -22,8 +22,8 @@ Before starting a production container:
 
 ## Railway POC staging
 
-Use one Railway project for the POC: an Annotated app service, Railway
-PostgreSQL, and a private Railway Storage Bucket named `media`. Railway Buckets
+Use one Railway project for the POC: an Annotated API service, an Annotated
+worker service from the same image, Railway PostgreSQL, and a private Railway Storage Bucket named `media`. Railway Buckets
 are S3-compatible, so the app needs no provider-specific SDK or extension
 credential.
 
@@ -118,8 +118,9 @@ the `auto` region. The generic adapter still validates a Cloudflare R2 endpoint
 if one is configured later, but R2 is not part of this POC deployment.
 
 Every push and pull request runs `.github/workflows/ci.yml`: a clean Node install,
-build, test, syntax, diff, and extension-package check, followed by production
-image builds for both `linux/amd64` and `linux/arm64`. Each image executes the
+build, test, syntax, diff, Store-inventory, and extension-package check; a
+no-retry headed-Chromium run of the checksummed extension; then production image
+builds for both `linux/amd64` and `linux/arm64`. Each image executes the
 pin-verified `/usr/local/bin/yt-dlp --version` check before the workflow can pass.
 
 The Node job also runs the production adapters against ephemeral PostgreSQL 16
@@ -129,6 +130,40 @@ media bucket, uploads a fixture, verifies its signed delivery URL, and deletes
 the object. Local `npm test` skips that test unless `DATABASE_URL` and the
 required `S3_*` values are present; it never substitutes the file/local
 adapters for this production-service evidence.
+
+The manually dispatched `.github/workflows/release-evidence.yml` is the only
+authoritative receipt lane. It is intentionally staging-only while the
+capability manifest has a single staging canonical origin. Protect the GitHub
+environment named `staging`, require reviewer approval, and provide
+`DATABASE_URL`, optional `PGSSL`, `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, optional
+`S3_FORCE_PATH_STYLE`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and optional
+`S3_PUBLIC_BASE_URL`. Those credentials need migration/read/write/delete access
+to an isolated evidence database and bucket prefix. When the Store manifest is
+published, also provide `CWS_ITEM_ID` and `CHROME_EXTENSION_IDS`; the workflow
+then performs the live Store/endpoints/CORS check before embedding its receipt.
+That Store receipt is valid for at most 24 hours. The capabilities endpoint
+checks its expiry on every request and removes the **Add to Chrome** promotion
+when it is stale; rerun the protected verification and deploy the refreshed
+evidence bundle to restore it.
+Add a production workflow option only after an environment-specific production
+canonical origin is modeled and validated in the release contract.
+Artifacts and evidence logs are excluded from the ordinary Docker build
+context.
+
+The workflow finishes by overlaying the validated `dist/` tree onto the exact
+production image it exercised, verifies the embedded browser/production receipt
+(and the live Store receipt when published), and exports
+`artifacts/release/annotated-authoritative-image.tar.gz` plus its SHA-256. Deploy
+that image archive (or publish the loaded image through the approved registry
+process); do not rebuild the source checkout after the receipt is generated,
+because an ordinary build intentionally has no authority to copy protected
+evidence into a release.
+
+```bash
+cd artifacts/release
+sha256sum --check annotated-authoritative-image.tar.gz.sha256
+gzip --decompress --stdout annotated-authoritative-image.tar.gz | docker load
+```
 
 Backups and recovery are external operational gates: take a PostgreSQL snapshot before migrations, retain object-store versioning/retention for published assets, and keep the prior image available for rollback. Media job records, retry state, and worker leases live in the configured repository; a restarted process re-queues queued jobs and processing jobs whose lease has expired, while an active lease prevents a second instance from claiming the same job. Set `MEDIA_WORKER_LEASE_MS` longer than the longest expected provider download/transcode, and send worker logs to the deployment's operational sink. This persisted lease is a recovery boundary, not a substitute for a managed queue when independent worker scaling is required. Source and provider requests re-check DNS answers for private/link-local address space at each input or redirect hop; keep egress controls at the deployment boundary as a second layer. A failed readiness check must remove the instance from service; do not fall back to the file adapter in production.
 

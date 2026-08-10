@@ -1,0 +1,187 @@
+name: Authoritative release evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_environment:
+        description: Protected staging environment containing the production-service credentials
+        required: true
+        type: choice
+        default: staging
+        options:
+          - staging
+      release_origin:
+        description: Canonical staging HTTPS deployment origin represented by this receipt
+        required: true
+        type: string
+        default: https://annotated-staging.up.railway.app
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: annotated-release-evidence-${{ inputs.release_environment }}
+  cancel-in-progress: false
+
+jobs:
+  evidence:
+    name: Browser + production evidence
+    if: ${{ inputs.release_environment == 'staging' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: ${{ inputs.release_environment }}
+    env:
+      RELEASE_ENVIRONMENT: ${{ inputs.release_environment }}
+      RELEASE_ORIGIN: ${{ inputs.release_origin }}
+      RELEASE_GIT_SHA: ${{ github.sha }}
+      ANNOTATED_STORAGE: postgres
+      ANNOTATED_ASSET_STORAGE: s3
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PGSSL: ${{ secrets.PGSSL }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      S3_REGION: ${{ secrets.S3_REGION }}
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+      S3_FORCE_PATH_STYLE: ${{ secrets.S3_FORCE_PATH_STYLE }}
+      S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+      S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+      S3_PUBLIC_BASE_URL: ${{ secrets.S3_PUBLIC_BASE_URL }}
+      CWS_ITEM_ID: ${{ secrets.CWS_ITEM_ID }}
+      CHROME_EXTENSION_IDS: ${{ secrets.CHROME_EXTENSION_IDS }}
+      ANNOTATED_E2E_ARTIFACTS: ${{ github.workspace }}/artifacts/e2e
+      ANNOTATED_E2E_HEADED: 1
+    steps:
+      - name: Check out exact release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Require protected production-service inputs
+        shell: bash
+        run: |
+          set -eu
+          for name in DATABASE_URL S3_BUCKET S3_REGION S3_ENDPOINT S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY; do
+            if test -z "${!name:-}"; then
+              echo "Protected environment secret ${name} is required." >&2
+              exit 1
+            fi
+          done
+      - name: Build checksummed release
+        run: npm run build
+      - name: Install release Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run packaged-extension browser gate without retries
+        run: xvfb-run -a npm run test:e2e
+      - name: Build the exact production runtime
+        run: docker build --build-arg TARGETARCH=amd64 --tag annotated-release-evidence .
+      - name: Run fail-closed PostgreSQL, S3, worker, and transcode evidence
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p artifacts/production
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --volume "$PWD/artifacts/production:/app/artifacts/production" \
+            --env RELEASE_ENVIRONMENT \
+            --env RELEASE_GIT_SHA \
+            --env NODE_ENV=production \
+            --env ANNOTATED_DATA_DIR=/tmp/annotated-evidence-data \
+            --env ANNOTATED_STORAGE \
+            --env ANNOTATED_ASSET_STORAGE \
+            --env DATABASE_URL \
+            --env PGSSL \
+            --env S3_BUCKET \
+            --env S3_REGION \
+            --env S3_ENDPOINT \
+            --env S3_FORCE_PATH_STYLE \
+            --env S3_ACCESS_KEY_ID \
+            --env S3_SECRET_ACCESS_KEY \
+            --env S3_PUBLIC_BASE_URL \
+            annotated-release-evidence \
+            node scripts/run-production-evidence.mjs --output-dir artifacts/production
+      - name: Compose one artifact-bound evidence manifest
+        run: npm run release:evidence:compose
+      - name: Generate authoritative receipt
+        run: npm run release:receipt -- --input artifacts/release/evidence-manifest.json --output artifacts/release/receipt.json --base-dir "$PWD"
+      - name: Re-hash evidence and enforce fixed release budgets
+        run: npm run check:release-slo -- --receipt artifacts/release/receipt.json --base-dir "$PWD"
+      - name: Embed the passed browser receipt in the release
+        env:
+          ANNOTATED_RELEASE_RECEIPT: artifacts/release/receipt.json
+        run: npm run build
+      - name: Inspect Store lifecycle state
+        id: store
+        run: echo "status=$(node -p 'require("./store-assets/store-listing.json").listingState.status')" >> "$GITHUB_OUTPUT"
+      - name: Verify the live published Store listing
+        if: steps.store.outputs.status == 'published'
+        shell: bash
+        run: |
+          set -eu
+          for name in CWS_ITEM_ID CHROME_EXTENSION_IDS; do
+            if test -z "${!name:-}"; then
+              echo "Protected environment secret ${name} is required for Store publication proof." >&2
+              exit 1
+            fi
+          done
+          npm run check:store -- --online --receipt artifacts/release/store-receipt.json
+      - name: Embed live Store verification in the published release
+        if: steps.store.outputs.status == 'published'
+        env:
+          ANNOTATED_RELEASE_RECEIPT: artifacts/release/receipt.json
+          ANNOTATED_STORE_RECEIPT: artifacts/release/store-receipt.json
+        run: npm run build
+      - name: Verify embedded release truth
+        run: npm run check:release-truth
+      - name: Assemble the evidence-bearing deployment image
+        shell: bash
+        run: |
+          set -eu
+          DOCKER_BUILDKIT=1 docker build \
+            --file Dockerfile.release \
+            --build-arg BASE_IMAGE=annotated-release-evidence \
+            --build-context release=dist \
+            --tag annotated-authoritative-release .
+      - name: Verify the exact deployment image
+        shell: bash
+        run: |
+          set -eu
+          require_store=0
+          if test "${{ steps.store.outputs.status }}" = "published"; then
+            require_store=1
+          fi
+          docker run --rm \
+            --entrypoint node \
+            --env ANNOTATED_REQUIRE_RELEASE_EVIDENCE=1 \
+            --env ANNOTATED_REQUIRE_STORE_EVIDENCE="$require_store" \
+            annotated-authoritative-release \
+            scripts/check-release-truth.mjs
+      - name: Archive the verified deployment image
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p artifacts/release
+          docker image inspect annotated-authoritative-release > artifacts/release/annotated-authoritative-image.json
+          docker save annotated-authoritative-release | gzip -n -9 > artifacts/release/annotated-authoritative-image.tar.gz
+          cd artifacts/release
+          sha256sum annotated-authoritative-image.tar.gz > annotated-authoritative-image.tar.gz.sha256
+      - name: Sign GitHub build-provenance attestations
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: |
+            artifacts/release/annotated-authoritative-image.tar.gz
+            dist/release/annotated-extension-v*.zip
+      - name: Upload the complete evidence bundle
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: authoritative-release-${{ inputs.release_environment }}-${{ github.sha }}
+          path: |
+            artifacts
+            dist/release
+          if-no-files-found: error
+          retention-days: 30

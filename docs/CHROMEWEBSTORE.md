@@ -1,11 +1,11 @@
 # Chrome Web Store Listing — annotated — keep the moment
 
-> Last Updated: 2026-08-04
+> Last Updated: 2026-08-10
 >
 > Status: v0.1.0 pre-submission draft. It has not been submitted, reviewed, or
-> published. This document is the source of truth for a future Chrome Web Store
-> submission; the unchecked external gates are not represented as shipped
-> features.
+> published. The machine-checked source of truth for copy, state, identity,
+> assets, URLs, and external gates is `store-assets/store-listing.json`; this
+> document is the human operator handoff and cannot promote the public CTA.
 
 ## Store Listing
 
@@ -15,7 +15,7 @@ annotated — keep the moment
 
 **Short Description**
 
-Capture a moment from the page you are on, add context, and keep the source attached.
+Clip a moment from the page you are on, add your context, and keep the source attached.
 
 **Detailed Description**
 
@@ -76,9 +76,9 @@ English
 | Asset | Dimensions | Status | Filename |
 |-------|-----------:|--------|----------|
 | Store Icon | 128×128 PNG | ✅ In extension package | `extension/icons/icon-128.png` |
-| Screenshot 1 | 1280×800 or 640×400 | 🟡 Needs capture | `store-assets/screenshot-1.png` |
-| Screenshot 2 | 1280×800 or 640×400 | ⬜ Not created | `store-assets/screenshot-2.png` |
-| Screenshot 3 | 1280×800 or 640×400 | ⬜ Not created | `store-assets/screenshot-3.png` |
+| Screenshot 1 | 1280×800 | 🟡 Native-host capture required | `store-assets/screenshot-1-capture.png` |
+| Screenshot 2 | 1280×800 | 🟡 Native-host capture required | `store-assets/screenshot-2-media-range.png` |
+| Screenshot 3 | 1280×800 | 🟡 Native-host capture required | `store-assets/screenshot-3-published.png` |
 | Small Promo Tile | 440×280 | ✅ Ready | `store-assets/promo-440x280.png` |
 | Marquee Promo Tile | 1400×560 | ✅ Ready | `store-assets/marquee-1400x560.png` |
 
@@ -88,8 +88,9 @@ Screenshot 1 should show the sidebar open beside a real article with a selected
 passage and the text annotation editor visible. Screenshot 2 should show a
 video or podcast range with the 90-second boundary. Screenshot 3 should show a
 successful published annotation link. Screenshots must be captured from the
-current extension version and must not imply that unverified provider or
-production integrations are available.
+current extension version in Chrome's native side-panel host and must not imply
+that unverified provider or production integrations are available. The Gate B
+automation-tab screenshots are engineering evidence, not Store assets.
 
 ## Permissions Justification
 
@@ -103,7 +104,7 @@ production integrations are available.
 | `alarms` | permissions | Wakes the extension periodically to retry queued captures without relying on a persistent background page. |
 | `contextMenus` | permissions | Adds a single right-click item on selected text — "Annotate …" — that opens the side panel with that selection captured. Created once at install; no other menu surfaces are touched. |
 | `favicon` | permissions | Reads Chrome's local favicon cache (the `_favicon/` extension endpoint) so each source in the panel's timeline shows its site icon. No network requests are made and no browsing data leaves the browser — the icons come from Chrome's own cache. |
-| `<all_urls>` | host_permissions | The product is intentionally source-agnostic: it must read the active page and selected passage on any site the user chooses, and the user-drawn snip screenshot uses `tabs.captureVisibleTab`, which Chrome only grants to the literal `<all_urls>` pattern (narrower http/https host patterns are rejected for capture). It does not inject code until the user opens the sidebar, captures nothing without an explicit user action, and does not publish without one either. Production API origins are separately restricted to HTTPS in settings. |
+| `<all_urls>` | host_permissions | The product is intentionally source-agnostic: while the **Capture** surface is open, it follows the active page on any site the user chooses and reads only the URL/title, media position, and current selection needed to prepare that capture. Chrome permits `tabs.captureVisibleTab` with either `<all_urls>` or a temporary `activeTab` grant; Annotated does not request `activeTab` because the persistent side panel must keep working after tab switches rather than relying on a one-invocation grant. Drawing a snip or highlight still requires an explicit action, and nothing is uploaded or published without one. Production API origins are separately restricted to HTTPS in settings. |
 
 ## Privacy & Data Use
 
@@ -131,9 +132,9 @@ production integrations are available.
 
 **Privacy Policy URL**
 
-Implemented in the web build at `/privacy.html`; the intended deployed URL is
-`https://annotated.com/privacy.html`. Publish and verify that URL before
-submitting to the Chrome Web Store. The policy explains local draft retention,
+Implemented in the web build at `/privacy.html`; the current canonical URL is
+`https://annotated-staging.up.railway.app/privacy.html`. Verify that exact URL
+before submitting to the Chrome Web Store. The policy explains local draft retention,
 published annotation/media retention, identity providers, backend storage,
 deletion requests, and contact details. Public deployment and URL verification
 remain external gates.
@@ -152,7 +153,7 @@ remain external gates.
 
 **Support URL**: https://github.com/tcballard/annotated/issues
 
-**Homepage URL**: https://annotated.com/
+**Homepage URL**: https://annotated-staging.up.railway.app/
 
 ## Version History
 
@@ -164,11 +165,11 @@ remain external gates.
 
 ### Known Issues / Limitations
 
-- Current screenshots, public privacy-policy URL verification, and a monitored publisher email are still required before submission. The approved, checksummed brand kit is preserved at `assets/brand/annotated-brand-kit/`; the extension icons are copied verbatim from its Chrome-specific exports by `scripts/generate-extension-icons.mjs`, and the supplied promo artwork is staged in `store-assets/`. The policy source is included in `public/privacy.html` and copied into `dist/` by the Vite build.
+- Native-host screenshots, public endpoint verification, and a monitored publisher email are still required before submission. The approved, checksummed brand kit is preserved at `assets/brand/annotated-brand-kit/`; the extension icons are copied verbatim from its Chrome-specific exports by `scripts/generate-extension-icons.mjs`, and the supplied promo artwork is staged in `store-assets/`. The policy source is included in `public/privacy.html` and copied into `dist/` by the Vite build.
 - The release build defaults to `https://annotated-staging.up.railway.app`; local development may use `http://localhost:8787`, and other deployed API origins must be HTTPS.
-- Deployed OAuth round-trip proof (X and Google are both configured and reported live on staging; the consent/callback/logout evidence is what remains), PostgreSQL/S3 media delivery, real provider fixture extraction, packaged Chrome microphone capture, and offline/service-worker browser evidence remain production acceptance gates. Queued captures now remain visible when authentication expires and can be retried after sign-in. The production image now includes a pinned, SHA-256-verified `yt-dlp` runtime, but that does not replace a real provider fixture run.
-- The broad page host permissions are intentional because the product works on the user-selected active page, but the sidebar only reads and publishes data after an explicit user action.
-- Google sign-in is enabled: update the Google OAuth client with the Chrome Web Store-assigned extension ID after publishing.
+- The packaged Gate B suite now covers native-host opening, selection, permission denial, local OAuth cancellation, direct/offline publishing, and real service-worker recovery without retries. An authoritative receipt still requires that suite to pass together with the protected PostgreSQL/S3/standalone-worker evidence workflow. Deployed Google and X consent/callback/logout, a successful real microphone recording, real provider fixture extraction, and Store-native screenshots remain external acceptance gates.
+- The broad page host permission is intentional because the persistent Capture surface follows the user-selected active page across tab switches. It performs the disclosed URL/title, media, and selection probes while Capture is open; snips, highlights, uploads, and publishing still require explicit user actions.
+- Google and X return to server-owned OAuth callbacks. After the first draft upload, reconcile the Store-assigned item ID/public key with `extension/manifest.json`, then put that final ID in the deployed `CHROME_EXTENSION_IDS` CORS and OAuth-return allowlist before packaged sign-in proof. This architecture does not use a Chrome Extension OAuth client.
 
 ### Packaging
 
@@ -177,7 +178,20 @@ script packages only the `extension/` runtime directory, normalizes timestamps,
 excludes `.DS_Store`, and writes `annotated-extension-v0.1.0.zip` plus its
 `.sha256` checksum outside the extension source. `npm run build` publishes the
 same versioned pair under `dist/release/` with `release.json` metadata. It does
-not include the repository, dependencies, tests, or this document.
+not include the repository, dependencies, tests, or this document. The ZIP
+timestamp is the committed epoch in `config/release.json`, so lifecycle and
+documentation commits after the draft upload reproduce the uploaded bytes
+instead of changing the Store artifact underneath its pinned SHA.
+
+After the listing is genuinely public, set the machine manifest lifecycle to
+`published`, pin its item ID, public URL, verification time, and exact artifact
+SHA, then run the protected `Authoritative release evidence` workflow against
+the already deployed commit. It performs the online Store/endpoints/CORS check
+and embeds the verified Store receipt. Until that final bundle is deployed,
+the checksummed ZIP remains the primary install action; source metadata alone
+cannot promote **Add to Chrome**. Live Store receipts expire after 24 hours;
+the runtime then falls back to the checksummed ZIP until the protected online
+verification is rerun and a fresh evidence-bearing bundle is deployed.
 
 ### Rejection History
 

@@ -1103,12 +1103,17 @@ const aboutView = () => docPage('What this is', 'source-first notes', `
 
 const extensionView = () => {
   const artifact = state.capabilities?.distribution?.directArtifact;
-  const storeStatus = state.capabilities?.distribution?.store?.status || 'unknown';
-  const install = artifact?.available ? `
+  const store = state.capabilities?.distribution?.store;
+  const storeStatus = store?.status || 'unknown';
+  const directInstall = artifact?.available ? `
     <p><a class="btn artifact-download" href="${escapeHTML(artifact.path)}" download>Download extension v${escapeHTML(artifact.version || '')}</a></p>
     <p class="artifact-meta">SHA-256 <code>${escapeHTML(artifact.sha256 || '')}</code> · ${Math.ceil(Number(artifact.bytes || 0) / 1024)} kB · <a href="${escapeHTML(artifact.checksumPath)}">checksum file</a></p>
     <ol class="doc-steps"><li>Download and unzip the exact build above.</li><li>Open <span class="kbd-mono">chrome://extensions</span> and turn on <strong>Developer mode</strong>.</li><li>Choose <strong>Load unpacked</strong> and select the unzipped folder.</li><li>Open any page, click the annotated icon, and pin the side panel.</li></ol>`
     : '<p>The direct build is being prepared. Until it appears, clone the repository and load the <span class="kbd-mono">extension/</span> folder unpacked.</p>';
+  const storeInstall = store?.installReady && store.publicUrl ? `
+    <p><a class="btn artifact-download" href="${escapeHTML(store.publicUrl)}" target="_blank" rel="noreferrer">Add to Chrome</a></p>
+    <p class="artifact-meta">Chrome Web Store · v${escapeHTML(store.version || '')} · listing and packaged-browser receipts verified</p>` : '';
+  const install = storeInstall || directInstall;
   return docPage('The Chrome side panel', 'the primary surface', `
   <div class="card"><h2>What it does</h2>
     <p>annotated lives in Chrome&rsquo;s side panel, docked next to the page you are reading. Four full-height modes — <strong>Capture &middot; Recent &middot; Following &middot; This page</strong> — with Capture first on open.</p>
@@ -1127,7 +1132,7 @@ const extensionView = () => {
     </tbody></table>
   </div>
   <div class="card"><h2>Install</h2>
-    <p>Chrome Web Store status: <strong>${escapeHTML(storeStatus)}</strong>. This build is distributed directly while browser E2E and Store submission remain open release gates.</p>
+    <p>Chrome Web Store status: <strong>${escapeHTML(storeStatus)}</strong>. ${store?.installReady ? 'The published listing and this exact package have passed the live release gates.' : 'This exact checksummed build remains the install path until both packaged-browser and live Store receipts pass.'}</p>
     ${install}
     <p>The panel talks to this deployment by default; point it elsewhere from its options page.</p>
   </div>

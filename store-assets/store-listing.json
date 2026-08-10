@@ -1,0 +1,223 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-08-10",
+  "policySources": [
+    "https://developer.chrome.com/docs/webstore/prepare",
+    "https://developer.chrome.com/docs/webstore/images",
+    "https://developer.chrome.com/docs/webstore/cws-dashboard-privacy",
+    "https://developer.chrome.com/docs/webstore/program-policies/permissions/",
+    "https://developer.chrome.com/docs/webstore/user_data",
+    "https://developer.chrome.com/docs/webstore/publish/"
+  ],
+  "listingState": {
+    "status": "not-submitted",
+    "itemId": null,
+    "publicUrl": null,
+    "publicUrlVerifiedAt": null
+  },
+  "release": {
+    "version": "0.1.0",
+    "artifactSha256": null
+  },
+  "verification": {
+    "receiptPath": "store-assets/store-readiness-receipt.json",
+    "requiresOnline": true
+  },
+  "listing": {
+    "name": "annotated — keep the moment",
+    "summary": "Clip a moment from the page you are on, add your context, and keep the source attached.",
+    "description": "Keep the moment before it disappears. Annotated lives in Chrome's side panel, beside the page you are reading. Capture a selected passage, a bounded video or podcast clip, or a snip of the page; add your context; then publish a page that keeps the original source attached.\n\nCore features:\n• Capture selected text from the active page, including from the right-click menu.\n• Mark a video or podcast range with a server-enforced 90-second maximum.\n• Capture a user-drawn snip of the visible page.\n• Add a written note or review a recorded audio note before publishing.\n• Preserve source links and supported passage or media-time anchors.\n• Save bounded draft metadata locally and retry an interrupted capture.\n• Follow, respond, and like through Annotated's public reading feed.\n• Submit a rights claim from every public annotation page.\n\nHow it works:\n1. Open a page and select the Annotated toolbar icon.\n2. Choose a passage, snip, or media range and add your context.\n3. Review the draft, then choose Publish annotation.\n4. Open or share the resulting source-backed annotation page.\n\nThe Capture surface reads the current tab's URL and title so it can describe the source. It reads selected text or captures a visible snip only for the capture you choose. Nothing is published until you select Publish annotation. See the linked privacy policy for the complete data boundary.",
+    "category": "productivity",
+    "primaryLanguage": "en",
+    "singlePurpose": "Capture a user-chosen moment from the current webpage and publish it with personal context and a source link.",
+    "visibility": "unlisted",
+    "regions": "all"
+  },
+  "publisher": {
+    "name": "Tom Ballard",
+    "contactEmail": null
+  },
+  "urls": {
+    "homepage": "https://annotated-staging.up.railway.app/",
+    "privacy": "https://annotated-staging.up.railway.app/privacy.html",
+    "rights": "https://annotated-staging.up.railway.app/rights",
+    "support": "https://github.com/tcballard/annotated/issues"
+  },
+  "extensionIdentity": {
+    "expectedId": "omlikcdpcdhfmdojdalfdeihgjmgikkg",
+    "oauthReturnPath": "/annotated-auth",
+    "oauthReturnUrl": "https://omlikcdpcdhfmdojdalfdeihgjmgikkg.chromiumapp.org/annotated-auth",
+    "apiOrigin": "https://annotated-staging.up.railway.app",
+    "providerCallbacks": {
+      "google": "https://annotated-staging.up.railway.app/api/auth/google/callback",
+      "x": "https://annotated-staging.up.railway.app/api/auth/x/callback"
+    },
+    "requiredDeploymentVariables": [
+      "PUBLIC_ORIGIN",
+      "APP_ORIGIN",
+      "CORS_ORIGINS",
+      "CHROME_EXTENSION_IDS"
+    ]
+  },
+  "privacy": {
+    "usesRemoteCode": false,
+    "dataTypes": [
+      {
+        "dashboardLabel": "Personally identifiable information",
+        "scope": "Provider account identifier, display name, handle, email when supplied, and avatar URL used for account ownership and attribution."
+      },
+      {
+        "dashboardLabel": "Authentication information",
+        "scope": "A short-lived one-time extension ticket and bounded backend session token used to authenticate requested API actions."
+      },
+      {
+        "dashboardLabel": "Personal communications",
+        "scope": "Written commentary or recorded audio that the user explicitly chooses to publish."
+      },
+      {
+        "dashboardLabel": "Web history",
+        "scope": "The current tab URL and title while Capture is open, used to resolve or publish the source; no browsing-history profile is built."
+      },
+      {
+        "dashboardLabel": "User activity",
+        "scope": "Publish and retry actions needed to complete the user-requested capture."
+      },
+      {
+        "dashboardLabel": "Website content",
+        "scope": "The selected passage or user-drawn visible-page snip that the user explicitly chooses to publish."
+      }
+    ],
+    "limitedUseCertified": true,
+    "sold": false,
+    "usedForAdvertising": false,
+    "usedForCreditworthiness": false
+  },
+  "permissionJustifications": {
+    "sidePanel": "Opens Annotated's persistent capture workspace beside the current page.",
+    "tabs": "Reads the active tab URL and title, detects tab changes, and supplies tab context for user-chosen passage and visible-tab capture.",
+    "scripting": "Reads media position and the user's selection while Capture is open, draws the user-requested snip overlay, and highlights a chosen annotation's quoted passage.",
+    "storage": "Stores bounded drafts, API configuration, retry metadata, compact published-result metadata, and the temporary browser session.",
+    "identity": "Completes the configured Google or X server-mediated sign-in handoff and receives its one-time extension callback.",
+    "alarms": "Wakes the service worker to retry queued captures without a persistent background page.",
+    "contextMenus": "Adds one selected-text action that opens the side panel with the user's selection ready to review.",
+    "favicon": "Reads Chrome's local favicon cache so source rows can show their site icon; it does not send favicon data to a remote service.",
+    "<all_urls>": "Lets the persistent Capture surface follow whichever active webpage the user chooses across tab switches and enables visible-tab screenshot capture. Chrome accepts either <all_urls> or a temporary activeTab grant for captureVisibleTab; Annotated does not request activeTab because that grant is tied to one user invocation. While Capture is open, page probes are limited to URL/title, media position, and current selection; snips, highlights, uploads, and publishing require explicit actions."
+  },
+  "reviewerInstructions": {
+    "requiresTestAccount": true,
+    "credentialPlacement": "Enter a dedicated reviewer account in the private Test instructions dashboard field only; never commit it to this repository.",
+    "steps": [
+      "Install the uploaded package and confirm the extension ID matches the item ID in the Package tab.",
+      "Open a normal HTTPS article, select a short passage, open Annotated, and confirm the Capture surface describes only the active source.",
+      "Use the supplied reviewer account to complete either Google or X sign-in and return to the side panel.",
+      "Publish the selected passage with a short written note, then open the returned public annotation and its original-source link.",
+      "Open a direct video or podcast source, mark a range shorter than 90 seconds, and confirm the panel refuses an over-limit range.",
+      "Use the snip control to draw a visible-page region, cancel once to prove nothing uploads, then complete one reviewed snip capture.",
+      "Open the public Rights & claims surface and verify a claim can be submitted without exposing dashboard or moderation credentials."
+    ],
+    "broadHostPermissionNote": "Annotated is source-agnostic and its open Capture surface follows the active page across tab switches. It uses <all_urls>, rather than a temporary activeTab grant, for current-page URL/title, media, and selection probes plus user-requested snips or highlights; it does not inject while a feed surface is open, and it never uploads or publishes without an explicit action."
+  },
+  "assets": [
+    {
+      "id": "store-icon",
+      "kind": "icon",
+      "path": "extension/icons/icon-128.png",
+      "width": 128,
+      "height": 128,
+      "required": true,
+      "submittable": true,
+      "status": "ready"
+    },
+    {
+      "id": "screenshot-capture",
+      "kind": "screenshot",
+      "path": "store-assets/screenshot-1-capture.png",
+      "width": 1280,
+      "height": 800,
+      "required": true,
+      "submittable": true,
+      "status": "capture-required",
+      "brief": "The packaged v0.1.0 side panel open beside a real article, with a selected passage and the text commentary editor visible."
+    },
+    {
+      "id": "screenshot-media-range",
+      "kind": "screenshot",
+      "path": "store-assets/screenshot-2-media-range.png",
+      "width": 1280,
+      "height": 800,
+      "required": true,
+      "submittable": true,
+      "status": "capture-required",
+      "brief": "The packaged v0.1.0 side panel showing a real video or podcast range and the visible 90-second boundary."
+    },
+    {
+      "id": "screenshot-published",
+      "kind": "screenshot",
+      "path": "store-assets/screenshot-3-published.png",
+      "width": 1280,
+      "height": 800,
+      "required": true,
+      "submittable": true,
+      "status": "capture-required",
+      "brief": "A successful v0.1.0 publish result and its source-backed public annotation page, without unpublished provider or Store claims."
+    },
+    {
+      "id": "small-promo",
+      "kind": "small-promo",
+      "path": "store-assets/promo-440x280.png",
+      "width": 440,
+      "height": 280,
+      "required": true,
+      "submittable": true,
+      "status": "ready"
+    },
+    {
+      "id": "marquee-promo",
+      "kind": "marquee-promo",
+      "path": "store-assets/marquee-1400x560.png",
+      "width": 1400,
+      "height": 560,
+      "required": false,
+      "submittable": true,
+      "status": "ready"
+    }
+  ],
+  "externalGates": [
+    {
+      "id": "developer-account",
+      "label": "Chrome Web Store developer account is registered, fee paid, and 2-Step Verification enabled",
+      "complete": false,
+      "evidence": null
+    },
+    {
+      "id": "publisher-contact",
+      "label": "A monitored publisher contact email is verified in the developer dashboard",
+      "complete": false,
+      "evidence": null
+    },
+    {
+      "id": "draft-item-id",
+      "label": "The checksummed ZIP is uploaded as a draft and its assigned item ID matches the packaged identity",
+      "complete": false,
+      "evidence": null
+    },
+    {
+      "id": "deployment-extension-allowlist",
+      "label": "Staging CHROME_EXTENSION_IDS, CORS, and OAuth return allowlists contain the final Store item ID",
+      "complete": false,
+      "evidence": null
+    },
+    {
+      "id": "oauth-round-trip",
+      "label": "Google and X sign-in, callback, ticket exchange, and logout pass in the packaged Store-identity build",
+      "complete": false,
+      "evidence": null
+    },
+    {
+      "id": "reviewer-instructions",
+      "label": "Reviewer instructions and any required test account are entered in the dashboard without committing credentials",
+      "complete": false,
+      "evidence": null
+    }
+  ]
+}

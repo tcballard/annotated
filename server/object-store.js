@@ -9,6 +9,12 @@ import { dataDirectory } from './store.js';
 const localDirectory = path.join(dataDirectory, 'media');
 const objectStorageMode = process.env.ANNOTATED_ASSET_STORAGE || (process.env.NODE_ENV === 'production' ? 's3' : 'local');
 
+export const resolveS3MaxAttempts = (environment = process.env) => {
+  const maxAttempts = Number(environment.S3_MAX_ATTEMPTS || 3);
+  if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1) throw new Error('S3_MAX_ATTEMPTS must be a positive integer.');
+  return maxAttempts;
+};
+
 const extensionFromKey = (key) => path.extname(key).slice(1) || 'bin';
 const safeLocalPath = (key) => {
   const candidate = path.resolve(localDirectory, key.replace(/^\/+/, ''));
@@ -122,10 +128,12 @@ class S3ObjectStore {
     assertS3Configuration();
     this.bucket = process.env.S3_BUCKET;
     this.publicBaseUrl = process.env.S3_PUBLIC_BASE_URL?.replace(/\/$/, '');
+    this.maxAttempts = resolveS3MaxAttempts();
     this.client = client || new S3Client({
       region: process.env.S3_REGION,
       endpoint: process.env.S3_ENDPOINT || undefined,
       forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
+      maxAttempts: this.maxAttempts,
       credentials: { accessKeyId: process.env.S3_ACCESS_KEY_ID, secretAccessKey: process.env.S3_SECRET_ACCESS_KEY },
     });
   }

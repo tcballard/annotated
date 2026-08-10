@@ -11,6 +11,16 @@ export const configuredExtensionIds = (env = process.env) => {
   return [...new Set(splitValues(env.CHROME_EXTENSION_IDS))];
 };
 
+export const isChromeExtensionRedirectUrl = (value, env = process.env) => {
+  let parsed;
+  try { parsed = value instanceof URL ? value : new URL(value); } catch { return false; }
+  if (parsed.protocol !== 'https:' || parsed.port || parsed.username || parsed.password) return false;
+  const suffix = '.chromiumapp.org';
+  if (!parsed.hostname.endsWith(suffix)) return false;
+  const extensionId = parsed.hostname.slice(0, -suffix.length);
+  return extensionIdPattern.test(extensionId) && configuredExtensionIds(env).includes(extensionId);
+};
+
 export const isChromeExtensionOrigin = (origin, env = process.env) => {
   let parsed;
   try { parsed = new URL(origin); } catch { return false; }

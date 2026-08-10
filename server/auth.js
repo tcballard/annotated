@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { deleteSessionByTokenHash, putSession, readStore, updateStore } from './store.js';
 import { rateLimitAsync } from './rate-limit.js';
+import { isChromeExtensionRedirectUrl } from './cors.js';
 
 const sessionTtlSeconds = Number(process.env.AUTH_SESSION_TTL_SECONDS || 2_592_000);
 const oauthStateTtlSeconds = 600;
@@ -33,6 +34,19 @@ const providers = {
     redirectUri: () => process.env.X_REDIRECT_URI || `${publicOrigin}/api/auth/x/callback`,
     scope: 'users.read',
   },
+};
+
+export const providerAuthorizeUrl = (providerName, provider = providers[providerName]) => {
+  const configured = process.env.ANNOTATED_E2E_OAUTH_AUTHORIZE_URL;
+  if (!configured) return provider?.authorize;
+  if (process.env.NODE_ENV === 'production') throw new Error('The controlled OAuth authorize URL is disabled in production.');
+  if (providerName !== 'google') throw new Error('The controlled OAuth authorize URL is only available for the Google E2E flow.');
+  let url;
+  try { url = new URL(configured); } catch { throw new Error('The controlled OAuth authorize URL is invalid.'); }
+  if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) {
+    throw new Error('The controlled OAuth authorize URL must be an HTTP loopback URL.');
+  }
+  return url.toString();
 };
 
 const cookieName = 'annotated_session';
@@ -90,7 +104,7 @@ const providerFor = (name) => {
   return provider;
 };
 
-const chromiumReturnUrl = (url) => url.protocol === 'https:' && url.hostname.endsWith('.chromiumapp.org');
+const chromiumReturnUrl = (url) => isChromeExtensionRedirectUrl(url);
 // The mobile shell returns through its custom scheme; the callback carries a
 // one-time ticket exactly like the extension flow.
 const mobileReturnUrl = (url) => url.protocol === 'annotated:' && url.hostname === 'auth';
@@ -132,8 +146,10 @@ export const startOAuth = async (request, providerName, returnTo = '') => {
     code_challenge_method: 'S256',
   });
   const validatedReturnTo = validateReturnTo(returnTo);
+  const authorizeUrl = new URL(providerAuthorizeUrl(providerName, provider));
+  for (const [name, value] of params) authorizeUrl.searchParams.set(name, value);
   return {
-    location: `${provider.authorize}?${params}`,
+    location: authorizeUrl.toString(),
     cookies: [cookie(stateCookieName, state, { maxAge: oauthStateTtlSeconds }), cookie(verifierCookieName, verifier, { maxAge: oauthStateTtlSeconds }), ...(validatedReturnTo ? [cookie(returnCookieName, validatedReturnTo, { maxAge: oauthStateTtlSeconds })] : [])],
   };
 };

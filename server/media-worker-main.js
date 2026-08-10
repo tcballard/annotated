@@ -10,14 +10,29 @@
 // Rust, say) against the same claims and leases without the API noticing.
 //
 // Run: MEDIA_WORKER_CONCURRENCY=4 node server/media-worker-main.js
-import { checkMediaRuntime, recoverMediaJobs } from './media-worker.js';
 import { checkStore, closeStore, invalidateReadCache } from './store.js';
+
+process.env.ANNOTATED_PROCESS_ROLE = 'media-worker';
+const {
+  checkMediaRuntime,
+  mediaWorkerExecution,
+  mediaWorkerRetryPolicy,
+  recoverMediaJobs,
+} = await import('./media-worker.js');
+const { resolveS3MaxAttempts } = await import('./object-store.js');
 
 const intervalMs = Math.max(2_000, Number(process.env.MEDIA_WORKER_POLL_MS || 15_000));
 
 await checkStore(); // refuses a stale schema, exactly like the API's readiness gate
 const runtime = await checkMediaRuntime();
-console.log(JSON.stringify({ event: 'media_worker_started', intervalMs, runtime: runtime.status || 'ok' }));
+console.log(JSON.stringify({
+  event: 'media_worker_started',
+  intervalMs,
+  concurrency: mediaWorkerExecution.concurrency,
+  mediaJobMaxAttempts: mediaWorkerRetryPolicy.maxAttempts,
+  s3MaxAttempts: resolveS3MaxAttempts(),
+  runtime: runtime.status || 'ok',
+}));
 
 const poll = async () => {
   // Jobs are enqueued by the API process; without this, our read cache

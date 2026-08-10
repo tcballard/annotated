@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { authIsRequired, parseCookies, providerStatus, startOAuth } from '../server/auth.js';
+import { authIsRequired, parseCookies, providerAuthorizeUrl, providerStatus, startOAuth } from '../server/auth.js';
 
 const envSnapshot = () => ({ ...process.env });
 const restoreEnv = (snapshot) => {
@@ -34,6 +34,22 @@ test('OAuth start creates a PKCE challenge and short-lived state cookies', async
     assert.equal(result.cookies.length, 2);
     const stateCookie = parseCookies(result.cookies[0]);
     assert.ok(stateCookie.annotated_oauth_state);
+  } finally {
+    restoreEnv(saved);
+  }
+});
+
+test('the controlled OAuth provider is loopback-only and disabled in production', () => {
+  const saved = envSnapshot();
+  try {
+    process.env.NODE_ENV = 'development';
+    process.env.ANNOTATED_E2E_OAUTH_AUTHORIZE_URL = 'http://127.0.0.1:4321/oauth-cancel';
+    assert.equal(providerAuthorizeUrl('google'), 'http://127.0.0.1:4321/oauth-cancel');
+    process.env.ANNOTATED_E2E_OAUTH_AUTHORIZE_URL = 'https://provider.example/oauth';
+    assert.throws(() => providerAuthorizeUrl('google'), /HTTP loopback URL/);
+    process.env.ANNOTATED_E2E_OAUTH_AUTHORIZE_URL = 'http://127.0.0.1:4321/oauth-cancel';
+    process.env.NODE_ENV = 'production';
+    assert.throws(() => providerAuthorizeUrl('google'), /disabled in production/);
   } finally {
     restoreEnv(saved);
   }
@@ -121,14 +137,17 @@ test('unconfigured providers fail instead of emitting fake OAuth URLs', async ()
 
 test('extension OAuth return URLs are constrained to Chromium app redirects', async () => {
   const saved = envSnapshot();
+  const extensionId = 'omlikcdpcdhfmdojdalfdeihgjmgikkg';
   process.env.GOOGLE_CLIENT_ID = 'google-client';
   process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
   process.env.OAUTH_PROVIDERS = 'google';
+  process.env.CHROME_EXTENSION_IDS = extensionId;
   try {
-    const result = await startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://example.chromiumapp.org/annotated-auth');
+    const result = await startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', `https://${extensionId}.chromiumapp.org/annotated-auth`);
     assert.equal(result.cookies.length, 3);
+    await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.chromiumapp.org/annotated-auth'), /return URL is not allowed/);
     await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://evil.example/callback'), /return URL is not allowed/);
-    await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://example.chromiumapp.org.evil.example/callback'), /return URL is not allowed/);
+    await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', `https://${extensionId}.chromiumapp.org.evil.example/callback`), /return URL is not allowed/);
   } finally {
     restoreEnv(saved);
   }
@@ -139,7 +158,7 @@ test('OAuth callback exchanges provider identity and consumes an extension ticke
   const script = `
     const { exchangeExtensionTicket, finishOAuth, parseCookies, startOAuth } = await import('./server/auth.js');
     const request = { headers: {}, socket: { remoteAddress: 'oauth-test' } };
-    const started = await startOAuth(request, 'google', 'https://example.chromiumapp.org/annotated-auth');
+    const started = await startOAuth(request, 'google', 'https://omlikcdpcdhfmdojdalfdeihgjmgikkg.chromiumapp.org/annotated-auth');
     const cookieHeader = started.cookies.join('; ');
     const cookies = parseCookies(cookieHeader);
     globalThis.fetch = async (url) => {
@@ -168,6 +187,7 @@ test('OAuth callback exchanges provider identity and consumes an extension ticke
       GOOGLE_CLIENT_ID: 'google-client',
       GOOGLE_CLIENT_SECRET: 'google-secret',
       OAUTH_PROVIDERS: 'google',
+      CHROME_EXTENSION_IDS: 'omlikcdpcdhfmdojdalfdeihgjmgikkg',
     },
     encoding: 'utf8',
     maxBuffer: 1_000_000,

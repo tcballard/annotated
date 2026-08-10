@@ -619,17 +619,24 @@ evidence are available:
 
 - Google/X OAuth callback, cancellation, logout, and expiry against real
   provider credentials.
-- PostgreSQL and S3/R2/CDN deployment with migrations, cleanup, backups, and
-  recovery against production-like services.
+- A passing protected release-evidence run against public staging PostgreSQL
+  and S3/R2/CDN. The fail-closed runner, cleanup, JUnit, redacted log, and
+  receipt contract are implemented; no source-only claim substitutes for the
+  resulting receipt.
 - Real YouTube/news/podcast extraction and FFmpeg output inspection, including
   a generated file proven to be no longer than 90 seconds and video proven to
   be 240p.
-- Docked installed-Chrome side-panel acceptance, extension microphone capture,
-  offline queue recovery, and service-worker/sidebar lifecycle checks. PR39's
-  queue and auth recovery are covered by executable tests, but the managed
-  Chrome environment still refused an unpacked install for live docked proof.
-- Chrome Web Store screenshots/promo art, a public privacy-policy URL, and a
-  monitored publisher contact address.
+- A green hosted run of the checksummed packaged-Chromium Gate B suite. The
+  harness now proves the native host opened and exercises offline queue and
+  service-worker lifecycle behavior without retries; Playwright's inability to
+  expose the native side-panel document is disclosed, so it drives the same
+  packaged document in an extension tab only after host proof.
+- Successful packaged microphone recording and real Google/X consent flows;
+  the deterministic gate intentionally covers denial/cancellation without
+  labelling either as provider verification.
+- Three native-host Chrome Web Store screenshots, a public endpoint check, an
+  assigned item-ID/public-key reconciliation, and a monitored publisher
+  contact address. The two promotional graphics are ready.
 - Multi-user production feed, follow, comment, claims, and moderation evidence.
 - Public deployment, production observability, durable-service backups and
   recovery, and live external traffic remain unverified. PR34 now covers the

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Annotated controlled player fixture</title>
+    <meta property="og:type" content="video.other" />
+    <style>
+      body { max-width: 52rem; margin: 3rem auto; padding: 0 1.5rem; font: 16px/1.5 system-ui, sans-serif; color: #24211f; }
+      video { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; background: linear-gradient(135deg, #1d1a18, #b0674d); }
+      code { color: #8a5847; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Controlled player</h1>
+      <p>This repository-owned clock makes player selection, seeking, and playback deterministic without downloading third-party media.</p>
+      <video id="fixturePlayer" src="clock.webm" controls muted preload="auto" aria-label="Synthetic controlled video"></video>
+      <p>Current fixture time: <code id="clock">12.000</code></p>
+    </main>
+    <script>
+      (() => {
+        const element = document.querySelector('#fixturePlayer');
+        const clock = document.querySelector('#clock');
+        const state = { playCalls: 0, pauseCalls: 0 };
+        const updateClock = () => { clock.textContent = Number(element.currentTime || 0).toFixed(3); };
+        element.addEventListener('timeupdate', updateClock);
+        element.addEventListener('play', () => { state.playCalls += 1; });
+        element.addEventListener('pause', () => { state.pauseCalls += 1; });
+        window.annotatedFixturePlayer = {
+          setTime(value) { element.currentTime = Number(value); updateClock(); },
+          snapshot() {
+            return {
+              currentTime: element.currentTime,
+              duration: Number.isFinite(element.duration) ? element.duration : 0,
+              paused: element.paused,
+              ended: element.ended,
+              muted: element.muted,
+              playbackRate: element.playbackRate,
+              ...state,
+            };
+          },
+        };
+        updateClock();
+      })();
+    </script>
+  </body>
+</html>

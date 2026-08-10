@@ -21,13 +21,21 @@
     "generate:extension-icons": "node scripts/generate-extension-icons.mjs",
     "package:extension": "node scripts/package-extension.js",
     "release:artifact": "node scripts/build-release-artifact.mjs",
+    "release:evidence": "node scripts/run-production-evidence.mjs",
+    "release:evidence:compose": "node scripts/compose-release-evidence.mjs",
+    "release:receipt": "node scripts/generate-release-receipt.mjs",
+    "check:release-slo": "node scripts/check-release-slo.mjs",
     "check:release-truth": "node scripts/check-release-truth.mjs",
+    "check:store": "node scripts/check-store-readiness.mjs",
+    "check:store:inventory": "node scripts/check-store-readiness.mjs --inventory",
+    "test:e2e": "playwright test --config e2e/playwright.config.mjs",
     "db:migrate": "node scripts/migrate.js",
     "preview": "vite preview",
     "start": "NODE_ENV=production node server/index.js",
     "worker": "node server/media-worker-main.js"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "typescript": "6.0.3",
     "vite": "^7.0.0"
   },

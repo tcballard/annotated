@@ -18,9 +18,31 @@ test('production image builds before pruning dev dependencies and runs non-root'
   assert.match(dockerfile, /ENV YTDLP_JS_RUNTIME=node/);
 });
 
+test('authoritative release image overlays the verified dist without rebuilding source', async () => {
+  const dockerfile = await readFile(new URL('../Dockerfile.release', import.meta.url), 'utf8');
+  const workflow = await readFile(new URL('../.github/workflows/release-evidence.yml', import.meta.url), 'utf8');
+  const truthCheck = await readFile(new URL('../scripts/check-release-truth.mjs', import.meta.url), 'utf8');
+  assert.match(dockerfile, /^# syntax=docker\/dockerfile:1\.7/m);
+  assert.match(dockerfile, /ARG BASE_IMAGE=annotated-release-evidence/);
+  assert.match(dockerfile, /FROM \$\{BASE_IMAGE\}/);
+  assert.match(dockerfile, /RUN rm -rf \/app\/dist/);
+  assert.match(dockerfile, /COPY --from=release --chown=annotated:annotated \/ \/app\/dist\//);
+  assert.doesNotMatch(dockerfile, /npm run build/);
+  assert.match(workflow, /--build-context release=dist/);
+  assert.match(workflow, /ANNOTATED_DATA_DIR=\/tmp\/annotated-evidence-data/);
+  assert.match(workflow, /ANNOTATED_REQUIRE_RELEASE_EVIDENCE=1/);
+  assert.match(workflow, /ANNOTATED_REQUIRE_STORE_EVIDENCE="\$require_store"/);
+  assert.match(workflow, /docker save annotated-authoritative-release \| gzip -n -9/);
+  assert.match(workflow, /annotated-authoritative-image\.tar\.gz\.sha256/);
+  assert.match(truthCheck, /The deployable release must embed authoritative browser and production evidence/);
+  assert.match(truthCheck, /A published Store release must embed live Store verification evidence/);
+});
+
 test('docker build context excludes local state and secrets', async () => {
   const ignore = await readFile(new URL('../.dockerignore', import.meta.url), 'utf8');
   assert.match(ignore, /^data$/m);
+  assert.match(ignore, /^artifacts$/m);
+  assert.match(ignore, /^backups$/m);
   assert.match(ignore, /^\.env$/m);
   assert.match(ignore, /^node_modules$/m);
   assert.match(ignore, /^\*\.cookies$/m);

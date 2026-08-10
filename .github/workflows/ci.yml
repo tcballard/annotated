@@ -41,9 +41,9 @@ jobs:
           --health-retries 20
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -72,11 +72,13 @@ jobs:
         run: npm run build
       - name: Verify release claims and downloadable artifact
         run: npm run check:release-truth
+      - name: Inventory Chrome Web Store readiness
+        run: npm run check:store:inventory
       - name: Run tests
         run: npm test
       - name: Check JavaScript syntax
         shell: bash
-        run: for file in server/*.js src/*.js extension/*.js test/*.js scripts/*.js; do node --check "$file"; done
+        run: for file in server/*.js src/*.js extension/*.js test/*.js scripts/*.js scripts/*.mjs e2e/*.mjs e2e/lib/*.mjs; do node --check "$file"; done
       - name: Check package diff
         run: git diff --check
       - name: Package extension
@@ -130,9 +132,44 @@ jobs:
         if: always()
         run: docker stop annotated-minio 2>/dev/null || true
 
+  browser:
+    name: Packaged Chrome Gate B
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ANNOTATED_E2E_ARTIFACTS: ${{ github.workspace }}/artifacts/e2e
+      ANNOTATED_E2E_HEADED: 1
+    steps:
+      - name: Check out
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install release Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build checksummed release
+        run: npm run build
+      - name: Run packaged-extension browser gate without retries
+        run: xvfb-run -a npm run test:e2e
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gate-b-browser-${{ github.sha }}
+          path: |
+            artifacts/e2e
+            dist/release
+          if-no-files-found: error
+          retention-days: 14
+
   image:
     name: Production image (${{ matrix.platform }})
-    needs: test
+    needs: [test, browser]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -145,13 +182,13 @@ jobs:
             tag: annotated-ci-arm64
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca # v3.9.0
       - name: Build production image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
         with:
           context: .
           platforms: ${{ matrix.platform }}
@@ -221,6 +258,7 @@ jobs:
             --env "PUBLIC_ORIGIN=http://${APP_CONTAINER}:8787" \
             --env "APP_ORIGIN=http://${APP_CONTAINER}:8787" \
             --env "CORS_ORIGIN=http://${APP_CONTAINER}:8787" \
+            --env CHROME_EXTENSION_IDS=omlikcdpcdhfmdojdalfdeihgjmgikkg \
             --env AUTH_REQUIRED=true \
             --env GOOGLE_CLIENT_ID=ci-google-client \
             --env GOOGLE_CLIENT_SECRET=ci-google-secret \
