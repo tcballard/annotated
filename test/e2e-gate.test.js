@@ -60,6 +60,12 @@ test('the Gate B flow names every acceptance-critical browser behaviour', async 
   assert.doesNotMatch(workerControl, /context\.pages\(\)\[0\]/, 'worker control must not select an arbitrary transient page');
   assert.match(workerControl, /RETRY_PENDING/, 'the lifecycle comment must name the product wake path');
   assert.match(spec, /workerAfter\)\.not\.toBe\(workerBefore\)/, 'a fresh worker JS context must be observed');
+  const workerStop = spec.indexOf('await stopExtensionServiceWorker');
+  const workerRetry = spec.indexOf("panel.locator('#queueRetry').click()", workerStop);
+  const nonceProof = spec.indexOf('context.serviceWorkers().filter', workerRetry);
+  assert.ok(workerStop < workerRetry && workerRetry < nonceProof, 'the worker must be stopped and woken before its replacement context is proved');
+  assert.match(spec, /if \(nonce !== workerBefore\)/, 'worker recovery must prove a fresh JavaScript context even when Chromium reuses the protocol target');
+  assert.doesNotMatch(spec.slice(workerStop, nonceProof), /waitForEvent\('serviceworker'/, 'worker recovery must not require Playwright to emit a replacement Worker object');
   assert.match(spec, /gate-b-browser-receipt\.json/);
   assert.match(spec, /'extension\.side_panel\.native_opened': 1/);
   assert.match(spec, /'extension\.identity\.expected_id_verified': 1/);
@@ -125,6 +131,7 @@ test('release-grade browser evidence has configurable reports, captures, logs, v
   }
   assert.match(spec, /recordVideo:/);
   assert.match(spec, /gate-b-flow-video/);
+  assert.ok(spec.indexOf('panelVideo.saveAs(videoPath)') < spec.indexOf('await context?.close()'), 'video saving must be registered before the persistent context finalizes it');
   assert.match(spec, /context\.tracing\.start/);
   assert.match(spec, /Gate B trace finalization failed/);
   assert.match(spec, /Gate B video finalization failed/);

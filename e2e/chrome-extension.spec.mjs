@@ -364,12 +364,26 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     // with a waiter rejected later by Playwright teardown.
     await stopExtensionServiceWorker({ context, extensionId, controlPage: contentPage });
     await app.start();
-    const replacementWorkerCreated = context.waitForEvent('serviceworker', {
-      predicate: (candidate) => candidate !== workerForSuspension && candidate.url() === workerForSuspension.url(),
-      timeout: 20_000,
-    });
     await panel.locator('#queueRetry').click();
-    const recoveredWorker = await replacementWorkerCreated;
+    // Chromium may reuse Playwright's Worker handle when it creates the new
+    // MV3 execution context, so a second `serviceworker` event is not a stable
+    // lifecycle signal. The per-context nonce proves the stopped JavaScript
+    // world was replaced whether the protocol target was reused or recreated.
+    let recoveredWorker = null;
+    await expect.poll(async () => {
+      const candidates = context.serviceWorkers().filter((candidate) => candidate.url() === workerForSuspension.url());
+      for (const candidate of candidates) {
+        try {
+          const nonce = await workerContextNonce(candidate);
+          if (nonce !== workerBefore) {
+            recoveredWorker = candidate;
+            return nonce;
+          }
+        } catch { /* the stopped context is not evaluable yet */ }
+      }
+      return workerBefore;
+    }, { timeout: 20_000 }).not.toBe(workerBefore);
+    expect(recoveredWorker).toBeTruthy();
     evidence.wireWorker(recoveredWorker);
     await expect.poll(async () => (await extensionStorageSnapshot(recoveredWorker)).local.annotatedPendingCaptures?.length || 0, { timeout: 20_000 }).toBe(0);
     const workerAfter = await workerContextNonce(recoveredWorker);
@@ -441,14 +455,17 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
         evidenceFinalizationErrors.push(new Error(`Gate B trace finalization failed: ${error.message}`, { cause: error }));
       }
     } else if (flowCompleted) evidenceFinalizationErrors.push(new Error('Gate B completed without starting a trace.'));
+    // Register the artifact copy while the page still owns its Video handle;
+    // Playwright resolves it only after context.close() finalizes the WebM.
+    const pendingVideoSave = panelVideo
+      ? panelVideo.saveAs(videoPath).then(() => null, (error) => error)
+      : null;
     await context?.close().catch(() => {});
-    if (panelVideo) {
-      try {
-        await panelVideo.saveAs(videoPath);
+    if (pendingVideoSave) {
+      const videoError = await pendingVideoSave;
+      if (!videoError) {
         await testInfo.attach('gate-b-flow-video', { path: videoPath, contentType: 'video/webm' });
-      } catch (error) {
-        evidenceFinalizationErrors.push(new Error(`Gate B video finalization failed: ${error.message}`, { cause: error }));
-      }
+      } else evidenceFinalizationErrors.push(new Error(`Gate B video finalization failed: ${videoError.message}`, { cause: videoError }));
     } else if (flowCompleted) evidenceFinalizationErrors.push(new Error('Gate B completed without a panel video handle.'));
     await fixture.close().catch(() => {});
     const serverLogPath = testInfo.outputPath('app-server.log');
