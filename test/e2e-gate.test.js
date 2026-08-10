@@ -54,9 +54,9 @@ test('the Gate B flow names every acceptance-critical browser behaviour', async 
 
   const workerControl = await read('lib/chrome-extension.mjs');
   assert.match(workerControl, /ServiceWorker\.stopWorker/);
-  assert.match(workerControl, /browserControl\.newBrowserCDPSession\(\)/, 'worker control must use a browser-target CDP session');
-  assert.match(spec, /--remote-debugging-address=127\.0\.0\.1/, 'the CDP control endpoint must remain loopback-only');
-  assert.match(spec, /chromium\.connectOverCDP/, 'the persistent browser must expose browser-target CDP control');
+  assert.match(workerControl, /context\.newCDPSession\(controlPage\)/, 'worker control must use the explicit content-page target');
+  assert.match(spec, /controlPage: contentPage/, 'the lifecycle gate must bind CDP to the known-live controlled article tab');
+  assert.doesNotMatch(workerControl, /context\.pages\(\)\[0\]/, 'worker control must not select an arbitrary transient page');
   assert.match(workerControl, /RETRY_PENDING/, 'the lifecycle comment must name the product wake path');
   assert.match(spec, /workerAfter\)\.not\.toBe\(workerBefore\)/, 'a fresh worker JS context must be observed');
   assert.match(spec, /gate-b-browser-receipt\.json/);
