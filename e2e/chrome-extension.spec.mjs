@@ -114,6 +114,13 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
   expect(packaged.manifest.side_panel.default_path).toBe('sidepanel.html');
   expect(expectedExtensionId).toMatch(/^[a-p]{32}$/);
   const fixture = await startFixtureServer();
+  const controlledSourceOrigin = 'https://annotated-e2e.invalid';
+  const articleSourceUrl = `${controlledSourceOrigin}/article`;
+  const playerSourceUrl = `${controlledSourceOrigin}/player.mp4`;
+  const [articleFixture, playerFixture] = await Promise.all([
+    readFile(path.join(repoRoot, 'e2e', 'fixtures', 'article.html'), 'utf8'),
+    readFile(path.join(repoRoot, 'e2e', 'fixtures', 'player.html'), 'utf8'),
+  ]);
   const evidence = createEvidenceRecorder({ testInfo });
   let context;
   let app;
@@ -140,6 +147,13 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
       ],
     });
     evidence.wireContext(context);
+    await context.route(`${controlledSourceOrigin}/**`, (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      if (pathname === '/article') return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: articleFixture });
+      if (pathname === '/player.mp4') return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: playerFixture });
+      if (pathname === '/favicon.ico') return route.fulfill({ status: 204, body: '' });
+      return route.fulfill({ status: 404, contentType: 'text/plain; charset=utf-8', body: 'Controlled source fixture not found.' });
+    });
     await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
     traceStarted = true;
     const worker = await waitForServiceWorker(context);
@@ -157,7 +171,7 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     await configureExtension(worker, { apiOrigin: app.origin });
 
     const contentPage = context.pages()[0] || await context.newPage();
-    await contentPage.goto(`${fixture.origin}/article`);
+    await contentPage.goto(articleSourceUrl);
     const panelUsableStarted = evidence.timer();
     const { panel, hostReceipt } = await openActualSidePanel({ context, extensionId, targetPage: contentPage });
     panelVideo = panel.video();
@@ -170,20 +184,18 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     // Loopback is intentionally rejected by the production SSRF policy. This
     // makes the browser timing a controlled fallback-resolution measurement,
     // not evidence that a remote source/provider was fetched successfully.
-    const sourceResolutionProof = await panel.evaluate(async ({ origin, sourceUrl }) => {
-      const response = await fetch(`${origin}/api/sources/resolve`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url: sourceUrl }),
-      });
-      const body = await response.json();
-      return {
-        status: response.status,
-        canonicalUrl: body.source?.canonicalUrl || null,
-        processing: body.source?.processing || null,
-        error: body.source?.error || body.error || null,
-      };
-    }, { origin: app.origin, sourceUrl: `${fixture.origin}/article` });
+    const sourceResolutionResponse = await fetch(`${app.origin}/api/sources/resolve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: `${fixture.origin}/article` }),
+    });
+    const sourceResolutionBody = await sourceResolutionResponse.json();
+    const sourceResolutionProof = {
+      status: sourceResolutionResponse.status,
+      canonicalUrl: sourceResolutionBody.source?.canonicalUrl || null,
+      processing: sourceResolutionBody.source?.processing || null,
+      error: sourceResolutionBody.source?.error || sourceResolutionBody.error || null,
+    };
     expect(sourceResolutionProof.status).toBe(400);
     expect(sourceResolutionProof.canonicalUrl).toBeNull();
     expect(sourceResolutionProof.processing).toBeNull();
@@ -268,7 +280,7 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     await panel.locator('.post .act.primary').first().click();
     const articleOriginal = await articleOriginalCreated;
     await articleOriginal.waitForLoadState('domcontentloaded');
-    expect(articleOriginal.url()).toContain(`${fixture.origin}/article#:~:text=`);
+    expect(articleOriginal.url()).toContain(`${articleSourceUrl}#:~:text=`);
     await articleOriginal.close();
 
     // Claim entry is the actual web-product modal on the annotation produced
@@ -287,7 +299,7 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
 
     // The fixture uses a real <video> element with a deterministic, locally
     // owned clock. Detection/marking/preview are the packaged scripting path.
-    await contentPage.goto(`${fixture.origin}/player`);
+    await contentPage.goto(playerSourceUrl);
     await expect(panel.locator('#typeSelect')).toHaveValue('video');
     await contentPage.evaluate(() => window.annotatedFixturePlayer.setTime(12));
     await panel.locator('#bayPrimary').click();
@@ -318,13 +330,13 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     await panel.locator('.post .act.primary').first().click();
     const videoOriginal = await videoOriginalCreated;
     await videoOriginal.waitForLoadState('domcontentloaded');
-    expect(videoOriginal.url()).toMatch(new RegExp(`^${fixture.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/player#t=1[12]$`));
+    expect(videoOriginal.url()).toMatch(new RegExp(`^${playerSourceUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}#t=1[12]$`));
     await videoOriginal.close();
     await contentPage.bringToFront();
 
     // Queue on a real connection failure, terminate the real MV3 worker,
     // restart the backend, then wake a fresh worker through Retry now.
-    await contentPage.goto(`${fixture.origin}/article?offline-queue=1`);
+    await contentPage.goto(`${articleSourceUrl}?offline-queue=1`);
     await expect(panel.locator('#typeSelect')).toHaveValue('article');
     await selectFixturePassage(contentPage);
     await panel.locator('#grabSelection').click();
