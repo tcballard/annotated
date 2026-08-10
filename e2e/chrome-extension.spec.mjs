@@ -299,7 +299,8 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
 
     // The fixture uses a real <video> element with a deterministic, locally
     // owned clock. Detection/marking/preview are the packaged scripting path.
-    await contentPage.goto(playerSourceUrl);
+    await contentPage.goto(playerSourceUrl, { waitUntil: 'domcontentloaded' });
+    await panel.locator('#tab-capture').click();
     await expect(panel.locator('#typeSelect')).toHaveValue('video');
     await contentPage.evaluate(() => window.annotatedFixturePlayer.setTime(12));
     await panel.locator('#bayPrimary').click();
@@ -336,7 +337,8 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
 
     // Queue on a real connection failure, terminate the real MV3 worker,
     // restart the backend, then wake a fresh worker through Retry now.
-    await contentPage.goto(`${articleSourceUrl}?offline-queue=1`);
+    await contentPage.goto(`${articleSourceUrl}?offline-queue=1`, { waitUntil: 'domcontentloaded' });
+    await panel.locator('#tab-capture').click();
     await expect(panel.locator('#typeSelect')).toHaveValue('article');
     await selectFixturePassage(contentPage);
     await panel.locator('#grabSelection').click();
