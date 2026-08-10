@@ -70,6 +70,8 @@ jobs:
           exit 1
       - name: Build web app
         run: npm run build
+      - name: Verify release claims and downloadable artifact
+        run: npm run check:release-truth
       - name: Run tests
         run: npm test
       - name: Check JavaScript syntax
@@ -84,7 +86,7 @@ jobs:
         run: |
           package_version="$(node -p 'require("./extension/manifest.json").version')"
           package_path="annotated-extension-v${package_version}.zip"
-          test "$(unzip -Z1 "$package_path" | wc -l | tr -d ' ')" = 25
+          test "$(unzip -Z1 "$package_path" | grep -vc '/$')" = 24
           test "$(unzip -Z1 "$package_path" | grep -c '^clip-range.js$')" = 1
           if unzip -Z1 "$package_path" | grep -E '(^|/)(\.env|data/|node_modules/|dist/)'; then
             echo "runtime extension package contains development files" >&2

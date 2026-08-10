@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-08-10",
+  "canonicalOrigin": "https://annotated-staging.up.railway.app",
+  "distribution": {
+    "store": {
+      "status": "not-submitted",
+      "label": "Chrome Web Store",
+      "evidenceUrl": "https://github.com/tcballard/annotated/blob/main/docs/CHROMEWEBSTORE.md"
+    },
+    "directArtifact": {
+      "path": "/release/annotated-extension-v0.1.0.zip",
+      "checksumPath": "/release/annotated-extension-v0.1.0.zip.sha256",
+      "manifestPath": "/release/release.json"
+    }
+  },
+  "capabilities": [
+    { "id": "side-panel", "label": "Chrome side panel", "summary": "Manifest V3 side panel with Capture, Recent, Following and This page modes.", "implemented": true, "stagingDeployed": true, "browserVerified": false, "evidenceUrl": "https://github.com/tcballard/annotated/tree/main/extension", "blocker": "Browser E2E gate is still open." },
+    { "id": "capture", "label": "Passage, screenshot and media capture", "summary": "Text-quote anchors, visible-tab screenshots and bounded media ranges share one capture model.", "implemented": true, "stagingDeployed": true, "browserVerified": false, "evidenceUrl": "https://github.com/tcballard/annotated/tree/main/extension", "blocker": "Browser E2E gate is still open." },
+    { "id": "hosted-clips", "label": "Hosted 240p clips", "summary": "The server transcodes, probes and hosts bounded excerpts rather than embedding a third-party player.", "implemented": true, "stagingDeployed": true, "providerVerified": true, "evidenceUrl": "https://github.com/tcballard/annotated/blob/main/server/media-worker.js" },
+    { "id": "duration", "label": "90-second server limit", "summary": "The API, transcoder and output probe enforce the same maximum duration.", "implemented": true, "stagingDeployed": true, "evidenceUrl": "https://github.com/tcballard/annotated/blob/main/server/validation.js" },
+    { "id": "commentary", "label": "Text and audio commentary", "summary": "Annotations accept written notes or staged recorded audio commentary.", "implemented": true, "stagingDeployed": true, "browserVerified": false, "evidenceUrl": "https://github.com/tcballard/annotated/blob/main/src/main.js", "blocker": "Browser E2E gate is still open." },
+    { "id": "source-links", "label": "Original-source deep links", "summary": "Every annotation preserves a source link and anchors to the passage or media time when possible.", "implemented": true, "stagingDeployed": true, "evidenceUrl": "https://github.com/tcballard/annotated/blob/main/src/deep-link.js" },
+    { "id": "landing-pages", "label": "Shareable landing pages", "summary": "Each annotation has a server-rendered permalink, social metadata and generated share card.", "implemented": true, "stagingDeployed": true, "evidenceUrl": "https://github.com/tcballard/annotated/blob/main/server/permalink-meta.js" },
+    { "id": "social", "label": "Feed, follows and responses", "summary": "Public discovery, profiles, source hubs, follows, likes and responses form the social proof loop.", "implemented": true, "stagingDeployed": true, "evidenceUrl": "https://github.com/tcballard/annotated/blob/main/server/index.js" },
+    { "id": "oauth", "label": "Google and X sign-in", "summary": "Provider availability is reported from the running deployment, never assumed by the UI.", "implemented": true, "stagingDeployed": true, "providerVerified": false, "evidenceUrl": "https://github.com/tcballard/annotated/blob/main/server/auth.js", "blocker": "Provider credentials are verified at runtime." },
+    { "id": "claims", "label": "Rights claims and takedowns", "summary": "Claims persist, deduplicate and can resolve into a tombstone with hosted assets removed.", "implemented": true, "stagingDeployed": true, "evidenceUrl": "https://github.com/tcballard/annotated/blob/main/server/moderation.js" },
+    { "id": "sources", "label": "Video, podcasts and articles", "summary": "One annotation model covers YouTube, direct media, podcast enclosures and article passages.", "implemented": true, "stagingDeployed": true, "providerVerified": true, "evidenceUrl": "https://github.com/tcballard/annotated/blob/main/server/source-resolver.js" }
+  ]
+}

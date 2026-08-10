@@ -5,3 +5,5 @@ dist/
 data/
 backups/
 annotated-extension-v*.zip
+annotated-extension-v*.zip.sha256
+public/release/

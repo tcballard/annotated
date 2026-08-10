@@ -27,6 +27,7 @@ import { findIdempotentAnnotation } from './idempotency.js';
 import { findActiveClaim, findActiveClaimByContact, validateClaimTransition } from './moderation.js';
 import { annotationAssetIds, canEditCommentary, removalTombstone, validateModerationAction } from './annotation-lifecycle.js';
 import { resolveCorsOrigin } from './cors.js';
+import { getCapabilities } from './capabilities.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
@@ -95,6 +96,7 @@ const publicUser = (user) => user ? {
   displayName: user.displayName,
   avatarUrl: user.avatarUrl || null,
   bio: user.bio || '',
+  isDemo: Boolean(user.isDemo || user.provider === 'demo'),
 } : null;
 
 // Interactions require the actor to be able to see the annotation at all —
@@ -124,6 +126,10 @@ const withComments = (annotation, store, viewerId = '') => ({
 
 const handleApi = async (request, response, pathname) => {
   if (request.method === 'GET' && pathname === '/api/health') return send(response, 200, { status: 'ok', version: releaseVersion, persistence: storageDescription(), metrics: metricsSnapshot() });
+  if (request.method === 'GET' && pathname === '/api/capabilities') {
+    const store = await readStore();
+    return send(response, 200, await getCapabilities({ publicOrigin, releaseVersion, providers: providerStatus(), store }));
+  }
   if (request.method === 'GET' && pathname === '/api/ready') {
     try {
       await checkStore();
@@ -615,7 +621,7 @@ const handleApi = async (request, response, pathname) => {
   if (request.method === 'GET' && pathname === '/api/transparency') {
     const store = await readStore();
     const counts = { total: 0, open: 0, in_review: 0, resolved: 0, rejected: 0 };
-    for (const claim of store.claims || []) {
+    for (const claim of (store.claims || []).filter((item) => !item.isDemo)) {
       counts.total += 1;
       if (counts[claim.status] !== undefined) counts[claim.status] += 1;
     }
@@ -629,7 +635,7 @@ const handleApi = async (request, response, pathname) => {
         removedAt: item.removedAt || null,
         reason: item.removedReason || 'rights-claim',
       }));
-    return send(response, 200, { claims: counts, takedowns });
+    return send(response, 200, { claims: counts, demonstrationClaims: (store.claims || []).filter((item) => item.isDemo).length, takedowns });
   }
 
   if (request.method === 'GET' && pathname === '/api/claims') {
@@ -704,7 +710,7 @@ const handleApi = async (request, response, pathname) => {
   return null;
 };
 
-const contentType = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' };
+const contentType = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json', '.zip': 'application/zip', '.sha256': 'text/plain; charset=utf-8' };
 
 const serveMedia = async (response, id) => {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return notFound(response);
@@ -919,7 +925,8 @@ const serveStatic = async (request, response, pathname) => {
   try {
     const info = await stat(candidate);
     if (!info.isFile()) return notFound(response);
-    response.writeHead(200, { 'content-type': contentType[path.extname(candidate)] || 'application/octet-stream', ...securityHeaders() });
+    const releaseHeaders = pathname.startsWith('/release/') ? { 'cache-control': 'public, max-age=300, must-revalidate' } : {};
+    response.writeHead(200, { 'content-type': contentType[path.extname(candidate)] || 'application/octet-stream', ...releaseHeaders, ...securityHeaders() });
     return createReadStream(candidate).pipe(response);
   } catch {
     if (request.method === 'GET' && !path.extname(pathname)) return serveAppShell(response);

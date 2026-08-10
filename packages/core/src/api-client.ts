@@ -39,6 +39,7 @@ export const createApiClient = ({ origin = '', fetchFn }: ApiClientOptions = {})
 
   return {
     health: () => apiRequest('/api/health'),
+    capabilities: () => apiRequest('/api/capabilities'),
     providers: () => apiRequest('/api/auth/providers'),
     me: () => apiRequest('/api/me'),
     logout: () => apiRequest('/api/auth/logout', { method: 'POST' }),

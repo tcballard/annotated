@@ -39,10 +39,13 @@ npm run dev:server   # API on :8787
 npm run dev          # web app — open the Vite URL it prints; /api proxies to the server
 ```
 
-For the side panel, open `chrome://extensions`, enable Developer mode, choose
-**Load unpacked**, and select [`extension/`](extension/). It talks to Railway
-staging by default; point it at `http://localhost:8787` in the extension
-options only when you want the local backend.
+For the side panel, download the
+[checksummed staging build](https://annotated-staging.up.railway.app/release/annotated-extension-v0.1.0.zip),
+unzip it, open `chrome://extensions`, enable Developer mode, choose **Load
+unpacked**, and select that folder. Repository contributors can select
+[`extension/`](extension/) directly. It talks to Railway staging by default;
+point it at `http://localhost:8787` in the extension options only when you want
+the local backend.
 
 Staging is live at
 [`annotated-staging.up.railway.app`](https://annotated-staging.up.railway.app),
@@ -115,8 +118,15 @@ seed:demo` fills the operator slots
 ([`scripts/seed-demo.json`](scripts/seed-demo.json)), and `npm run
 seed:personas` adds four demo annotators with real-source annotations — every
 `#:~:text=` deep link lands on the quoted words — plus cross-follows,
-responses, and likes. Both are idempotent and store-level, and the personas
-refuse to run in production without `ANNOTATED_SEED_PERSONAS=allow`.
+responses, and likes. Canonical staging runs `npm run seed:proof` during deploy
+to add labelled screenshot, audio-note, video, podcast and claim-path proof.
+These records are explicitly marked as demonstration data and do not inflate
+real claim totals. All seeders are idempotent and guarded.
+
+Public capability, provider, deployment and distribution claims come from
+[`config/capabilities.json`](config/capabilities.json) and the runtime
+[`/api/capabilities`](https://annotated-staging.up.railway.app/api/capabilities)
+response. The Chrome Web Store status remains **not submitted**.
 
 ## Where the line is
 

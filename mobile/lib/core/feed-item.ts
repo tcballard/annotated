@@ -88,6 +88,7 @@ export type FeedItem = {
   screenshotUrl: string;
   editedAt: string;
   createdAt: string;
+  isDemo: boolean;
 };
 
 export const annotationToFeedItem = (annotation: AnnotationRecord): FeedItem => ({
@@ -128,6 +129,7 @@ export const annotationToFeedItem = (annotation: AnnotationRecord): FeedItem => 
   screenshotUrl: annotation.screenshotUrl || '',
   editedAt: annotation.editedAt || '',
   createdAt: annotation.createdAt || '',
+  isDemo: Boolean(annotation.isDemo || annotation.author?.isDemo),
 });
 
 export const chipFor = (item: Pick<FeedItem, 'type' | 'anchorParagraph' | 'clipStart' | 'clipEnd'>): string =>

@@ -8,8 +8,9 @@ take if you can — the product's pacing is part of the pitch.
 ## Setup (before recording)
 
 - Chrome with the extension loaded and pinned, side panel closed.
-- Signed in as your demo account; staging seeded with the personas
-  (`npm run seed:personas`) so the feed, follows, and responses are alive.
+- Signed in as your demo account; canonical staging runs `npm run seed:proof`
+  during deploy so the labelled proof feed, media, follows, responses and
+  demonstration claim path are alive.
 - The personas aimed at YOUR account, so notifications and the bell badge
   read lived-in. Sign in on staging once, publish at least one
   annotation, then run against staging's database (your drawer shows

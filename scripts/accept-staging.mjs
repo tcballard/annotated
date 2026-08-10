@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 
 const configuredOrigin = process.env.STAGING_ORIGIN || process.env.PUBLIC_ORIGIN || 'https://annotated-staging.up.railway.app';
 const origin = new URL(configuredOrigin);
@@ -94,6 +95,23 @@ assert.equal(providers.required, true);
 assert.deepEqual(Object.keys(providers.providers || {}).sort(), ['google', 'x']);
 assert.ok(Object.values(providers.providers).some(Boolean), 'at least one OAuth provider must be enabled');
 
+let capabilities = await json('/api/capabilities');
+for (let attempt = 0; !capabilities.proofWorld?.ready && attempt < 24; attempt += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 5_000));
+  capabilities = await json('/api/capabilities');
+}
+assert.equal(capabilities.isCanonicalDeployment, true, 'acceptance must target the canonical staging deployment');
+assert.equal(capabilities.distribution?.store?.status, 'not-submitted', 'Store status must match the release record');
+assert.deepEqual(capabilities.providers, providers.providers, 'provider state must have one runtime source');
+assert.equal(capabilities.distribution?.directArtifact?.available, true, 'the exact extension build must be downloadable');
+assert.equal(capabilities.proofWorld?.ready, true, `proof world is incomplete: ${(capabilities.proofWorld?.missing || []).join(', ')}`);
+const artifactResponse = await fetch(new URL(capabilities.distribution.directArtifact.path, origin));
+assert.equal(artifactResponse.status, 200, 'direct extension artifact must download');
+assert.equal(artifactResponse.headers.get('content-type'), 'application/zip');
+const artifactBytes = Buffer.from(await artifactResponse.arrayBuffer());
+assert.equal(createHash('sha256').update(artifactBytes).digest('hex'), capabilities.distribution.directArtifact.sha256, 'downloaded artifact must match its published checksum');
+checks.push({ path: capabilities.distribution.directArtifact.path, status: artifactResponse.status, bytes: artifactBytes.length });
+
 const oauthPreflight = [];
 for (const [provider, enabled] of Object.entries(providers.providers)) {
   if (!enabled) continue;
@@ -143,6 +161,9 @@ console.log(JSON.stringify({
   version: health.version,
   persistence: health.persistence,
   providerState: providers.providers,
+  release: capabilities.release,
+  proofWorld: capabilities.proofWorld,
+  directArtifact: { version: capabilities.distribution.directArtifact.version, sha256: capabilities.distribution.directArtifact.sha256, bytes: artifactBytes.length },
   oauthPreflight,
   sourcePreflight,
   feedAnnotations: feed.annotations.length,
