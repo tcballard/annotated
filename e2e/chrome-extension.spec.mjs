@@ -146,7 +146,13 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     evidence.wireWorker(worker);
     const extensionId = extensionIdFromWorker(worker);
     expect(extensionId).toBe(expectedExtensionId);
-    app = createAppServer({ repoRoot, dataDirectory, port: await freePort(), extensionId });
+    app = createAppServer({
+      repoRoot,
+      dataDirectory,
+      port: await freePort(),
+      extensionId,
+      oauthAuthorizeUrl: `${fixture.origin}/oauth-cancel`,
+    });
     await app.start();
     await configureExtension(worker, { apiOrigin: app.origin });
 
@@ -186,12 +192,6 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     // OAuth cancellation uses Chrome's real identity window against a local,
     // repository-owned provider page. Credentialed provider verification is
     // deliberately a separate run and never makes CI depend on Google.
-    const oauthFixture = await readFile(path.join(repoRoot, 'e2e', 'fixtures', 'oauth-cancel.html'), 'utf8');
-    await context.route('https://accounts.google.com/**', (route) => route.fulfill({
-      status: 200,
-      contentType: 'text/html; charset=utf-8',
-      body: oauthFixture,
-    }));
     await expect(panel.locator('#signInOpen')).toBeVisible();
     await panel.locator('#signInOpen').click();
     await panel.evaluate(() => {
@@ -212,7 +212,7 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     const oauthPageCreated = context.waitForEvent('page');
     await panel.locator('[data-auth="google"]').click();
     const oauthPage = await oauthPageCreated;
-    await expect.poll(() => oauthPage.url()).toMatch(/^https:\/\/accounts\.google\.com\//);
+    await expect.poll(() => oauthPage.url()).toMatch(new RegExp(`^${fixture.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/oauth-cancel(?:\\?|$)`));
     await expect(oauthPage.getByRole('heading', { name: 'Controlled OAuth cancellation fixture' })).toBeVisible();
     await expect.poll(() => panel.evaluate(() => window.__annotatedE2eAuthFlow?.status)).toBe('running');
     await oauthPage.close();

@@ -16,7 +16,7 @@ const waitForExit = (child) => new Promise((resolve) => {
   child.once('exit', resolve);
 });
 
-export const createAppServer = ({ repoRoot, dataDirectory, port, extensionId }) => {
+export const createAppServer = ({ repoRoot, dataDirectory, port, extensionId, oauthAuthorizeUrl }) => {
   const origin = `http://127.0.0.1:${port}`;
   let child = null;
   let output = '';
@@ -44,6 +44,7 @@ export const createAppServer = ({ repoRoot, dataDirectory, port, extensionId }) 
         GOOGLE_CLIENT_SECRET: 'annotated-e2e-google-secret',
         X_CLIENT_ID: 'annotated-e2e-x-client',
         X_CLIENT_SECRET: 'annotated-e2e-x-secret',
+        ANNOTATED_E2E_OAUTH_AUTHORIZE_URL: oauthAuthorizeUrl,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });

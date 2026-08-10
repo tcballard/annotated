@@ -41,7 +41,7 @@ test('the Gate B flow names every acceptance-critical browser behaviour', async 
     ['player detection', /toHaveValue\('video'\)/],
     ['mark in and out', /toHaveText\('Mark out'\)[\s\S]*toHaveText\('Play selection'\)/],
     ['audio permission denial', /#audioRecord[\s\S]*permission\|denied\|not allowed/],
-    ['OAuth cancellation', /accounts\\\.google\\\.com[\s\S]*oauthPage\.close/],
+    ['OAuth cancellation', /oauthAuthorizeUrl[\s\S]*oauth-cancel[\s\S]*oauthPage\.close/],
     ['offline queue', /annotatedPendingCaptures/],
     ['service-worker suspension', /stopExtensionServiceWorker/],
     ['draft restoration', /panel\.reload\(\)[\s\S]*#passageText[\s\S]*#note/],

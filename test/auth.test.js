@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
-import { authIsRequired, parseCookies, providerStatus, startOAuth } from '../server/auth.js';
+import { authIsRequired, parseCookies, providerAuthorizeUrl, providerStatus, startOAuth } from '../server/auth.js';
 
 const envSnapshot = () => ({ ...process.env });
 const restoreEnv = (snapshot) => {
@@ -34,6 +34,22 @@ test('OAuth start creates a PKCE challenge and short-lived state cookies', async
     assert.equal(result.cookies.length, 2);
     const stateCookie = parseCookies(result.cookies[0]);
     assert.ok(stateCookie.annotated_oauth_state);
+  } finally {
+    restoreEnv(saved);
+  }
+});
+
+test('the controlled OAuth provider is loopback-only and disabled in production', () => {
+  const saved = envSnapshot();
+  try {
+    process.env.NODE_ENV = 'development';
+    process.env.ANNOTATED_E2E_OAUTH_AUTHORIZE_URL = 'http://127.0.0.1:4321/oauth-cancel';
+    assert.equal(providerAuthorizeUrl('google'), 'http://127.0.0.1:4321/oauth-cancel');
+    process.env.ANNOTATED_E2E_OAUTH_AUTHORIZE_URL = 'https://provider.example/oauth';
+    assert.throws(() => providerAuthorizeUrl('google'), /HTTP loopback URL/);
+    process.env.ANNOTATED_E2E_OAUTH_AUTHORIZE_URL = 'http://127.0.0.1:4321/oauth-cancel';
+    process.env.NODE_ENV = 'production';
+    assert.throws(() => providerAuthorizeUrl('google'), /disabled in production/);
   } finally {
     restoreEnv(saved);
   }
