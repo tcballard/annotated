@@ -355,12 +355,15 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     const workerForSuspension = await activeExtensionWorker({ context, extensionId, wakePage: panel });
     evidence.wireWorker(workerForSuspension);
     const workerBefore = await workerContextNonce(workerForSuspension);
+    // Stop first, before arming the replacement waiter. If CDP cannot stop the
+    // worker, this preserves the real lifecycle error instead of masking it
+    // with a waiter rejected later by Playwright teardown.
+    await stopExtensionServiceWorker({ context, extensionId, page: panel });
+    await app.start();
     const replacementWorkerCreated = context.waitForEvent('serviceworker', {
       predicate: (candidate) => candidate !== workerForSuspension && candidate.url() === workerForSuspension.url(),
       timeout: 20_000,
     });
-    await stopExtensionServiceWorker({ context, extensionId });
-    await app.start();
     await panel.locator('#queueRetry').click();
     const recoveredWorker = await replacementWorkerCreated;
     evidence.wireWorker(recoveredWorker);
@@ -425,34 +428,3 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     await testInfo.attach('gate-b-browser-receipt', { path: receiptPath, contentType: 'application/json' });
     flowCompleted = true;
   } finally {
-    await app?.stop().catch(() => {});
-    if (traceStarted) {
-      try {
-        await context?.tracing.stop({ path: tracePath });
-        await testInfo.attach('gate-b-trace', { path: tracePath, contentType: 'application/zip' });
-      } catch (error) {
-        evidenceFinalizationErrors.push(new Error(`Gate B trace finalization failed: ${error.message}`, { cause: error }));
-      }
-    } else if (flowCompleted) evidenceFinalizationErrors.push(new Error('Gate B completed without starting a trace.'));
-    await context?.close().catch(() => {});
-    if (panelVideo) {
-      try {
-        await panelVideo.saveAs(videoPath);
-        await testInfo.attach('gate-b-flow-video', { path: videoPath, contentType: 'video/webm' });
-      } catch (error) {
-        evidenceFinalizationErrors.push(new Error(`Gate B video finalization failed: ${error.message}`, { cause: error }));
-      }
-    } else if (flowCompleted) evidenceFinalizationErrors.push(new Error('Gate B completed without a panel video handle.'));
-    await fixture.close().catch(() => {});
-    const serverLogPath = testInfo.outputPath('app-server.log');
-    await writeFile(serverLogPath, app?.logs() || '');
-    await testInfo.attach('app-server-log', { path: serverLogPath, contentType: 'text/plain' });
-    ({ unexpectedConsoleErrors } = await evidence.writeArtifacts());
-    await rm(temporaryRoot, { recursive: true, force: true });
-    if (flowCompleted && unexpectedConsoleErrors.length) {
-      const summary = unexpectedConsoleErrors.slice(0, 5).map((entry) => `${entry.surface}: ${entry.message}`).join(' | ');
-      evidenceFinalizationErrors.push(new Error(`Gate B observed ${unexpectedConsoleErrors.length} unexpected browser runtime error(s): ${summary}`));
-    }
-    if (flowCompleted && evidenceFinalizationErrors.length) throw new AggregateError(evidenceFinalizationErrors, 'Gate B evidence finalization failed.');
-  }
-});

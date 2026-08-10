@@ -54,6 +54,8 @@ test('the Gate B flow names every acceptance-critical browser behaviour', async 
 
   const workerControl = await read('lib/chrome-extension.mjs');
   assert.match(workerControl, /ServiceWorker\.stopWorker/);
+  assert.match(workerControl, /page && !page\.isClosed\(\)/, 'worker control must use a caller-owned live page');
+  assert.doesNotMatch(workerControl, /newCDPSession\(context\.pages\(\)\[0\]\)/, 'worker control must not select an arbitrary transient page');
   assert.match(workerControl, /RETRY_PENDING/, 'the lifecycle comment must name the product wake path');
   assert.match(spec, /workerAfter\)\.not\.toBe\(workerBefore\)/, 'a fresh worker JS context must be observed');
   assert.match(spec, /gate-b-browser-receipt\.json/);
