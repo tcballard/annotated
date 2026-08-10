@@ -120,8 +120,9 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
   const [articleFixture, playerFixture, clockFixture] = await Promise.all([
     readFile(path.join(repoRoot, 'e2e', 'fixtures', 'article.html'), 'utf8'),
     readFile(path.join(repoRoot, 'e2e', 'fixtures', 'player.html'), 'utf8'),
-    readFile(path.join(repoRoot, 'e2e', 'fixtures', 'clock.webm.b64'), 'utf8').then((value) => Buffer.from(value.trim(), 'base64')),
+    readFile(path.join(repoRoot, 'e2e', 'fixtures', 'clock.webm.b64'), 'utf8').then((value) => value.trim()),
   ]);
+  const playerDocument = playerFixture.replace('clock.webm', `data:video/webm;base64,${clockFixture}`);
   const evidence = createEvidenceRecorder({ testInfo });
   let context;
   let app;
@@ -151,8 +152,7 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     await context.route(`${controlledSourceOrigin}/**`, (route) => {
       const pathname = new URL(route.request().url()).pathname;
       if (pathname === '/article') return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: articleFixture });
-      if (pathname === '/player.mp4') return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: playerFixture });
-      if (pathname === '/clock.webm') return route.fulfill({ status: 200, contentType: 'video/webm', body: clockFixture });
+      if (pathname === '/player.mp4') return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: playerDocument });
       if (pathname === '/favicon.ico') return route.fulfill({ status: 204, body: '' });
       return route.fulfill({ status: 404, contentType: 'text/plain; charset=utf-8', body: 'Controlled source fixture not found.' });
     });
@@ -306,9 +306,11 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     await expect(panel.locator('#typeSelect')).toHaveValue('video');
     await expect.poll(() => contentPage.evaluate(() => window.annotatedFixturePlayer.snapshot().duration)).toBeGreaterThan(20);
     await contentPage.evaluate(() => window.annotatedFixturePlayer.setTime(12));
+    await expect.poll(() => contentPage.evaluate(() => window.annotatedFixturePlayer.snapshot().currentTime)).toBeGreaterThan(11.5);
     await panel.locator('#bayPrimary').click();
     await expect(panel.locator('#bayPrimaryLabel')).toHaveText('Mark out');
     await contentPage.evaluate(() => window.annotatedFixturePlayer.setTime(19));
+    await expect.poll(() => contentPage.evaluate(() => window.annotatedFixturePlayer.snapshot().currentTime)).toBeGreaterThan(18.5);
     await panel.locator('#bayPrimary').click();
     await expect(panel.locator('#bayPrimaryLabel')).toHaveText('Play selection');
     await expect(panel.locator('#durationChip')).toHaveText('0:12–0:19');
