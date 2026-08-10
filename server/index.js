@@ -8,7 +8,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { checkStore, closeStore, incrementOpenCount, readStore, storageDescription, toggleFollow, toggleLike, updateStore } from './store.js';
 import { normalizeAudioMimeType, normalizeImageMimeType, removeStoredMedia, serveStoredMedia, writeIncomingImage, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
-import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
+import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, mediaWorkerExecution, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
 import { afterKeysetCursor, followingFeedRequiresAuth, keysetCursorFor, matchesFeedQuery, matchesFeedUrl, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey, parseKeysetCursor } from './feed.js';
 import { ogCardData, renderOgCardCached } from './og-card.js';
@@ -26,7 +26,7 @@ import { metricsSnapshot, recordRequest } from './observability.js';
 import { findIdempotentAnnotation } from './idempotency.js';
 import { findActiveClaim, findActiveClaimByContact, validateClaimTransition } from './moderation.js';
 import { annotationAssetIds, canEditCommentary, removalTombstone, validateModerationAction } from './annotation-lifecycle.js';
-import { resolveCorsOrigin } from './cors.js';
+import { isChromeExtensionRedirectUrl, resolveCorsOrigin } from './cors.js';
 import { getCapabilities } from './capabilities.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -61,7 +61,7 @@ const oauthErrorRedirect = (request) => {
   try {
     const target = new URL(returnTo);
     const appOrigin = new URL(process.env.APP_ORIGIN || publicOrigin).origin;
-    const extension = target.protocol === 'https:' && target.hostname.endsWith('.chromiumapp.org');
+    const extension = isChromeExtensionRedirectUrl(target);
     if (target.origin !== appOrigin && !extension) return fallback;
     target.searchParams.set('auth', 'error');
     return target.toString();
@@ -993,7 +993,7 @@ server.listen(port, host, () => {
   assertAuthConfiguration();
   getObjectStore();
   console.log(`annotated server listening on http://localhost:${port}`);
-  recoverMediaJobs().catch((error) => console.error('media recovery failed', error));
+  if (mediaWorkerExecution.inProcess) recoverMediaJobs().catch((error) => console.error('media recovery failed', error));
 });
 
 const shutdown = async () => {

@@ -121,14 +121,17 @@ test('unconfigured providers fail instead of emitting fake OAuth URLs', async ()
 
 test('extension OAuth return URLs are constrained to Chromium app redirects', async () => {
   const saved = envSnapshot();
+  const extensionId = 'omlikcdpcdhfmdojdalfdeihgjmgikkg';
   process.env.GOOGLE_CLIENT_ID = 'google-client';
   process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
   process.env.OAUTH_PROVIDERS = 'google';
+  process.env.CHROME_EXTENSION_IDS = extensionId;
   try {
-    const result = await startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://example.chromiumapp.org/annotated-auth');
+    const result = await startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', `https://${extensionId}.chromiumapp.org/annotated-auth`);
     assert.equal(result.cookies.length, 3);
+    await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.chromiumapp.org/annotated-auth'), /return URL is not allowed/);
     await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://evil.example/callback'), /return URL is not allowed/);
-    await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', 'https://example.chromiumapp.org.evil.example/callback'), /return URL is not allowed/);
+    await assert.rejects(() => startOAuth({ headers: {}, socket: { remoteAddress: 'test-client' } }, 'google', `https://${extensionId}.chromiumapp.org.evil.example/callback`), /return URL is not allowed/);
   } finally {
     restoreEnv(saved);
   }
@@ -139,7 +142,7 @@ test('OAuth callback exchanges provider identity and consumes an extension ticke
   const script = `
     const { exchangeExtensionTicket, finishOAuth, parseCookies, startOAuth } = await import('./server/auth.js');
     const request = { headers: {}, socket: { remoteAddress: 'oauth-test' } };
-    const started = await startOAuth(request, 'google', 'https://example.chromiumapp.org/annotated-auth');
+    const started = await startOAuth(request, 'google', 'https://omlikcdpcdhfmdojdalfdeihgjmgikkg.chromiumapp.org/annotated-auth');
     const cookieHeader = started.cookies.join('; ');
     const cookies = parseCookies(cookieHeader);
     globalThis.fetch = async (url) => {
@@ -168,6 +171,7 @@ test('OAuth callback exchanges provider identity and consumes an extension ticke
       GOOGLE_CLIENT_ID: 'google-client',
       GOOGLE_CLIENT_SECRET: 'google-secret',
       OAUTH_PROVIDERS: 'google',
+      CHROME_EXTENSION_IDS: 'omlikcdpcdhfmdojdalfdeihgjmgikkg',
     },
     encoding: 'utf8',
     maxBuffer: 1_000_000,

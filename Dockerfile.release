@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1.7
+
+# This is deliberately an overlay, not a second source build. The base image is
+# the exact production runtime exercised by the protected evidence lane; the
+# named `release` context is the final dist/ tree containing the validated,
+# artifact-bound receipts. Rebuilding from source here would discard them.
+ARG BASE_IMAGE=annotated-release-evidence
+FROM ${BASE_IMAGE}
+
+USER root
+RUN rm -rf /app/dist
+COPY --from=release --chown=annotated:annotated / /app/dist/
+USER annotated

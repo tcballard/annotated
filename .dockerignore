@@ -4,6 +4,8 @@
 node_modules
 data
 dist
+artifacts
+backups
 .env
 .env.*
 !.env.example

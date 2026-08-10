@@ -22,10 +22,14 @@ const filesBelow = async (root, relative = '') => {
   return files;
 };
 
-const sourceEpoch = async () => {
-  if (process.env.SOURCE_DATE_EPOCH) return Number(process.env.SOURCE_DATE_EPOCH);
-  try { return Number((await execFileAsync('git', ['log', '-1', '--format=%ct'], { cwd: projectRoot })).stdout.trim()); }
-  catch { return 1_700_000_000; }
+export const releaseSourceEpoch = async (manifestVersion, env = process.env) => {
+  const release = JSON.parse(await readFile(path.join(projectRoot, 'config/release.json'), 'utf8'));
+  if (release.schemaVersion !== 1 || release.version !== manifestVersion) throw new Error('config/release.json must match the extension version.');
+  if (!Number.isSafeInteger(release.sourceDateEpoch) || release.sourceDateEpoch < 315_532_800) throw new Error('config/release.json sourceDateEpoch must be a valid ZIP-era Unix timestamp.');
+  if (env.SOURCE_DATE_EPOCH !== undefined && Number(env.SOURCE_DATE_EPOCH) !== release.sourceDateEpoch) {
+    throw new Error(`SOURCE_DATE_EPOCH must equal the committed release epoch ${release.sourceDateEpoch}.`);
+  }
+  return release.sourceDateEpoch;
 };
 
 export const packageExtension = async (requestedOutput) => {
@@ -39,13 +43,13 @@ export const packageExtension = async (requestedOutput) => {
     const staged = path.join(temporary, 'extension');
     await cp(extensionRoot, staged, { recursive: true });
     const files = await filesBelow(staged);
-    const timestamp = new Date((await sourceEpoch()) * 1000);
+    const timestamp = new Date((await releaseSourceEpoch(manifest.version)) * 1000);
     for (const relative of files) {
       const filePath = path.join(staged, relative);
       await chmod(filePath, 0o644);
       await utimes(filePath, timestamp, timestamp);
     }
-    await execFileAsync('zip', ['-X', '-q', outputPath, ...files], { cwd: staged, maxBuffer: 10 * 1024 * 1024 });
+    await execFileAsync('zip', ['-X', '-q', outputPath, ...files], { cwd: staged, env: { ...process.env, TZ: 'UTC' }, maxBuffer: 10 * 1024 * 1024 });
     const payload = await readFile(outputPath);
     const sha256 = createHash('sha256').update(payload).digest('hex');
     await writeFile(`${outputPath}.sha256`, `${sha256}  ${path.basename(outputPath)}\n`);

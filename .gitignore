@@ -4,6 +4,7 @@ dist/
 .git-real/
 data/
 backups/
+artifacts/
 annotated-extension-v*.zip
 annotated-extension-v*.zip.sha256
 public/release/

@@ -17,7 +17,7 @@ const pngDimensions = async (file) => {
 test('Manifest V3 extension has a reachable side-panel trigger and local files', async () => {
   const manifest = JSON.parse(await read('manifest.json'));
   assert.equal(manifest.manifest_version, 3);
-  assert.equal(manifest.minimum_chrome_version, '114');
+  assert.equal(manifest.minimum_chrome_version, '116');
   const keyBytes = Buffer.from(manifest.key, 'base64');
   const extensionId = [...createHash('sha256').update(keyBytes).digest().subarray(0, 16)].map((byte) => `${String.fromCharCode(97 + (byte >> 4))}${String.fromCharCode(97 + (byte & 15))}`).join('');
   assert.equal(extensionId, 'omlikcdpcdhfmdojdalfdeihgjmgikkg');

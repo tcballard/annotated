@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { deleteSessionByTokenHash, putSession, readStore, updateStore } from './store.js';
 import { rateLimitAsync } from './rate-limit.js';
+import { isChromeExtensionRedirectUrl } from './cors.js';
 
 const sessionTtlSeconds = Number(process.env.AUTH_SESSION_TTL_SECONDS || 2_592_000);
 const oauthStateTtlSeconds = 600;
@@ -90,7 +91,7 @@ const providerFor = (name) => {
   return provider;
 };
 
-const chromiumReturnUrl = (url) => url.protocol === 'https:' && url.hostname.endsWith('.chromiumapp.org');
+const chromiumReturnUrl = (url) => isChromeExtensionRedirectUrl(url);
 // The mobile shell returns through its custom scheme; the callback carries a
 // one-time ticket exactly like the extension flow.
 const mobileReturnUrl = (url) => url.protocol === 'annotated:' && url.hostname === 'auth';

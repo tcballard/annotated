@@ -9,9 +9,16 @@ import { readStore, updateStore } from './store.js';
 import { assertPublicUrl } from './ssrf.js';
 import { parseSourceUrl } from './source-resolver.js';
 
-const maxConcurrentJobs = Number(process.env.MEDIA_WORKER_CONCURRENCY || 2);
+const processRole = process.env.ANNOTATED_PROCESS_ROLE || (process.env.NODE_ENV === 'production' ? 'api' : 'development');
+const defaultConcurrency = processRole === 'media-worker' ? 2 : process.env.NODE_ENV === 'production' ? 0 : 2;
+const maxConcurrentJobs = Number(process.env.MEDIA_WORKER_CONCURRENCY ?? defaultConcurrency);
+if (!Number.isSafeInteger(maxConcurrentJobs) || maxConcurrentJobs < 0) throw new Error('MEDIA_WORKER_CONCURRENCY must be a non-negative integer.');
+if (processRole === 'media-worker' && maxConcurrentJobs < 1) throw new Error('The standalone media worker requires MEDIA_WORKER_CONCURRENCY to be at least 1.');
+export const mediaWorkerExecution = Object.freeze({ processRole, concurrency: maxConcurrentJobs, inProcess: maxConcurrentJobs > 0 });
 const ytdlpBinary = process.env.YTDLP_BIN || 'yt-dlp';
-const maxAttempts = Math.max(1, Number(process.env.MEDIA_WORKER_MAX_ATTEMPTS || 3));
+const maxAttempts = Number(process.env.MEDIA_WORKER_MAX_ATTEMPTS || 3);
+if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1) throw new Error('MEDIA_WORKER_MAX_ATTEMPTS must be a positive integer.');
+export const mediaWorkerRetryPolicy = Object.freeze({ maxAttempts });
 const retryDelayMs = Math.max(100, Number(process.env.MEDIA_WORKER_RETRY_DELAY_MS || 1500));
 const workerId = process.env.MEDIA_WORKER_ID || randomUUID();
 const leaseMs = Math.max(30_000, Number(process.env.MEDIA_WORKER_LEASE_MS || 600_000));
@@ -340,8 +347,10 @@ const drain = () => {
 export async function enqueueMediaJob(input) {
   const job = { id: randomUUID(), ...input, attempts: 0, status: 'queued', createdAt: new Date().toISOString() };
   await updateStore((store) => ({ ...store, mediaJobs: [...(store.mediaJobs || []), job], annotations: store.annotations.map((annotation) => annotation.id === input.annotationId ? { ...annotation, mediaStatus: 'queued', mediaError: null } : annotation) }));
-  queue.push(job);
-  drain();
+  if (maxConcurrentJobs > 0) {
+    queue.push(job);
+    drain();
+  }
   return job;
 }
 
@@ -382,8 +391,10 @@ export async function retryMediaJobForAnnotation(annotationId, userId) {
     };
   });
   if (!job) return null;
-  queue.push(job);
-  drain();
+  if (maxConcurrentJobs > 0) {
+    queue.push(job);
+    drain();
+  }
   return job;
 }
 
@@ -412,6 +423,7 @@ export async function cancelMediaJob(jobId, userId) {
 }
 
 export async function recoverMediaJobs() {
+  if (maxConcurrentJobs <= 0) return;
   const store = await readStore();
   for (const annotation of store.annotations.filter((item) => item.status === 'published' && ['queued', 'processing'].includes(item.mediaStatus))) {
     const job = (store.mediaJobs || []).find((item) => item.annotationId === annotation.id && shouldRecoverMediaJob(item) && Number(item.attempts || 0) < maxAttempts);
