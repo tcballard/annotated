@@ -24,7 +24,7 @@ test('the browser gate loads the checksummed packaged build in a persistent Chro
   assert.match(release, /dist', 'release', 'release\.json'/);
   assert.match(release, /createHash\('sha256'\)/);
   assert.match(release, /The sidecar checksum does not match/);
-  assert.match(chrome, /chrome\.sidePanel\.open\(\{ tabId \}\)/);
+  assert.match(chrome, /chrome\.sidePanel\.open\(\{ windowId \}\)/);
   assert.match(chrome, /chrome\.sidePanel\.onOpened\.addListener/);
   assert.match(chrome, /chrome\.sidePanel\.getOptions/);
   assert.match(chrome, /Target\.getTargets/);

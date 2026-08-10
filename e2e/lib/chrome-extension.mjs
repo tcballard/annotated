@@ -71,7 +71,7 @@ export const openActualSidePanel = async ({ context, extensionId, targetPage, ti
   await targetSession.send('Target.setDiscoverTargets', { discover: true });
   await controller.close();
   await targetPage.bringToFront();
-  await launcher.evaluate(({ tabId }) => {
+  await launcher.evaluate(({ tabId, windowId }) => {
     if (!chrome.sidePanel.onOpened) throw new Error('Chrome 141+ is required to verify that the native side panel opened.');
     window.__annotatedE2ePanelOpened = new Promise((resolve) => {
       const listener = (info) => {
@@ -86,14 +86,17 @@ export const openActualSidePanel = async ({ context, extensionId, targetPage, ti
     button.textContent = 'Open real Annotated side panel';
     button.addEventListener('click', async () => {
       try {
-        await chrome.sidePanel.open({ tabId });
+        // The manifest declares a global panel. Opening that panel by tabId
+        // can report the gesture's popup window on Linux Chromium; selecting
+        // the controlled content window explicitly is the stable API contract.
+        await chrome.sidePanel.open({ windowId });
         document.documentElement.dataset.panelOpen = 'true';
       } catch (error) {
         document.documentElement.dataset.panelError = error?.message || String(error);
       }
     });
     document.body.replaceChildren(button);
-  }, { tabId: targetTab.id });
+  }, { tabId: targetTab.id, windowId: targetTab.windowId });
   // CDP can dispatch a trusted click to a background page, but Chrome's
   // transient user-activation check is tied to the foreground extension
   // surface. Focus the launcher explicitly so Xvfb/window-manager variance
