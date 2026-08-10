@@ -108,15 +108,16 @@ export const openActualSidePanel = async ({ context, extensionId, targetPage, ti
     sleep(timeout).then(() => null),
   ]);
   const openingError = await launcher.evaluate(() => document.documentElement.dataset.panelError || '');
+  const resourcePath = (value) => String(value || '').replace(/^\/+/, '');
   if (openingError) throw new Error(`Chrome rejected the real side-panel gesture: ${openingError}`);
   if (!opened
-    || opened.path !== 'sidepanel.html'
+    || resourcePath(opened.path) !== 'sidepanel.html'
     || opened.windowId !== targetTab.windowId
     || (opened.tabId !== undefined && opened.tabId !== targetTab.id)) {
     throw new Error(`Chrome did not confirm opening the packaged side panel in the controlled content window: ${JSON.stringify(opened)}.`);
   }
   const options = await launcher.evaluate((tabId) => chrome.sidePanel.getOptions({ tabId }), targetTab.id);
-  if (options.path !== 'sidepanel.html' || options.enabled === false) throw new Error(`The opened panel options did not point to sidepanel.html: ${JSON.stringify(options)}`);
+  if (resourcePath(options.path) !== 'sidepanel.html' || options.enabled === false) throw new Error(`The opened panel options did not point to sidepanel.html: ${JSON.stringify(options)}`);
 
   const targetDeadline = Date.now() + timeout;
   let nativeTarget = null;
@@ -152,7 +153,7 @@ export const openActualSidePanel = async ({ context, extensionId, targetPage, ti
     panel,
     hostReceipt: {
       openedEvent: opened,
-      options: { enabled: options.enabled !== false, path: options.path },
+      options: { enabled: options.enabled !== false, path: resourcePath(options.path) },
       target: {
         targetId: nativeTarget.targetId,
         type: nativeTarget.type,

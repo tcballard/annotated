@@ -27,6 +27,8 @@ test('the browser gate loads the checksummed packaged build in a persistent Chro
   assert.match(chrome, /chrome\.sidePanel\.open\(\{ windowId \}\)/);
   assert.match(chrome, /chrome\.sidePanel\.onOpened\.addListener/);
   assert.match(chrome, /chrome\.sidePanel\.getOptions/);
+  assert.match(chrome, /const resourcePath/);
+  assert.match(chrome, /resourcePath\(opened\.path\)/);
   assert.match(chrome, /Target\.getTargets/);
   assert.match(chrome, /microsoft\/playwright#26693/);
   assert.match(chrome, /chrome\.tabs\.create\(\{ windowId, url, active: true \}\)/);
