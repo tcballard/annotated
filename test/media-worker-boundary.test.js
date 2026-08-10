@@ -61,6 +61,18 @@ test('the worker retry policy is explicit and rejects invalid attempt limits', (
   }
 });
 
+test('provider concurrency and breaker settings fail fast when malformed', () => {
+  for (const [name, value] of [
+    ['MEDIA_WORKER_PROVIDER_CONCURRENCY', '0'],
+    ['MEDIA_WORKER_BREAKER_FAILURES', '1.5'],
+    ['MEDIA_WORKER_BREAKER_COOLDOWN_MS', 'not-a-number'],
+  ]) {
+    const result = inspectExecution({ [name]: value });
+    assert.notEqual(result.status, 0, `${name}=${value} unexpectedly started`);
+    assert.match(`${result.stdout}\n${result.stderr}`, new RegExp(name));
+  }
+});
+
 test('the worker executable establishes its role before loading media orchestration', async () => {
   const source = await readFile(new URL('../server/media-worker-main.js', import.meta.url), 'utf8');
   const role = source.indexOf("process.env.ANNOTATED_PROCESS_ROLE = 'media-worker'");
@@ -70,4 +82,43 @@ test('the worker executable establishes its role before loading media orchestrat
   assert.match(source, /mediaWorkerExecution\.concurrency/);
   assert.match(source, /mediaWorkerRetryPolicy\.maxAttempts/);
   assert.match(source, /resolveS3MaxAttempts\(\)/);
+});
+
+test('the production API cannot execute media binaries even through an imported helper', () => {
+  const env = { ...process.env, NODE_ENV: 'production', ANNOTATED_STORAGE: 'file', ANNOTATED_ASSET_STORAGE: 'local', ANNOTATED_PROCESS_ROLE: 'api', MEDIA_WORKER_CONCURRENCY: '0' };
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', "const { runMediaCommand } = await import('./server/media-worker.js'); try { await runMediaCommand(process.execPath,['--version']); process.exit(2); } catch(error) { console.log(error.message); }"], { cwd: process.cwd(), env, encoding: 'utf8' });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /disabled in the production API process/);
+});
+
+test('API audio validation is in-process and waveform binary work stays worker-owned', async () => {
+  const probe = await readFile(new URL('../server/media-probe.js', import.meta.url), 'utf8');
+  const mediaStore = await readFile(new URL('../server/media-store.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(probe, /node:child_process|\bspawn\s*\(/);
+  assert.match(probe, /parseFile/);
+  assert.doesNotMatch(mediaStore, /extractAudioPeaks/);
+});
+
+test('worker failures are classified for bounded retry and provider circuit telemetry', async () => {
+  const { classifyMediaFailure, createProviderGate } = await import('../server/media-worker.js');
+  assert.equal(classifyMediaFailure(new Error('yt-dlp provider timed out')), 'provider-timeout');
+  assert.equal(classifyMediaFailure(new Error('S3 object upload failed')), 'object-storage');
+  assert.equal(classifyMediaFailure(new Error('ffmpeg codec failed')), 'transcode');
+  assert.equal(classifyMediaFailure(new Error('unclassified failure')), 'unknown');
+
+  let clock = 1_000;
+  const control = createProviderGate({ concurrency: 1, failureThreshold: 2, cooldownMs: 5_000, now: () => clock });
+  const first = control.acquire({ provider: 'youtube' });
+  assert.equal(first.allowed, true);
+  assert.deepEqual(control.acquire({ provider: 'youtube' }), { allowed: false, key: 'youtube', delayMs: 1_000, reason: 'provider-concurrency' });
+  control.release(first.key, { failed: true });
+  const second = control.acquire({ provider: 'youtube' });
+  assert.equal(second.allowed, true);
+  control.release(second.key, { failed: true });
+  assert.deepEqual(control.acquire({ provider: 'youtube' }), { allowed: false, key: 'youtube', delayMs: 5_000, reason: 'provider-circuit-open' });
+  clock += 5_001;
+  const recovered = control.acquire({ provider: 'youtube' });
+  assert.equal(recovered.allowed, true);
+  control.release(recovered.key, { succeeded: true });
+  assert.deepEqual(control.snapshot('youtube'), { active: 0, failures: 0, openUntil: 0 });
 });

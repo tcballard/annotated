@@ -4,30 +4,55 @@ import http from 'node:http';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createHash, randomUUID } from 'node:crypto';
-import { checkStore, closeStore, incrementOpenCount, readStore, storageDescription, toggleFollow, toggleLike, updateStore } from './store.js';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
+import { checkStore, closeStore, storageDescription } from './store.js';
 import { normalizeAudioMimeType, normalizeImageMimeType, removeStoredMedia, serveStoredMedia, writeIncomingImage, writeIncomingMedia } from './media-store.js';
 import { getObjectStore } from './object-store.js';
-import { cancelMediaJob, checkMediaRuntime, enqueueMediaJob, mediaWorkerExecution, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
+import { cancelMediaJob, enqueueMediaJob, mediaWorkerExecution, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
-import { afterKeysetCursor, followingFeedRequiresAuth, keysetCursorFor, matchesFeedQuery, matchesFeedUrl, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey, parseKeysetCursor } from './feed.js';
+import { followingFeedRequiresAuth, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey } from './feed.js';
 import { ogCardData, renderOgCardCached } from './og-card.js';
 import { escapeHtml, injectAnnotationMeta } from './permalink-meta.js';
-import { allowsIndexing, canViewAnnotation, isPubliclyListed, VISIBILITIES } from './visibility.js';
-import { matchesPersonQuery, normalizeHost, publicAnnotationsForHost, rankAnnotators } from './discovery.js';
-import { rankTrendingSources, sortByTrending } from './trending.js';
-import { isTopic, TOPICS } from './topics.js';
+import { allowsIndexing, canViewAnnotation, VISIBILITIES } from './visibility.js';
+import { normalizeHost } from './discovery.js';
+import { isTopic } from './topics.js';
 import { validateAnnotation, validateClaim, validateComment } from './validation.js';
 import { assertAuthConfiguration, authIsRequired, currentUser, exchangeExtensionTicket, finishOAuth, logout, mobileTicketSession, parseCookies, providerStatus, startOAuth } from './auth.js';
 import { assertHardeningConfiguration, requestId, securityHeaders } from './hardening.js';
 import { closeRateLimitStore, rateLimitAsync } from './rate-limit.js';
 import { canUseAudioAsset, canUseImageAsset } from './media-access.js';
 import { metricsSnapshot, recordRequest } from './observability.js';
-import { findIdempotentAnnotation } from './idempotency.js';
-import { findActiveClaim, findActiveClaimByContact, validateClaimTransition } from './moderation.js';
-import { annotationAssetIds, canEditCommentary, removalTombstone, validateModerationAction } from './annotation-lifecycle.js';
+import { mediaQueueSnapshot } from './media-job-repository.js';
+import { validateClaimTransition } from './moderation.js';
+import { canEditCommentary, removalTombstone, validateModerationAction } from './annotation-lifecycle.js';
 import { isChromeExtensionRedirectUrl, resolveCorsOrigin } from './cors.js';
 import { getCapabilities } from './capabilities.js';
+import {
+  addComment,
+  createAnnotation,
+  createClaim,
+  deleteAnnotation,
+  findAnnotation,
+  findClaim,
+  findMedia,
+  findUser,
+  getProfile,
+  incrementOpen,
+  listFeed,
+  listNotifications,
+  listPeople,
+  listClaims,
+  markNotificationsSeen,
+  moderateClaim,
+  putMedia,
+  proofWorldStore,
+  sourceHub,
+  toggleFollow,
+  toggleLike,
+  transparencyReport,
+  trendingSources,
+  updateAnnotation,
+} from './product-repository.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(root, '..');
@@ -53,6 +78,11 @@ const redirect = (response, location, headers = {}) => {
 const unauthorized = (response) => send(response, 401, { error: 'Sign in is required.' });
 const forbidden = (response) => send(response, 403, { error: 'You do not have permission for this action.' });
 const mutationAllowed = async (request, actor, name, limit = 60) => (await rateLimitAsync(`${request.socket?.remoteAddress || 'unknown'}:${actor?.id || 'anonymous'}:${name}`, { limit })).allowed;
+const operatorMetricsAllowed = (request) => {
+  const expected = String(process.env.OPERATOR_METRICS_TOKEN || '');
+  const supplied = String(request.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  return expected.length >= 24 && supplied.length === expected.length && timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+};
 const isModerator = (user) => Boolean(user && (['owner', 'admin', 'moderator'].includes(user.role) || String(process.env.MODERATOR_USER_IDS || '').split(',').map((value) => value.trim()).includes(user.id)));
 const oauthErrorRedirect = (request) => {
   const fallback = `${process.env.APP_ORIGIN || publicOrigin}/?auth=error`;
@@ -90,51 +120,39 @@ const readForm = async (request) => {
 };
 
 const slugify = (value) => String(value).toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48) || 'annotation';
-const publicUser = (user) => user ? {
-  id: user.id,
-  handle: user.handle,
-  displayName: user.displayName,
-  avatarUrl: user.avatarUrl || null,
-  bio: user.bio || '',
-  isDemo: Boolean(user.isDemo || user.provider === 'demo'),
-} : null;
-
 // Interactions require the actor to be able to see the annotation at all —
 // a private slug behaves exactly like a nonexistent one for everyone else.
 const viewableAnnotation = async (slugOrId, viewerId = '') => {
-  const store = await readStore();
-  const annotation = store.annotations.find((item) => item.slug === slugOrId || item.id === slugOrId);
+  const annotation = await findAnnotation(slugOrId, viewerId, { includeRemoved: false });
   return annotation && annotation.status === 'published' && canViewAnnotation(annotation, viewerId) ? annotation : null;
 };
 
-const withComments = (annotation, store, viewerId = '') => ({
+const withAssetUrls = (annotation) => annotation ? {
   ...annotation,
   url: `${publicOrigin}/a/${annotation.slug}`,
   audioUrl: annotation.audioAssetId ? `${publicOrigin}/media/${annotation.audioAssetId}` : null,
-  audioPeaks: annotation.audioAssetId ? ((store.media || []).find((item) => item.id === annotation.audioAssetId)?.peaks || null) : null,
   clipUrl: annotation.mediaAssetId ? `${publicOrigin}/media/${annotation.mediaAssetId}` : null,
-  clipPeaks: annotation.mediaAssetId ? ((store.media || []).find((item) => item.id === annotation.mediaAssetId)?.peaks || null) : null,
   posterUrl: annotation.posterAssetId ? `${publicOrigin}/media/${annotation.posterAssetId}` : null,
   screenshotUrl: annotation.screenshotAssetId ? `${publicOrigin}/media/${annotation.screenshotAssetId}` : null,
-  author: publicUser((store.users || []).find((user) => user.id === annotation.authorId)) || { id: annotation.authorId, handle: annotation.authorId, displayName: annotation.authorId },
-  likes: (store.likes || []).filter((like) => like.annotationId === annotation.id).length,
-  likedByMe: Boolean(viewerId && (store.likes || []).some((like) => like.annotationId === annotation.id && like.userId === viewerId)),
-  opens: Number(annotation.openCount) || 0,
-  comments: (store.comments || []).filter((comment) => comment.annotationId === annotation.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((comment) => ({ ...comment, author: publicUser((store.users || []).find((user) => user.id === comment.authorId)) || { id: comment.authorId, handle: comment.authorId } })),
-  claims: undefined,
-});
+} : null;
 
 const handleApi = async (request, response, pathname) => {
-  if (request.method === 'GET' && pathname === '/api/health') return send(response, 200, { status: 'ok', version: releaseVersion, persistence: storageDescription(), metrics: metricsSnapshot() });
+  if (request.method === 'GET' && pathname === '/api/health') return send(response, 200, { status: 'ok', version: releaseVersion, persistence: storageDescription() });
+  if (request.method === 'GET' && pathname === '/api/operator/metrics') {
+    if (!operatorMetricsAllowed(request)) return notFound(response);
+    return send(response, 200, { process: metricsSnapshot(), mediaQueue: await mediaQueueSnapshot() });
+  }
   if (request.method === 'GET' && pathname === '/api/capabilities') {
-    const store = await readStore();
+    const store = await proofWorldStore();
     return send(response, 200, await getCapabilities({ publicOrigin, releaseVersion, providers: providerStatus(), store }));
   }
   if (request.method === 'GET' && pathname === '/api/ready') {
     try {
       await checkStore();
       await getObjectStore().check();
-      const mediaRuntime = process.env.NODE_ENV === 'production' ? await checkMediaRuntime({ includeProvider: true }) : { status: 'development' };
+      const mediaRuntime = process.env.NODE_ENV === 'production'
+        ? { status: 'external', role: mediaWorkerExecution.processRole, concurrency: mediaWorkerExecution.concurrency }
+        : { status: 'development' };
       return send(response, 200, { status: 'ready', persistence: storageDescription(), mediaRuntime });
     } catch (error) {
       return send(response, 503, { status: 'not-ready', error: error.message });
@@ -184,18 +202,7 @@ const handleApi = async (request, response, pathname) => {
   if (request.method === 'GET' && pathname === '/api/notifications') {
     const viewer = await currentUser(request);
     if (!viewer) return send(response, 401, { error: 'Sign in to see notifications.' });
-    const store = await readStore();
-    const mine = new Map((store.annotations || []).filter((item) => item.authorId === viewer.id).map((item) => [item.id, item]));
-    const actorOf = (id) => publicUser((store.users || []).find((user) => user.id === id)) || { id, handle: id, displayName: '' };
-    const annotationRef = (annotation) => ({ slug: annotation.slug, sourceTitle: annotation.sourceTitle || annotation.sourceHost || 'your annotation' });
-    const items = [
-      ...(store.comments || []).filter((comment) => mine.has(comment.annotationId) && comment.authorId !== viewer.id)
-        .map((comment) => ({ type: 'response', actor: actorOf(comment.authorId), body: String(comment.body || '').slice(0, 140), annotation: annotationRef(mine.get(comment.annotationId)), createdAt: comment.createdAt })),
-      ...(store.likes || []).filter((like) => mine.has(like.annotationId) && like.userId !== viewer.id)
-        .map((like) => ({ type: 'like', actor: actorOf(like.userId), annotation: annotationRef(mine.get(like.annotationId)), createdAt: like.createdAt })),
-      ...(store.follows || []).filter((follow) => follow.followingId === viewer.id)
-        .map((follow) => ({ type: 'follow', actor: actorOf(follow.followerId), createdAt: follow.createdAt })),
-    ].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 50);
+    const items = await listNotifications(viewer.id, 50);
     const seenAt = String(viewer.lastNotificationsSeenAt || '');
     // The extension's 5-minute badge poll is the product's only recurring
     // per-user request. The ETag names everything the response depends on
@@ -213,7 +220,7 @@ const handleApi = async (request, response, pathname) => {
     const viewer = await currentUser(request);
     if (!viewer) return send(response, 401, { error: 'Sign in first.' });
     const seenAt = new Date().toISOString();
-    await updateStore((store) => ({ ...store, users: (store.users || []).map((user) => user.id === viewer.id ? { ...user, lastNotificationsSeenAt: seenAt } : user) }));
+    await markNotificationsSeen(viewer.id, seenAt);
     return send(response, 200, { seenAt });
   }
 
@@ -235,7 +242,7 @@ const handleApi = async (request, response, pathname) => {
       if (error.statusCode === 422) return send(response, 422, { error: error.message });
       throw error;
     }
-    await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, peaks: media.peaks || null, ownerId: actor?.id || 'local-tom', createdAt: media.createdAt }] }));
+    await putMedia({ id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, peaks: media.peaks || null, ownerId: actor?.id || 'local-tom', createdAt: media.createdAt });
     return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, peaks: media.peaks || null, url: `${publicOrigin}/media/${media.id}` } });
   }
 
@@ -248,12 +255,11 @@ const handleApi = async (request, response, pathname) => {
     try { mimeType = normalizeImageMimeType(request.headers['content-type']); } catch (error) { return send(response, 415, { error: error.message }); }
     if (!(await mutationAllowed(request, actor, 'screenshot-upload', 20))) return send(response, 429, { error: 'Too many screenshot uploads. Try again later.' }, { 'retry-after': '60' });
     const media = await writeIncomingImage(request, mimeType);
-    await updateStore((store) => ({ ...store, media: [...(store.media || []), { id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, kind: 'screenshot', ownerId: actor?.id || 'local-tom', createdAt: media.createdAt }] }));
+    await putMedia({ id: media.id, key: media.key, fileName: media.fileName, mimeType: media.mimeType, bytes: media.bytes, kind: 'screenshot', ownerId: actor?.id || 'local-tom', createdAt: media.createdAt });
     return send(response, 201, { media: { id: media.id, mimeType: media.mimeType, bytes: media.bytes, url: `${publicOrigin}/media/${media.id}` } });
   }
 
   if (request.method === 'GET' && pathname === '/api/feed') {
-    const store = await readStore();
     const viewer = await currentUser(request);
     const query = new URL(request.url || '/', publicOrigin).searchParams;
     const limit = normalizeFeedLimit(query.get('limit'));
@@ -264,29 +270,10 @@ const handleApi = async (request, response, pathname) => {
     const followingRequested = query.get('following') === 'true';
     if (followingFeedRequiresAuth({ requested: followingRequested, required: authIsRequired(), viewer })) return unauthorized(response);
     const followingOnly = followingRequested && Boolean(viewer);
-    const followedIds = new Set((store.follows || []).filter((follow) => follow.followerId === viewer?.id).map((follow) => follow.followingId));
     const topic = isTopic(query.get('topic')) ? query.get('topic') : null;
-    const filtered = store.annotations.filter((item) => item.status === 'published' && isPubliclyListed(item) && (!sourceType || item.sourceType === sourceType) && (!followingOnly || followedIds.has(item.authorId) || item.authorId === viewer.id) && matchesFeedQuery(item, store.users || [], search) && matchesFeedUrl(item, urlKey));
     const trending = query.get('sort') === 'trending';
-    // Trending answers with the live topic counts of the unfiltered-by-topic
-    // set, so the chip row only ever shows topics that actually exist.
-    const topicCounts = trending
-      ? TOPICS.map(({ slug, label }) => ({ slug, label, count: filtered.filter((item) => item.topic === slug).length })).filter((entry) => entry.count > 0)
-      : undefined;
-    const scoped = topic ? filtered.filter((item) => item.topic === topic) : filtered;
-    if (trending) {
-      const candidates = sortByTrending(scoped, store);
-      const page = candidates.slice(offset, offset + limit);
-      return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: offset + page.length < candidates.length ? String(offset + page.length) : null, query: search || null, ...(topicCounts ? { topics: topicCounts, topic } : {}) });
-    }
-    // Recent is keyset-paginated: an insert mid-scroll can no longer make
-    // readers skip or double-see items (Gate 1b). Legacy numeric cursors
-    // still work as offsets while old clients drain.
-    const candidates = scoped.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
-    const keyset = parseKeysetCursor(query.get('cursor'));
-    const remaining = keyset ? afterKeysetCursor(candidates, keyset) : candidates.slice(offset);
-    const page = remaining.slice(0, limit);
-    return send(response, 200, { annotations: page.map((item) => withComments(item, store, viewer?.id)), nextCursor: remaining.length > limit ? keysetCursorFor(page[page.length - 1]) : null, query: search || null });
+    const result = await listFeed({ viewerId: viewer?.id || '', limit, cursor: query.get('cursor') || '', offset, sourceType, search, urlKey, followingOnly, topic, trending });
+    return send(response, 200, { annotations: result.annotations.map(withAssetUrls), nextCursor: result.nextCursor, query: search || null, ...(result.topics ? { topics: result.topics, topic } : {}) });
   }
 
   // Source hub: a host's public annotations and its annotators, discovery by
@@ -295,80 +282,35 @@ const handleApi = async (request, response, pathname) => {
   if (hubMatch && request.method === 'GET' && hubMatch[1] !== 'resolve') {
     const host = normalizeHost(decodeURIComponent(hubMatch[1]));
     if (!host) return notFound(response);
-    const store = await readStore();
     const viewer = await currentUser(request);
-    const all = publicAnnotationsForHost(store.annotations, host).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     const query = new URL(request.url || '/', publicOrigin).searchParams;
     const limit = normalizeFeedLimit(query.get('limit'));
     const offset = normalizeFeedCursor(query.get('cursor'));
-    const page = all.slice(offset, offset + limit);
-    const annotators = rankAnnotators(all, store.users || [], 5).map((entry) => ({
-      ...(publicUser(entry.user) || { id: entry.authorId, handle: entry.authorId, displayName: entry.authorId }),
-      annotationCount: entry.count,
-      opens: entry.opens,
-      isFollowing: Boolean(viewer && (store.follows || []).some((follow) => follow.followerId === viewer.id && follow.followingId === entry.authorId)),
-    }));
-    return send(response, 200, {
-      source: { host, annotationCount: all.length, opens: all.reduce((total, item) => total + (Number(item.openCount) || 0), 0) },
-      annotators,
-      annotations: page.map((item) => withComments(item, store, viewer?.id)),
-      nextCursor: offset + page.length < all.length ? String(offset + page.length) : null,
-    });
+    const result = await sourceHub(host, viewer?.id || '', { limit, offset });
+    return send(response, 200, { ...result, annotations: result.annotations.map(withAssetUrls) });
   }
 
   // Trending sources: hosts gathering attention now, by decayed opens. Feeds
   // the hub system — every row is a /s/:host destination.
   if (request.method === 'GET' && pathname === '/api/trending/sources') {
-    const store = await readStore();
-    const publicAnnotations = store.annotations.filter((item) => item.status === 'published' && isPubliclyListed(item));
-    return send(response, 200, { sources: rankTrendingSources(publicAnnotations).map(({ host, opens, annotationCount }) => ({ host, opens, annotationCount })) });
+    return send(response, 200, { sources: await trendingSources() });
   }
 
   // People discovery: annotators ranked by opens of the original; a query
   // narrows by handle or display name.
   if (request.method === 'GET' && pathname === '/api/people') {
-    const store = await readStore();
     const viewer = await currentUser(request);
     const search = normalizeFeedQuery(new URL(request.url || '/', publicOrigin).searchParams.get('q'));
-    const publicAnnotations = store.annotations.filter((item) => item.status === 'published' && isPubliclyListed(item));
-    const people = rankAnnotators(publicAnnotations, store.users || [], 50)
-      .filter((entry) => entry.user && matchesPersonQuery(entry.user, search))
-      .slice(0, 10)
-      .map((entry) => ({
-        ...publicUser(entry.user),
-        annotationCount: entry.count,
-        opens: entry.opens,
-        followers: (store.follows || []).filter((follow) => follow.followingId === entry.user.id).length,
-        isFollowing: Boolean(viewer && (store.follows || []).some((follow) => follow.followerId === viewer.id && follow.followingId === entry.user.id)),
-      }));
+    const people = await listPeople(viewer?.id || '', search, 10);
     return send(response, 200, { people, query: search || null });
   }
 
   const profileMatch = pathname.match(/^\/api\/profiles\/([^/]+)$/);
   if (profileMatch && request.method === 'GET') {
-    const store = await readStore();
-    const profile = (store.users || []).find((user) => user.handle === decodeURIComponent(profileMatch[1]) || user.id === decodeURIComponent(profileMatch[1]));
-    if (!profile) return notFound(response);
     const viewer = await currentUser(request);
-    // The owner sees their whole library, badges and all; everyone else sees
-    // only what is publicly listed.
-    const visibleToViewer = (annotation) => annotation.authorId === profile.id && annotation.status === 'published' && (viewer?.id === profile.id || isPubliclyListed(annotation));
-    const annotationCount = store.annotations.filter(visibleToViewer).length;
-    const annotations = store.annotations
-      .filter(visibleToViewer)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .slice(0, 20)
-      .map((annotation) => withComments(annotation, store, viewer?.id));
-    return send(response, 200, {
-      profile: {
-        ...publicUser(profile),
-        followers: (store.follows || []).filter((follow) => follow.followingId === profile.id).length,
-        following: (store.follows || []).filter((follow) => follow.followerId === profile.id).length,
-        isFollowing: Boolean(viewer && (store.follows || []).some((follow) => follow.followerId === viewer.id && follow.followingId === profile.id)),
-        annotationCount,
-        annotations,
-      },
-    });
+    const profile = await getProfile(decodeURIComponent(profileMatch[1]), viewer?.id || '', 20);
+    if (!profile) return notFound(response);
+    return send(response, 200, { profile: { ...profile, annotations: profile.annotations.map(withAssetUrls) } });
   }
 
   const followMatch = pathname.match(/^\/api\/users\/([^/]+)\/(follow|unfollow)$/);
@@ -376,15 +318,12 @@ const handleApi = async (request, response, pathname) => {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
     const targetId = decodeURIComponent(followMatch[1]);
-    const knownUsers = (await readStore()).users || [];
-    if (!knownUsers.some((user) => user.id === targetId)) return notFound(response);
+    if (!await findUser(targetId)) return notFound(response);
     if (targetId === actor?.id) return send(response, 422, { error: 'You cannot follow yourself.' });
     if (!(await mutationAllowed(request, actor, 'follow', 60))) return send(response, 429, { error: 'Too many follow changes. Try again later.' }, { 'retry-after': '60' });
     // Row-native hot path (Gate 1): a single indexed row, not a rewrite.
     const followerId = actor?.id || 'local-tom';
-    await toggleFollow(followerId, targetId, followMatch[2] === 'follow');
-    const result = await readStore();
-    const following = (result.follows || []).some((follow) => follow.followerId === followerId && follow.followingId === targetId);
+    const following = await toggleFollow(followerId, targetId, followMatch[2] === 'follow');
     return send(response, 200, { following });
   }
 
@@ -401,14 +340,12 @@ const handleApi = async (request, response, pathname) => {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
     if (!(await mutationAllowed(request, actor, 'media-retry', 10))) return send(response, 429, { error: 'Too many media retries. Try again later.' }, { 'retry-after': '60' });
-    const store = await readStore();
-    const annotation = store.annotations.find((item) => item.slug === retryMediaMatch[1] || item.id === retryMediaMatch[1]);
+    const annotation = await findAnnotation(retryMediaMatch[1], actor?.id || 'local-tom');
     if (!annotation) return notFound(response);
     const job = await retryMediaJobForAnnotation(annotation.id, actor?.id || 'local-tom');
     if (!job) return send(response, 409, { error: 'This annotation has no failed media job available to retry.' });
-    const next = await readStore();
-    const updated = next.annotations.find((item) => item.id === annotation.id);
-    return send(response, 202, { annotation: withComments(updated, next, actor?.id), job: { id: job.id, status: job.status } });
+    const updated = await findAnnotation(annotation.id, actor?.id || 'local-tom');
+    return send(response, 202, { annotation: withAssetUrls(updated), job: { id: job.id, status: job.status } });
   }
 
   if (request.method === 'POST' && pathname === '/api/annotations') {
@@ -419,13 +356,11 @@ const handleApi = async (request, response, pathname) => {
     const { errors, normalized } = validateAnnotation(payload);
     if (errors.length) return send(response, 422, { errors });
     if (normalized.commentaryMode === 'audio') {
-      const store = await readStore();
-      const media = (store.media || []).find((item) => item.id === normalized.audioAssetId);
+      const media = await findMedia(normalized.audioAssetId);
       if (!canUseAudioAsset(media, actor)) return send(response, 422, { errors: ['The uploaded audio asset could not be found or is not owned by this account.'] });
     }
     if (normalized.screenshotAssetId) {
-      const store = await readStore();
-      const media = (store.media || []).find((item) => item.id === normalized.screenshotAssetId);
+      const media = await findMedia(normalized.screenshotAssetId);
       if (!canUseImageAsset(media, actor)) return send(response, 422, { errors: ['The uploaded screenshot could not be found or is not owned by this account.'] });
     }
     const now = new Date().toISOString();
@@ -436,21 +371,10 @@ const handleApi = async (request, response, pathname) => {
     const isMedia = normalized.sourceType !== 'article' && normalized.clipEnd - normalized.clipStart >= 1;
     const ownerId = actor?.id || 'local-tom';
     const candidate = { id, slug: `${baseSlug}-${id.slice(0, 6)}`, status: 'published', createdAt: now, authorId: ownerId, mediaStatus: isMedia ? 'queued' : 'not-applicable', ...normalized };
-    let created = false;
-    let annotation;
-    const next = await updateStore((store) => {
-      const existing = findIdempotentAnnotation(store.annotations, ownerId, normalized.clientRequestId);
-      if (existing) {
-        annotation = existing;
-        return store;
-      }
-      created = true;
-      annotation = candidate;
-      return { ...store, annotations: [...store.annotations, annotation] };
-    });
-    if (!created) return send(response, 200, { annotation: withComments(annotation, next, actor?.id) });
+    const { created, annotation } = await createAnnotation(candidate);
+    if (!created) return send(response, 200, { annotation: withAssetUrls(annotation) });
     if (isMedia) void enqueueMediaJob({ annotationId: id, sourceUrl: normalized.sourceUrl, sourceType: normalized.sourceType, sourceMediaUrl: normalized.mediaUrl, mediaUrl: normalized.mediaUrl, provider: normalized.provider, clipStart: normalized.clipStart, clipEnd: normalized.clipEnd }).catch((error) => console.error(error));
-    return send(response, 201, { annotation: withComments(annotation, next) });
+    return send(response, 201, { annotation: withAssetUrls(annotation) });
   }
 
   // Author delete: the record, its media, and its interactions are gone
@@ -460,23 +384,12 @@ const handleApi = async (request, response, pathname) => {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
     if (!(await mutationAllowed(request, actor, 'annotation-delete', 30))) return send(response, 429, { error: 'Too many deletions. Try again later.' }, { 'retry-after': '60' });
-    const store = await readStore();
-    const annotation = store.annotations.find((item) => item.slug === annotationDeleteMatch[1] || item.id === annotationDeleteMatch[1]);
+    const annotation = await findAnnotation(annotationDeleteMatch[1], actor?.id || 'local-tom');
     if (!annotation || !canViewAnnotation(annotation, actor?.id)) return notFound(response);
     if (annotation.authorId !== (actor?.id || 'local-tom') && !isModerator(actor)) return forbidden(response);
-    const assetIds = annotationAssetIds(annotation);
-    let removedAssets = [];
-    await updateStore((current) => {
-      removedAssets = (current.media || []).filter((media) => assetIds.includes(media.id));
-      return {
-        ...current,
-        annotations: current.annotations.filter((item) => item.id !== annotation.id),
-        comments: (current.comments || []).filter((comment) => comment.annotationId !== annotation.id),
-        likes: (current.likes || []).filter((like) => like.annotationId !== annotation.id),
-        media: (current.media || []).filter((media) => !assetIds.includes(media.id)),
-      };
-    });
-    for (const media of removedAssets) await removeStoredMedia(media).catch((error) => console.error('delete media removal failed', error.message));
+    const deleted = await deleteAnnotation(annotation.id, actor?.id || 'local-tom', { moderator: isModerator(actor) });
+    if (!deleted) return notFound(response);
+    for (const media of deleted.assets) await removeStoredMedia(media).catch((error) => console.error('delete media removal failed', error.message));
     return send(response, 200, { deleted: true, slug: annotation.slug });
   }
 
@@ -488,8 +401,7 @@ const handleApi = async (request, response, pathname) => {
     if (!actor && authIsRequired()) return unauthorized(response);
     if (!(await mutationAllowed(request, actor, 'annotation-edit', 30))) return send(response, 429, { error: 'Too many edits. Try again later.' }, { 'retry-after': '60' });
     const payload = await readJson(request);
-    const store = await readStore();
-    const annotation = store.annotations.find((item) => item.slug === annotationDeleteMatch[1] || item.id === annotationDeleteMatch[1]);
+    const annotation = await findAnnotation(annotationDeleteMatch[1], actor?.id || 'local-tom');
     if (!annotation || annotation.status !== 'published' || !canViewAnnotation(annotation, actor?.id)) return notFound(response);
     if (annotation.authorId !== (actor?.id || 'local-tom')) return forbidden(response);
     const changes = {};
@@ -513,22 +425,18 @@ const handleApi = async (request, response, pathname) => {
       changes.topic = isTopic(payload.topic) ? payload.topic : null;
     }
     if (!Object.keys(changes).length) return send(response, 422, { error: 'Nothing to update. Send commentary and/or visibility.' });
-    const result = await updateStore((current) => ({
-      ...current,
-      annotations: current.annotations.map((item) => item.id === annotation.id ? { ...item, ...changes } : item),
-    }));
-    return send(response, 200, { annotation: withComments(result.annotations.find((item) => item.id === annotation.id), result, actor?.id) });
+    const updated = await updateAnnotation(annotation.id, actor?.id || 'local-tom', changes);
+    return updated ? send(response, 200, { annotation: withAssetUrls(updated) }) : notFound(response);
   }
 
   const annotationMatch = pathname.match(/^\/api\/annotations\/([^/]+)$/);
   if (annotationMatch && request.method === 'GET') {
-    const store = await readStore();
     const viewer = await currentUser(request);
-    const annotation = store.annotations.find((item) => item.slug === annotationMatch[1] || item.id === annotationMatch[1]);
+    const annotation = await findAnnotation(annotationMatch[1], viewer?.id || '');
     if (!annotation || !canViewAnnotation(annotation, viewer?.id)) return notFound(response);
     // A rights takedown leaves a public tombstone — accountability, not a 404.
     if (annotation.status === 'removed') return send(response, 410, removalTombstone(annotation));
-    return send(response, 200, { annotation: withComments(annotation, store, viewer?.id) });
+    return send(response, 200, { annotation: withAssetUrls(annotation) });
   }
 
   const commentsMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/comments$/);
@@ -540,15 +448,8 @@ const handleApi = async (request, response, pathname) => {
     const payload = await readJson(request);
     const validation = validateComment(payload);
     if (validation.error) return send(response, 422, { error: validation.error });
-    const now = new Date().toISOString();
-    const result = await updateStore((store) => {
-      const annotation = store.annotations.find((item) => item.slug === commentsMatch[1] || item.id === commentsMatch[1]);
-      if (!annotation) return store;
-      store.comments.push({ id: randomUUID(), annotationId: annotation.id, authorId: actor?.id || 'local-tom', body: validation.body, createdAt: now });
-      return store;
-    });
-    const annotation = result.annotations.find((item) => item.slug === commentsMatch[1] || item.id === commentsMatch[1]);
-    return annotation ? send(response, 201, { annotation: withComments(annotation, result, actor?.id) }) : notFound(response);
+    const annotation = await addComment(commentsMatch[1], actor?.id || 'local-tom', validation.body, { id: randomUUID(), createdAt: new Date().toISOString() });
+    return annotation ? send(response, 201, { annotation: withAssetUrls(annotation) }) : notFound(response);
   }
 
   const likeMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/(like|unlike)$/);
@@ -559,13 +460,11 @@ const handleApi = async (request, response, pathname) => {
     if (!(await mutationAllowed(request, actor, 'like', 120))) return send(response, 429, { error: 'Too many like changes. Try again later.' }, { 'retry-after': '60' });
     // Row-native hot path: one indexed row write plus an O(1) cache patch —
     // never a whole-store rewrite (Gate 1).
-    const state = await readStore();
-    const annotation = state.annotations.find((item) => item.slug === likeMatch[1] || item.id === likeMatch[1]);
+    const annotation = await findAnnotation(likeMatch[1], actor?.id || 'local-tom', { includeRemoved: false });
     if (!annotation) return notFound(response);
     await toggleLike(annotation.id, actor?.id || 'local-tom', likeMatch[2] === 'like');
-    const result = await readStore();
-    const fresh = result.annotations.find((item) => item.id === annotation.id);
-    return fresh ? send(response, 200, { annotation: withComments(fresh, result, actor?.id) }) : notFound(response);
+    const fresh = await findAnnotation(annotation.id, actor?.id || 'local-tom', { includeRemoved: false });
+    return fresh ? send(response, 200, { annotation: withAssetUrls(fresh) }) : notFound(response);
   }
 
   // Counts clicks on "Open original" — the traffic-back-to-source stat shown
@@ -577,12 +476,10 @@ const handleApi = async (request, response, pathname) => {
     if (!(await mutationAllowed(request, null, 'open-original', 120))) return send(response, 429, { error: 'Too many open events. Try again later.' }, { 'retry-after': '60' });
     // Row-native hot path (Gate 1): the public, unauthenticated counter is
     // one jsonb_set on one row.
-    const state = await readStore();
-    const target = state.annotations.find((item) => item.slug === openMatch[1] || item.id === openMatch[1]);
+    const target = await findAnnotation(openMatch[1], opener?.id || '', { includeRemoved: false });
     if (!target) return notFound(response);
-    await incrementOpenCount(target.id);
-    const annotation = (await readStore()).annotations.find((item) => item.id === target.id);
-    return send(response, 200, { opens: Number(annotation?.openCount) || 0 });
+    const opens = await incrementOpen(target.id);
+    return send(response, 200, { opens: Number(opens) || 0 });
   }
 
   const claimsMatch = pathname.match(/^\/api\/annotations\/([^/]+)\/claims$/);
@@ -595,23 +492,10 @@ const handleApi = async (request, response, pathname) => {
     const validation = validateClaim(payload);
     if (validation.error) return send(response, 422, { error: validation.error });
     const reporterId = actor?.id || 'local-tom';
-    let created = false;
-    let claim;
-    const result = await updateStore((store) => {
-      const annotation = store.annotations.find((item) => item.slug === claimsMatch[1] || item.id === claimsMatch[1]);
-      if (!annotation) return store;
-      const existing = findActiveClaim(store.claims, annotation.id, reporterId);
-      if (existing) { claim = existing; return store; }
-      created = true;
-      claim = { id: randomUUID(), annotationId: annotation.id, reason: validation.reason, status: 'open', reporterId, createdAt: new Date().toISOString() };
-      return {
-        ...store,
-        claims: [...(store.claims || []), claim],
-        moderationAudit: [...(store.moderationAudit || []), { id: randomUUID(), claimId: claim.id, actorId: reporterId, from: null, to: 'open', note: '', createdAt: new Date().toISOString() }],
-      };
-    });
-    const annotation = result.annotations.find((item) => item.slug === claimsMatch[1] || item.id === claimsMatch[1]);
-    if (!annotation) return notFound(response);
+    const createdAt = new Date().toISOString();
+    const result = await createClaim(claimsMatch[1], { id: randomUUID(), reporterId, reason: validation.reason, auditId: randomUUID(), actorId: reporterId, createdAt });
+    const { created, claim } = result;
+    if (!claim) return notFound(response);
     return send(response, created ? 201 : 200, { status: created ? 'received' : 'already-received', claim: { id: claim.id, status: claim.status } });
   }
 
@@ -619,39 +503,21 @@ const handleApi = async (request, response, pathname) => {
   // already-public data — no reporter identities, no open-claim details, and
   // no titles of removed work (consistent with the tombstone's minimalism).
   if (request.method === 'GET' && pathname === '/api/transparency') {
-    const store = await readStore();
-    const counts = { total: 0, open: 0, in_review: 0, resolved: 0, rejected: 0 };
-    for (const claim of (store.claims || []).filter((item) => !item.isDemo)) {
-      counts.total += 1;
-      if (counts[claim.status] !== undefined) counts[claim.status] += 1;
-    }
-    const takedowns = (store.annotations || [])
-      .filter((item) => item.status === 'removed')
-      .sort((a, b) => String(b.removedAt || '').localeCompare(String(a.removedAt || '')))
-      .map((item) => ({
-        slug: item.slug,
-        sourceHost: item.sourceHost || '',
-        sourceType: item.sourceType || 'article',
-        removedAt: item.removedAt || null,
-        reason: item.removedReason || 'rights-claim',
-      }));
-    return send(response, 200, { claims: counts, demonstrationClaims: (store.claims || []).filter((item) => item.isDemo).length, takedowns });
+    return send(response, 200, await transparencyReport());
   }
 
   if (request.method === 'GET' && pathname === '/api/claims') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
-    const store = await readStore();
     const reporterId = actor?.id || 'local-tom';
-    return send(response, 200, { claims: (store.claims || []).filter((claim) => claim.reporterId === reporterId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((claim) => ({ ...claim, annotation: store.annotations.find((item) => item.id === claim.annotationId) || null })) });
+    return send(response, 200, { claims: await listClaims({ reporterId }) });
   }
 
   if (request.method === 'GET' && pathname === '/api/moderation/claims') {
     const actor = await currentUser(request);
     if (!actor && authIsRequired()) return unauthorized(response);
     if (!isModerator(actor)) return forbidden(response);
-    const store = await readStore();
-    return send(response, 200, { claims: (store.claims || []).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((claim) => ({ ...claim, annotation: store.annotations.find((item) => item.id === claim.annotationId) || null, reporter: store.users.find((user) => user.id === claim.reporterId) || null })) });
+    return send(response, 200, { claims: await listClaims({ moderation: true }) });
   }
 
   const moderateClaimMatch = pathname.match(/^\/api\/moderation\/claims\/([^/]+)$/);
@@ -661,50 +527,22 @@ const handleApi = async (request, response, pathname) => {
     if (!isModerator(actor)) return forbidden(response);
     if (!(await mutationAllowed(request, actor, 'moderation', 60))) return send(response, 429, { error: 'Too many moderation changes. Try again later.' }, { 'retry-after': '60' });
     const payload = await readJson(request);
-    const currentStore = await readStore();
-    const currentClaim = (currentStore.claims || []).find((item) => item.id === moderateClaimMatch[1]);
+    const currentClaim = await findClaim(moderateClaimMatch[1]);
     if (!currentClaim) return notFound(response);
     const transitionError = validateClaimTransition(currentClaim.status, payload.status);
     if (transitionError) return send(response, 422, { error: transitionError });
     const actionError = validateModerationAction(payload.status, payload.action);
     if (actionError) return send(response, 422, { error: actionError });
-    let found = false;
-    let removedAssets = [];
-    const result = await updateStore((store) => {
-      const claim = (store.claims || []).find((item) => item.id === moderateClaimMatch[1]);
-      if (!claim) return store;
-      found = true;
-      const updated = { ...claim, status: payload.status, moderatorId: actor.id, resolutionNote: String(payload.note || '').slice(0, 2000), updatedAt: new Date().toISOString() };
-      let next = { ...store, claims: store.claims.map((item) => item.id === claim.id ? updated : item), moderationAudit: [...(store.moderationAudit || []), { id: randomUUID(), claimId: claim.id, actorId: actor.id, from: claim.status, to: updated.status, note: updated.resolutionNote, action: payload.action === 'remove' ? 'remove' : null, createdAt: new Date().toISOString() }] };
-      // A resolved claim with the remove action takes the annotation down:
-      // public tombstone stays, hosted media goes.
-      if (payload.action === 'remove') {
-        const annotation = next.annotations.find((item) => item.id === claim.annotationId);
-        if (annotation && annotation.status !== 'removed') {
-          const assetIds = annotationAssetIds(annotation);
-          removedAssets = (next.media || []).filter((media) => assetIds.includes(media.id));
-          next = {
-            ...next,
-            media: (next.media || []).filter((media) => !assetIds.includes(media.id)),
-            annotations: next.annotations.map((item) => item.id === annotation.id ? {
-              ...item,
-              status: 'removed',
-              removedAt: new Date().toISOString(),
-              removedBy: actor.id,
-              removedReason: 'rights-claim',
-              mediaAssetId: null,
-              audioAssetId: null,
-              screenshotAssetId: null,
-              posterAssetId: null,
-              mediaStatus: 'not-applicable',
-            } : item),
-          };
-        }
-      }
-      return next;
+    const result = await moderateClaim(moderateClaimMatch[1], {
+      actorId: actor.id,
+      status: payload.status,
+      note: String(payload.note || '').slice(0, 2000),
+      action: payload.action === 'remove' ? 'remove' : null,
+      auditId: randomUUID(),
     });
-    for (const media of removedAssets) await removeStoredMedia(media).catch((error) => console.error('takedown media removal failed', error.message));
-    return found ? send(response, 200, { claim: result.claims.find((item) => item.id === moderateClaimMatch[1]) }) : notFound(response);
+    if (!result) return notFound(response);
+    for (const media of result.removedAssets) await removeStoredMedia(media).catch((error) => console.error('takedown media removal failed', error.message));
+    return send(response, 200, { claim: result.claim });
   }
 
   return null;
@@ -714,8 +552,7 @@ const contentType = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascri
 
 const serveMedia = async (response, id) => {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return notFound(response);
-  const store = await readStore();
-  const media = (store.media || []).find((item) => item.id === id);
+  const media = await findMedia(id);
   if (!media) return notFound(response);
   return serveStoredMedia(response, media);
 };
@@ -724,10 +561,9 @@ const serveMedia = async (response, id) => {
 // A private annotation's permalink stays a plain SPA shell (the API decides
 // what the signed-in author may fetch) and its card does not exist.
 const publishedAnnotationBySlug = async (slug) => {
-  const store = await readStore();
-  const annotation = store.annotations.find((item) => (item.slug === slug || item.id === slug) && item.status === 'published');
+  const annotation = await findAnnotation(slug, '', { includeRemoved: false });
   if (!annotation || !canViewAnnotation(annotation, '')) return null;
-  return { annotation, author: (store.users || []).find((user) => user.id === annotation.authorId) || null };
+  return { annotation, author: annotation.author || await findUser(annotation.authorId) };
 };
 
 // Every published clip gets a landing page whose HTML already carries its
@@ -815,8 +651,7 @@ const sendClaimPage = (response, status, payload) => {
 };
 
 const serveClaimForm = async (request, response, slug) => {
-  const store = await readStore();
-  const annotation = store.annotations.find((item) => (item.slug === slug || item.id === slug));
+  const annotation = await findAnnotation(slug, '');
   if (!annotation || annotation.visibility === 'private') return sendClaimPage(response, 404, { mode: 'missing' });
   if (annotation.status === 'removed') return sendClaimPage(response, 200, { annotation: null, mode: 'gone' });
   if (request.method === 'GET') return sendClaimPage(response, 200, { annotation });
@@ -832,20 +667,8 @@ const serveClaimForm = async (request, response, slug) => {
   if (validation.error) return sendClaimPage(response, 422, { annotation, mode: 'form', error: validation.error, values: form });
   if (!(await mutationAllowed(request, actor, 'claim', 10))) return sendClaimPage(response, 429, { annotation, mode: 'form', error: 'Too many claims from this connection. Try again in a minute.', values: form });
   const reporterId = actor?.id || null;
-  await updateStore((current) => {
-    const target = current.annotations.find((item) => item.id === annotation.id);
-    if (!target || target.status !== 'published') return current;
-    const existing = reporterId
-      ? findActiveClaim(current.claims, target.id, reporterId)
-      : findActiveClaimByContact(current.claims, target.id, contact);
-    if (existing) return current;
-    const claim = { id: randomUUID(), annotationId: target.id, reason: validation.reason, status: 'open', reporterId, reporterContact: contact, via: 'form', createdAt: new Date().toISOString() };
-    return {
-      ...current,
-      claims: [...(current.claims || []), claim],
-      moderationAudit: [...(current.moderationAudit || []), { id: randomUUID(), claimId: claim.id, actorId: reporterId || `form:${contact}`, from: null, to: 'open', note: '', createdAt: new Date().toISOString() }],
-    };
-  });
+  const createdAt = new Date().toISOString();
+  await createClaim(annotation.id, { id: randomUUID(), reporterId, reporterContact: contact, reason: validation.reason, via: 'form', auditId: randomUUID(), actorId: reporterId || `form:${contact}`, createdAt });
   return sendClaimPage(response, 200, { annotation, mode: 'received' });
 };
 
@@ -871,8 +694,7 @@ const serveOgCard = async (request, response, slug, { download = false } = {}) =
       // panel captures PNG), verified by magic bytes so a mistyped or corrupt
       // upload degrades to the text layout instead of failing the render.
       if (annotation.screenshotAssetId) {
-        const store = await readStore();
-        const record = (store.media || []).find((item) => item.id === annotation.screenshotAssetId);
+        const record = await findMedia(annotation.screenshotAssetId);
         if (record?.mimeType === 'image/png') {
           try {
             const bytes = await getObjectStore().getBytes(record);

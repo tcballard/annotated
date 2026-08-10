@@ -124,10 +124,21 @@ class LocalObjectStore {
 }
 
 class S3ObjectStore {
-  constructor({ client } = {}) {
+  constructor({ client, fetchImpl = fetch } = {}) {
     assertS3Configuration();
     this.bucket = process.env.S3_BUCKET;
     this.publicBaseUrl = process.env.S3_PUBLIC_BASE_URL?.replace(/\/$/, '');
+    this.cdnPurgeEndpoint = String(process.env.MEDIA_CDN_PURGE_ENDPOINT || '').trim();
+    this.cdnPurgeToken = String(process.env.MEDIA_CDN_PURGE_TOKEN || '').trim();
+    if (this.cdnPurgeEndpoint) {
+      let endpoint;
+      try { endpoint = new URL(this.cdnPurgeEndpoint); } catch { throw new Error('MEDIA_CDN_PURGE_ENDPOINT must be an absolute HTTPS URL.'); }
+      if (endpoint.protocol !== 'https:' || this.cdnPurgeToken.length < 24) throw new Error('CDN purge requires an HTTPS endpoint and MEDIA_CDN_PURGE_TOKEN of at least 24 characters.');
+    }
+    this.fetchImpl = fetchImpl;
+    this.objectCacheControl = this.publicBaseUrl && this.cdnPurgeEndpoint
+      ? 'public,max-age=31536000,immutable'
+      : 'public,max-age=300,must-revalidate';
     this.maxAttempts = resolveS3MaxAttempts();
     this.client = client || new S3Client({
       region: process.env.S3_REGION,
@@ -151,20 +162,30 @@ class S3ObjectStore {
         callback(null, chunk);
       },
     });
-    const upload = this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: mimeType, ...(Number(request.headers?.['content-length']) ? { ContentLength: Number(request.headers['content-length']) } : {}) }));
+    const upload = this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: mimeType, CacheControl: this.objectCacheControl, ...(Number(request.headers?.['content-length']) ? { ContentLength: Number(request.headers['content-length']) } : {}) }));
     request.pipe(body);
-    await upload;
-    return { bytes, fileName: key, mimeType };
+    const result = await upload;
+    return { bytes, fileName: key, mimeType, attempts: Number(result?.$metadata?.attempts || 1) };
   }
 
   async putFile(filePath, { key, mimeType }) {
     const info = await stat(filePath);
-    await this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: createReadStream(filePath), ContentType: mimeType, ContentLength: info.size }));
-    return { bytes: info.size, fileName: key, mimeType };
+    const result = await this.client.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: createReadStream(filePath), ContentType: mimeType, ContentLength: info.size, CacheControl: this.objectCacheControl }));
+    return { bytes: info.size, fileName: key, mimeType, attempts: Number(result?.$metadata?.attempts || 1) };
   }
 
   async remove({ key, fileName }) {
-    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key || fileName }));
+    const objectKey = key || fileName;
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: objectKey }));
+    if (this.publicBaseUrl && this.cdnPurgeEndpoint) {
+      const response = await this.fetchImpl(this.cdnPurgeEndpoint, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${this.cdnPurgeToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ urls: [`${this.publicBaseUrl}/${encodeURIComponent(objectKey).replace(/%2F/g, '/')}`] }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) throw new Error(`CDN purge failed with ${response.status}.`);
+    }
   }
 
   async getBytes(media, maxBytes = 8 * 1024 * 1024) {
@@ -181,7 +202,7 @@ class S3ObjectStore {
 
   async serve(response, media) {
     const url = await this.url(media);
-    response.writeHead(302, { location: url, 'cache-control': 'private, max-age=60' });
+    response.writeHead(302, { location: url, 'cache-control': this.publicBaseUrl ? 'public, max-age=300, must-revalidate' : 'private, no-store' });
     return response.end();
   }
 }

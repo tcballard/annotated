@@ -5,7 +5,6 @@ import { randomUUID } from 'node:crypto';
 import { dataDirectory } from './store.js';
 import { getObjectStore, objectStorageMode } from './object-store.js';
 import { assertAudioDurationPolicy } from './media-probe.js';
-import { extractAudioPeaks } from './audio-peaks.js';
 
 const mediaDirectory = path.join(dataDirectory, 'media');
 const mediaWorkDirectory = path.join(dataDirectory, 'media-work');
@@ -91,10 +90,9 @@ export async function writeIncomingMedia(request, mimeType) {
   try {
     const bytes = await bufferRequestToFile(request, workPath, maxMediaBytes);
     const durationSeconds = await assertAudioDurationPolicy(workPath);
-    const peaks = await extractAudioPeaks(workPath);
     const store = getObjectStore();
     const result = await store.putFile(workPath, { id, key, mimeType: normalizedMimeType });
-    return { id, key, fileName: result.fileName || key, mimeType: normalizedMimeType, bytes, durationSeconds, peaks, createdAt: new Date().toISOString() };
+    return { id, key, fileName: result.fileName || key, mimeType: normalizedMimeType, bytes, durationSeconds, peaks: null, createdAt: new Date().toISOString() };
   } finally {
     await unlink(workPath).catch(() => {});
   }

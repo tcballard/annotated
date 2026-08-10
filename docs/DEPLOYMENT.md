@@ -6,8 +6,8 @@ Before starting a production container:
 
 1. Load `DATABASE_URL`, `ANNOTATED_STORAGE=postgres`, and the enabled OAuth provider values from the deployment secret manager. The brief requires X **and** Google sign-in, so the default is `OAUTH_PROVIDERS=x,google` and production fails fast at boot unless `X_CLIENT_ID`/`X_CLIENT_SECRET` **and** `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are all present (callbacks default to `PUBLIC_ORIGIN/api/auth/<provider>/callback`; override with `X_REDIRECT_URI`/`GOOGLE_REDIRECT_URI` if the app origin differs). A deploy that boots without Google credentials is a checklist failure, not a working configuration.
 2. Load `ANNOTATED_ASSET_STORAGE=s3`, the S3/R2 bucket/endpoint/credentials, `PUBLIC_ORIGIN`, `APP_ORIGIN`, a non-wildcard `CORS_ORIGINS`, and `CHROME_EXTENSION_IDS` for packaged extension builds.
-3. Run `npm run db:migrate` from the same release artifact against the target database. Migration `004_rate_limit_buckets` creates the shared abuse-control ledger; do not route production traffic until it is applied.
-4. Start the API container (the image binds `HOST=0.0.0.0`) and a separate worker service from the same image with command `npm run worker`. The production API is queue-only (`MEDIA_WORKER_CONCURRENCY=0` is enforced); set a positive concurrency only on the worker service. Both processes use the same PostgreSQL and object-storage configuration. Require `/api/ready` to return 200 before routing traffic and require the worker's `media_worker_started` event before accepting media jobs. Readiness verifies the latest migration, performs a database health query, checks the S3-compatible bucket, and probes `ffmpeg`, `ffprobe`, and the configured `YTDLP_BIN` provider extractor. A missing or non-executable media runtime returns 503 instead of allowing provider jobs to fail after deployment. Audio uploads accept only the supported recorder/media MIME types, enforce the 25 MB payload cap, and use PostgreSQL-backed rate-limit buckets when production is configured with PostgreSQL; local development and tests retain the bounded in-process fallback. Provider extraction, FFmpeg, and FFprobe commands are killed after `MEDIA_WORKER_PROCESS_TIMEOUT_MS` (300 seconds by default), then persisted as retryable failures; keep that deadline below the worker lease. Forward structured API and worker logs to the deployment's log/metrics sink.
+3. Run `npm run db:migrate` and then `npm run check:relational-integrity` from the same release artifact against the target database. This includes the shared production rate-limit ledger introduced by migration `004_rate_limit_buckets` and the normalized relational projection in `006_relational_core`. Follow [RELATIONAL_MIGRATION.md](RELATIONAL_MIGRATION.md); do not route traffic or select the rollback journal after a failed comparison.
+4. Start the API container (the image binds `HOST=0.0.0.0`) and a separate worker service from the same image with `npm run worker` (Railway can use `railway.worker.json`). The production API is queue-only and refuses nonzero transcode concurrency. Both processes use the same PostgreSQL and object-storage configuration. `/api/ready` proves the API's migration/database/object-store boundary and reports the media runtime as external. Separately require the worker's `media_worker_started` event, which is emitted only after the worker verifies PostgreSQL, `ffmpeg`, `ffprobe`, and `YTDLP_BIN`. Audio uploads accept only supported MIME types, enforce the 25 MB cap, and use PostgreSQL-backed rate limits. Provider extraction, FFmpeg, and FFprobe are killed after `MEDIA_WORKER_PROCESS_TIMEOUT_MS` (300 seconds by default); keep it below the lease. Jobs expose queue age/status through the token-protected `/api/operator/metrics` endpoint and emit trace-linked claim/provider/probe/object/ready/retry/dead-letter events without source content. Set a random `OPERATOR_METRICS_TOKEN` of at least 24 characters and keep that route behind operator access.
 
    YouTube extraction also has an explicit egress configuration boundary. The
    image defaults `YTDLP_JS_RUNTIME=node`; if the hosting provider challenges
@@ -19,6 +19,14 @@ Before starting a production container:
    is an operational dependency, not proof of successful extraction; run the
    bounded provider smoke before calling YouTube complete.
 5. Verify a real OAuth callback, source resolution, media upload, feed write, and claim review in the deployed environment.
+
+For public CDN delivery, set `S3_PUBLIC_BASE_URL` to the delivery origin and
+configure an HTTPS `MEDIA_CDN_PURGE_ENDPOINT` plus a random
+`MEDIA_CDN_PURGE_TOKEN` of at least 24 characters. Annotated then uploads
+UUID-addressed objects with immutable cache metadata and fails a takedown if the
+exact delivery URL cannot be purged after origin deletion. Without purge
+credentials, public objects use a five-minute revalidating cache instead. Private
+signed-object delivery remains `private, no-store` and needs no CDN purge.
 
 ## Railway POC staging
 
@@ -57,8 +65,8 @@ credential.
 5. Set the real X **and** Google OAuth credentials before production startup
    (the server refuses to boot with either pair missing), run migrations from
    the release artifact, deploy, and require `/api/ready` to return 200 before
-   trying the media acceptance flow. It confirms PostgreSQL, the private
-   bucket, and the media runtime are usable with deployed settings.
+   trying the media acceptance flow. It confirms PostgreSQL and the private
+   bucket are usable; require the worker startup event for media-runtime proof.
 6. From a clean checkout, run `STAGING_ORIGIN=https://<railway-domain>
    npm run acceptance:staging`. The command is non-mutating: it verifies health,
    readiness, provider configuration shape, the public root/brand asset, the
@@ -272,10 +280,10 @@ If the ledger is unavailable in production, the application fails closed for
 the limited action rather than silently falling back to a process-local limit;
 use an edge limiter as an additional first-mile control for volumetric abuse.
 
-The Docker image includes the pinned provider extractor described below, and
-`/api/ready` probes `ffmpeg`, `ffprobe`, and `YTDLP_BIN` before the instance can
-receive traffic. That proves the runtime is present; it does not claim a
-deployed provider transcode or browser playback run. The optional
+The Docker image includes the pinned provider extractor described below. The
+standalone worker probes `ffmpeg`, `ffprobe`, and `YTDLP_BIN` before polling;
+the API never executes those binaries. That proves the runtime is present; it
+does not claim a deployed provider transcode or browser playback run. The optional
 `YTDLP_PROXY`, `YTDLP_COOKIES_FILE`, and `YTDLP_PLAYER_CLIENT` settings are
 deliberately deployment configuration rather than image contents.
 

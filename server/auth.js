@@ -1,7 +1,8 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { deleteSessionByTokenHash, putSession, readStore, updateStore } from './store.js';
+import { deleteSessionByTokenHash, putSession } from './store.js';
 import { rateLimitAsync } from './rate-limit.js';
 import { isChromeExtensionRedirectUrl } from './cors.js';
+import { consumeExtensionTicket, findSessionUser, findUser, putExtensionTicket, upsertIdentity } from './product-repository.js';
 
 const sessionTtlSeconds = Number(process.env.AUTH_SESSION_TTL_SECONDS || 2_592_000);
 const oauthStateTtlSeconds = 600;
@@ -200,18 +201,7 @@ const providerAvatarUrl = (value) => {
 };
 
 const upsertUser = async (identity) => {
-  let user;
-  const next = await updateStore((store) => {
-    const users = store.users || [];
-    user = users.find((item) => item.provider === identity.provider && item.providerId === identity.providerId);
-    if (user) {
-      user = { ...user, ...identity, updatedAt: new Date().toISOString() };
-      return { ...store, users: users.map((item) => item.id === user.id ? user : item) };
-    }
-    user = { id: randomUUID(), ...identity, createdAt: new Date().toISOString() };
-    return { ...store, users: [...users, user] };
-  });
-  return next.users.find((item) => item.id === user.id);
+  return upsertIdentity(identity, randomUUID());
 };
 
 const createSession = async (user) => {
@@ -226,7 +216,7 @@ const createSession = async (user) => {
 const createExtensionTicket = async (user, returnTo) => {
   const ticket = base64url(randomBytes(32));
   const expiresAt = new Date(Date.now() + 120_000).toISOString();
-  await updateStore((store) => ({ ...store, extensionTickets: [...(store.extensionTickets || []).filter((item) => new Date(item.expiresAt) > new Date()), { tokenHash: hashToken(ticket), userId: user.id, returnTo, expiresAt }] }));
+  await putExtensionTicket({ tokenHash: hashToken(ticket), userId: user.id, returnTo, expiresAt });
   return { ticket, expiresAt };
 };
 
@@ -259,25 +249,13 @@ const requestToken = (request) => {
 export const sessionUser = async (request) => {
   const token = requestToken(request);
   if (!token) return null;
-  const store = await readStore();
-  const session = (store.sessions || []).find((item) => item.tokenHash === hashToken(token) && new Date(item.expiresAt) > new Date());
-  return session ? (store.users || []).find((user) => user.id === session.userId) || null : null;
+  return findSessionUser(hashToken(token));
 };
 
 export const exchangeExtensionTicket = async (ticket) => {
   if (!ticket || typeof ticket !== 'string') throw new Error('An extension auth ticket is required.');
-  let userId;
-  const now = new Date();
-  await updateStore((store) => {
-    const match = (store.extensionTickets || []).find((item) => item.tokenHash === hashToken(ticket) && new Date(item.expiresAt) > now);
-    if (!match) return store;
-    userId = match.userId;
-    return { ...store, extensionTickets: (store.extensionTickets || []).filter((item) => item !== match) };
-  });
-  if (!userId) throw new Error('Extension auth ticket is invalid or expired.');
-  const store = await readStore();
-  const user = (store.users || []).find((item) => item.id === userId);
-  if (!user) throw new Error('The extension account no longer exists.');
+  const user = await consumeExtensionTicket(hashToken(ticket));
+  if (!user) throw new Error('Extension auth ticket is invalid or expired.');
   const session = await createSession(user);
   return { token: session.token, expiresAt: session.expiresAt, user };
 };
@@ -293,8 +271,7 @@ export const currentUser = async (request) => {
   const user = await sessionUser(request);
   if (user) return user;
   if (!authRequired) {
-    const users = (await readStore()).users || [];
-    return users.find((item) => item.id === 'local-tom') || users[0] || null;
+    return findUser('local-tom');
   }
   return null;
 };
