@@ -175,12 +175,12 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
         status: response.status,
         canonicalUrl: body.source?.canonicalUrl || null,
         processing: body.source?.processing || null,
-        error: body.source?.error || null,
+        error: body.source?.error || body.error || null,
       };
     }, { origin: app.origin, sourceUrl: `${fixture.origin}/article` });
-    expect(sourceResolutionProof.status).toBe(200);
-    expect(sourceResolutionProof.canonicalUrl).toBe(`${fixture.origin}/article`);
-    expect(sourceResolutionProof.processing).toBe('metadata-unavailable');
+    expect(sourceResolutionProof.status).toBe(400);
+    expect(sourceResolutionProof.canonicalUrl).toBeNull();
+    expect(sourceResolutionProof.processing).toBeNull();
     expect(sourceResolutionProof.error).toMatch(/not allowed/i);
 
     // OAuth cancellation uses Chrome's real identity window against a local,
