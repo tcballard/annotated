@@ -182,20 +182,12 @@ const waitForWorkerVersion = async (session, extensionId, timeout = 10_000) => {
 // then waking it through the product's existing RETRY_PENDING message. The
 // caller compares an injected per-JS-context nonce before/after; no product
 // test hook is involved.
-export const stopExtensionServiceWorker = async ({ context, extensionId, page }) => {
-  const browser = context.browser();
-  // browser() may be null for launchPersistentContext. The ServiceWorker
-  // domain is also exposed on a Chromium page session, which keeps this gate
-  // compatible with the persistent profile it is specifically meant to test.
-  // Use the caller's known-live packaged surface instead of an arbitrary first
-  // page: Chrome can close transient popup/native-host targets during this flow.
-  const cdpPage = page && !page.isClosed()
-    ? page
-    : context.pages().find((candidate) => !candidate.isClosed());
-  if (!browser && !cdpPage) throw new Error('No live page is available to control the extension service worker.');
-  const session = browser
-    ? await browser.newBrowserCDPSession()
-    : await context.newCDPSession(cdpPage);
+export const stopExtensionServiceWorker = async ({ browserControl, extensionId }) => {
+  // ServiceWorker.enable is a browser-target CDP command. Persistent contexts
+  // intentionally expose no Browser through context.browser(), so the gate
+  // supplies a second loopback CDP connection to the same Chromium process.
+  if (!browserControl) throw new Error('A browser-level CDP connection is required to control the extension service worker.');
+  const session = await browserControl.newBrowserCDPSession();
   try {
     const version = await waitForWorkerVersion(session, extensionId);
     if (!version?.versionId) throw new Error('Chrome did not report the packaged extension service-worker version.');

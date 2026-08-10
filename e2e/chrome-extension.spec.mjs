@@ -125,6 +125,7 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
   const playerDocument = playerFixture.replace('clock.webm', `data:video/webm;base64,${clockFixture}`);
   const evidence = createEvidenceRecorder({ testInfo });
   let context;
+  let browserControl;
   let app;
   let panelVideo;
   let traceStarted = false;
@@ -134,6 +135,7 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
   const tracePath = testInfo.outputPath('gate-b-trace.zip');
   const videoPath = testInfo.outputPath('gate-b-flow.webm');
   try {
+    const browserControlPort = await freePort();
     context = await chromium.launchPersistentContext(profilePath, {
       channel: 'chromium',
       headless: process.env.ANNOTATED_E2E_HEADED !== '1',
@@ -146,8 +148,11 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
         '--deny-permission-prompts',
         '--use-fake-device-for-media-stream',
         '--autoplay-policy=no-user-gesture-required',
+        '--remote-debugging-address=127.0.0.1',
+        `--remote-debugging-port=${browserControlPort}`,
       ],
     });
+    browserControl = await chromium.connectOverCDP(`http://127.0.0.1:${browserControlPort}`);
     evidence.wireContext(context);
     await context.route(`${controlledSourceOrigin}/**`, (route) => {
       const pathname = new URL(route.request().url()).pathname;
@@ -358,7 +363,7 @@ test('the checksummed packaged extension completes the Gate B browser loop', asy
     // Stop first, before arming the replacement waiter. If CDP cannot stop the
     // worker, this preserves the real lifecycle error instead of masking it
     // with a waiter rejected later by Playwright teardown.
-    await stopExtensionServiceWorker({ context, extensionId, page: panel });
+    await stopExtensionServiceWorker({ browserControl, extensionId });
     await app.start();
     const replacementWorkerCreated = context.waitForEvent('serviceworker', {
       predicate: (candidate) => candidate !== workerForSuspension && candidate.url() === workerForSuspension.url(),
