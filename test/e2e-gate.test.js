@@ -67,11 +67,13 @@ test('the Gate B flow names every acceptance-critical browser behaviour', async 
 });
 
 test('controlled fixtures are local, original, deterministic, and independently servable', async (t) => {
-  const [article, player, oauth] = await Promise.all([read('fixtures/article.html'), read('fixtures/player.html'), read('fixtures/oauth-cancel.html')]);
+  const [article, player, oauth, clock] = await Promise.all([read('fixtures/article.html'), read('fixtures/player.html'), read('fixtures/oauth-cancel.html'), read('fixtures/clock.webm.b64')]);
   assert.match(article, /repository-owned test fixture/);
   assert.match(article, /id="passage"/);
   assert.match(player, /repository-owned clock/);
   assert.match(player, /<video id="fixturePlayer"/);
+  assert.match(player, /src="clock\.webm"/);
+  assert.ok(Buffer.from(clock.trim(), 'base64').byteLength > 1_000, 'native media clock fixture must be substantive');
   assert.match(player, /window\.annotatedFixturePlayer/);
   assert.match(oauth, /Controlled OAuth cancellation fixture/);
   assert.doesNotMatch(`${article}\n${player}\n${oauth}`, /https?:\/\//, 'fixtures must not fetch third-party content');

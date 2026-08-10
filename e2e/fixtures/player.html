@@ -15,29 +15,31 @@
     <main>
       <h1>Controlled player</h1>
       <p>This repository-owned clock makes player selection, seeking, and playback deterministic without downloading third-party media.</p>
-      <video id="fixturePlayer" controls muted aria-label="Synthetic controlled video"></video>
+      <video id="fixturePlayer" src="clock.webm" controls muted preload="auto" aria-label="Synthetic controlled video"></video>
       <p>Current fixture time: <code id="clock">12.000</code></p>
     </main>
     <script>
       (() => {
         const element = document.querySelector('#fixturePlayer');
         const clock = document.querySelector('#clock');
-        const state = { currentTime: 12, duration: 180, paused: false, ended: false, muted: false, playbackRate: 1, playCalls: 0, pauseCalls: 0 };
-        const updateClock = () => { clock.textContent = state.currentTime.toFixed(3); };
-        for (const [name, descriptor] of Object.entries({
-          currentTime: { get: () => state.currentTime, set: (value) => { state.currentTime = Number(value) || 0; updateClock(); element.dispatchEvent(new Event('timeupdate')); } },
-          duration: { get: () => state.duration },
-          paused: { get: () => state.paused },
-          ended: { get: () => state.ended },
-          muted: { get: () => state.muted, set: (value) => { state.muted = Boolean(value); } },
-          playbackRate: { get: () => state.playbackRate, set: (value) => { state.playbackRate = Number(value) || 1; } },
-          seekable: { get: () => ({ length: 1, start: () => 0, end: () => state.duration }) },
-        })) Object.defineProperty(element, name, { configurable: true, ...descriptor });
-        element.play = async () => { state.playCalls += 1; state.paused = false; element.dispatchEvent(new Event('play')); };
-        element.pause = () => { state.pauseCalls += 1; state.paused = true; element.dispatchEvent(new Event('pause')); };
+        const state = { playCalls: 0, pauseCalls: 0 };
+        const updateClock = () => { clock.textContent = Number(element.currentTime || 0).toFixed(3); };
+        element.addEventListener('timeupdate', updateClock);
+        element.addEventListener('play', () => { state.playCalls += 1; });
+        element.addEventListener('pause', () => { state.pauseCalls += 1; });
         window.annotatedFixturePlayer = {
-          setTime(value) { state.currentTime = Number(value); updateClock(); element.dispatchEvent(new Event('timeupdate')); },
-          snapshot() { return { ...state }; },
+          setTime(value) { element.currentTime = Number(value); updateClock(); },
+          snapshot() {
+            return {
+              currentTime: element.currentTime,
+              duration: Number.isFinite(element.duration) ? element.duration : 0,
+              paused: element.paused,
+              ended: element.ended,
+              muted: element.muted,
+              playbackRate: element.playbackRate,
+              ...state,
+            };
+          },
         };
         updateClock();
       })();
