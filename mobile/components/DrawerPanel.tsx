@@ -8,7 +8,7 @@ import { use, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import Feather from '@expo/vector-icons/Feather';
+import Icon, { type ProductIconName } from './Icon';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { avatarColor, avatarInitial } from '../lib/core/avatar';
@@ -44,9 +44,9 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
   const tick = () => { if (process.env.EXPO_OS === 'ios') void Haptics.selectionAsync(); };
   const go = (path: string) => { tick(); close(); router.push(path as never); };
 
-  const item = (iconName: keyof typeof Feather.glyphMap, label: string, onPress: () => void) => (
+  const item = (iconName: ProductIconName, label: string, onPress: () => void) => (
     <Pressable key={label} style={({ pressed }) => [styles.item, pressed && styles.itemPressed]} onPress={onPress}>
-      <Feather name={iconName} size={21} color={ink} />
+      <Icon name={iconName} size={21} color={ink} />
       <Text style={styles.itemLabel}>{label}</Text>
     </Pressable>
   );
@@ -85,7 +85,7 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
         {me ? <View style={styles.divider} /> : null}
         {item('bar-chart-2', 'Transparency', () => go('/web/transparency'))}
         {item('info', 'About', () => go('/web/about'))}
-        {item('flag', 'Rights & claims', () => go('/web/rights'))}
+        {item('claim', 'Rights & claims', () => go('/web/rights'))}
         {item('file-text', 'Terms', () => go('/web/terms'))}
       </View>
 
@@ -96,7 +96,7 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
           style={({ pressed }) => [styles.item, styles.foot, pressed && styles.itemPressed]}
           onPress={async () => { tick(); await api.logout().catch(() => {}); bump(); close(); }}
         >
-          <Feather name="log-out" size={20} color={meta} />
+          <Icon name="log-out" size={20} color={meta} />
           <Text style={[styles.itemLabel, { color: meta }]}>Sign out</Text>
         </Pressable>
       ) : (

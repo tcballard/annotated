@@ -26,7 +26,8 @@ import {
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
-import Feather from '@expo/vector-icons/Feather';
+import Icon from './Icon';
+import SystemIcon from './SystemIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { annotationToFeedItem, chipFor, formatTime } from '../lib/core/feed-item';
 import type { FeedItem } from '../lib/core/feed-item';
@@ -199,25 +200,25 @@ export const FeedCard = ({ item, following, ownId, liked, likeCount, onOpenAnnot
         : <Text style={styles.note}>Audio note{item.audioDuration ? ` · ${formatTime(item.audioDuration)}` : ''} — listen below.</Text>}
       <SourceCard item={item} />
       <View style={styles.actions}>
-        <Pressable style={styles.act} onPress={() => onOpenAnnotation(item)} hitSlop={8} accessibilityLabel="Respond">
-          <Feather name="message-circle" size={15} color={meta} />
+        <Pressable style={styles.act} onPress={() => onOpenAnnotation(item)} accessibilityLabel="Respond">
+          <Icon name="respond" size={18} color={meta} />
           {item.comments ? <Text style={styles.actMuted}>{item.comments}</Text> : null}
         </Pressable>
-        <Pressable style={styles.act} onPress={() => onToggleLike(item)} hitSlop={8} accessibilityLabel={liked ? 'Unlike this annotation' : 'Like this annotation'}>
-          <Feather name="heart" size={15} color={liked ? ink : meta} />
+        <Pressable style={styles.act} onPress={() => onToggleLike(item)} accessibilityLabel={liked ? 'Unlike this annotation' : 'Like this annotation'}>
+          <Icon name="heart" size={18} color={liked ? ink : meta} />
           {likeCount ? <Text style={liked ? styles.actText : styles.actMuted}>{likeCount}</Text> : null}
         </Pressable>
         {item.authorId && item.authorId !== ownId ? (
-          <Pressable style={styles.act} onPress={() => onToggleFollow(item)} hitSlop={8} accessibilityLabel={following ? 'Following' : 'Follow'}>
-            <Feather name={following ? 'user-check' : 'user-plus'} size={15} color={following ? ink : meta} />
+          <Pressable style={styles.act} onPress={() => onToggleFollow(item)} accessibilityLabel={following ? 'Following' : 'Follow'}>
+            <Icon name="follow" size={18} color={following ? ink : meta} />
           </Pressable>
         ) : null}
-        <Pressable style={[styles.act, styles.actRight]} onPress={() => onOpenOriginal(item)} hitSlop={8} accessibilityLabel={`Open the original source${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}`}>
-          <Feather name="external-link" size={15} color={ink} />
+        <Pressable style={[styles.act, styles.actRight]} onPress={() => onOpenOriginal(item)} accessibilityLabel={`Open the original source${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}`}>
+          <Icon name="open" size={18} color={ink} />
           {item.opens ? <Text style={styles.actText}>{item.opens}</Text> : null}
         </Pressable>
-        <Pressable style={styles.act} onPress={() => onShare(item)} hitSlop={8} accessibilityLabel="Share annotation">
-          <Feather name="share" size={15} color={meta} />
+        <Pressable style={styles.act} onPress={() => onShare(item)} accessibilityLabel="Share annotation">
+          <SystemIcon name="share" size={18} color={meta} />
         </Pressable>
       </View>
     </View>
@@ -490,11 +491,13 @@ const styles = StyleSheet.create({
   media: { marginTop: 8, borderRadius: 10, overflow: 'hidden', position: 'relative' },
   mediaImage: { width: '100%', aspectRatio: 16 / 10, backgroundColor: tokens.soft },
   quote: { fontFamily: serif, fontSize: 14.5, lineHeight: 21, color: tokens['ink-soft'], marginTop: 8 },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 18, marginTop: 8, paddingRight: 4 },
-  act: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  actText: { color: ink, fontSize: 12.5, fontWeight: '600' },
+  // Every action is a true 44pt target (HIG floor) — the row grows, the
+  // card compensates, and hitSlop goes: padded neighbours must not overlap.
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, marginBottom: -6, marginLeft: -12, paddingRight: 4 },
+  act: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 44, minHeight: 44, paddingHorizontal: 6 },
+  actText: { color: ink, fontSize: 13, fontWeight: '600' },
   actRight: { marginLeft: 'auto' },
-  actMuted: { color: meta, fontSize: 12.5 },
+  actMuted: { color: meta, fontSize: 13 },
   empty: { backgroundColor: card, borderRadius: radiusCard, padding: 22, alignItems: 'center' },
   emptyTitle: { color: ink, fontWeight: '700', fontSize: 15.5, textAlign: 'center' },
   emptyBody: { color: meta, fontSize: 13.5, marginTop: 6, textAlign: 'center', lineHeight: 19 },

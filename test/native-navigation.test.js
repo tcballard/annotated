@@ -11,6 +11,19 @@ const drawerLayout = await readFile(new URL('../mobile/app/(drawer)/_layout.tsx'
 const rootLayout = await readFile(new URL('../mobile/app/_layout.tsx', import.meta.url), 'utf8');
 const server = await readFile(new URL('../server/index.js', import.meta.url), 'utf8');
 
+test('touch targets meet the 44pt floor', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const timeline = await readFile(new URL('../mobile/components/Timeline.tsx', import.meta.url), 'utf8');
+  const headerAvatar = await readFile(new URL('../mobile/components/HeaderAvatar.tsx', import.meta.url), 'utf8');
+  const capture = await readFile(new URL('../mobile/components/CaptureSheet.tsx', import.meta.url), 'utf8');
+  const search = await readFile(new URL('../mobile/components/SearchScreen.tsx', import.meta.url), 'utf8');
+  assert.match(timeline, /act: \{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 44, minHeight: 44/, 'feed actions are true 44pt targets');
+  assert.doesNotMatch(timeline, /onShare\(item\)\} hitSlop/, 'padded action targets do not stack overlapping hitSlop');
+  assert.match(headerAvatar, /minWidth: 44, minHeight: 44/, 'the menu button meets the floor');
+  assert.match(capture, /width: 44, height: 44, borderRadius: 22/, 'the capture-sheet close meets the floor');
+  assert.match(search, /minWidth: 44, minHeight: 44/, 'the search clear meets the floor');
+});
+
 test('the drawer is a card over the timeline, not a full-bleed sheet', () => {
   // Rounded on its open edge on both the navigator container (which owns
   // the shadow, so it must not clip) and the panel frame (which clips its
@@ -40,7 +53,7 @@ test('the header is X-anatomy in our identity: avatar opens the drawer, the word
 test('the home chrome hides on scroll down and returns on scroll up', async () => {
   const { readFile } = await import('node:fs/promises');
   const timeline = await readFile(new URL('../mobile/components/Timeline.tsx', import.meta.url), 'utf8');
-  assert.match(tabsLayout, /headerShown: false,\s*\n\s*tabBarIcon: \(\{ color, size \}\) => <Feather name="home"/, 'the navigator header yields to the collapsing chrome');
+  assert.match(tabsLayout, /headerShown: false,\s*\n\s*tabBarIcon: \(\{ color, size \}\) => <Icon name="home"/, 'the navigator header yields to the collapsing chrome');
   assert.match(timeline, /Animated\.timing\(chromeY, \{ toValue: show \? 0 : -chromeHeightRef\.current/, 'the chrome translates away');
   assert.match(timeline, /if \(y < 48\) return onChromeIntent\('show'\)/, 'near the top the chrome always shows');
   assert.match(timeline, /if \(delta > 6\) onChromeIntent\('hide'\)/, 'scrolling down hides');

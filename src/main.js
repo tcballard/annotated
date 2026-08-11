@@ -11,6 +11,7 @@ import { sharedUrlFromParams } from './share-capture.js';
 import { isTopic, TOPICS, topicLabel } from './topics.js';
 import { annotationToFeedItem, annotationVerb, chipFor, formatTime, hostOf, parseTimeInput, relTime, sourceLabels, VISIBILITIES } from './feed-item.js';
 import { avatarColor, avatarInitial } from './avatar.js';
+import { PRODUCT_ICONS as icons } from './icons.js';
 import { applyPanelDemoAction, createPanelDemoState, demoDraft, panelDemoView } from './panel-demo.js';
 import { captureDraftBlocker } from './capture-state.js';
 
@@ -31,20 +32,6 @@ const SHELL_MODE = (() => {
 })();
 if (SHELL_MODE) document.documentElement.classList.add('shell-mode');
 
-const icons = {
-  open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg>',
-  respond: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H4l3-3a8 8 0 1 1 14-5z"/></svg>',
-  share: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg>',
-  claim: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V4a1 1 0 0 1 1-1h11l-2 4 2 4H5"/></svg>',
-  follow: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 4h3a1 1 0 0 1 1 1v15l-8-4-8 4V5a1 1 0 0 1 1-1h3"/><path d="M12 3v8M8.5 7.5h7"/></svg>',
-  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4.3 4.3L19 7"/></svg>',
-  close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>',
-  back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
-  mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg>',
-  stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>',
-  bell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
-  heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>',
-};
 
 const escapeHTML = (value = '') => String(value)
   .replaceAll('&', '&amp;')

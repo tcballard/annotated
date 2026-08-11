@@ -149,6 +149,25 @@ test('the moment chip is the same component on every surface', () => {
   assert.match(nativeChip, /borderRadius: 3,/, 'the native chip radius must be 3');
 });
 
+test('one icon vocabulary: the same drawings, sourced from core, on every surface', async () => {
+  const [coreIcons, nativeIcon, systemIcon, mobilePkg] = await Promise.all([
+    read('packages/core/src/icons.ts'),
+    read('mobile/components/Icon.tsx'),
+    read('mobile/components/SystemIcon.tsx'),
+    read('mobile/package.json'),
+  ]);
+  assert.match(web, /import \{ PRODUCT_ICONS as icons \} from '\.\/icons\.js';/, 'the web renders the core set');
+  assert.match(nativeIcon, /from '\.\.\/lib\/core\/icons'/, 'native renders the same core set');
+  for (const name of ['open', 'respond', 'share', 'claim', 'follow', 'mic', 'bell', 'heart']) {
+    assert.ok(coreIcons.includes(`'${name}':`), `the core vocabulary carries ${name}`);
+  }
+  // System affordances are a deliberate allowlist, not a drift channel: the
+  // platform's own glyph (SF Symbols on iOS) for exactly these, nothing else.
+  const allowlist = systemIcon.match(/const SYSTEM_ICONS = \{[\s\S]*?\} satisfies/)?.[0] || '';
+  assert.deepEqual([...allowlist.matchAll(/^  (\w+): \{ sf:/gm)].map((match) => match[1]).sort(), ['back', 'forward', 'share'], 'the platform-glyph allowlist is exactly share/back/forward');
+  assert.ok(!mobilePkg.includes('@expo/vector-icons'), 'the icon-font dependency is retired');
+});
+
 test('one lockup: the wordmark is the same drawing everywhere', async () => {
   const [brandMark, welcome, ogCard] = await Promise.all([
     read('mobile/components/BrandMark.tsx'),

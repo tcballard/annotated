@@ -33,6 +33,7 @@ export const CORE_MODULES = {
   'avatar': ['src/avatar.js', 'extension/avatar.js'],
   'capture-state': ['src/capture-state.js', 'extension/capture-state.js'],
   'share-kit': ['src/share-kit.js', 'extension/share-kit.js'],
+  'icons': ['src/icons.js'],
 };
 
 export const MOBILE_CORE_DIR = 'mobile/lib/core';

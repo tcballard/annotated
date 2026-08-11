@@ -8,7 +8,7 @@
 import { useCallback, useContext, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
-import Feather from '@expo/vector-icons/Feather';
+import Icon from './Icon';
 import { relTime } from '../lib/core/feed-item';
 import { avatarColor, avatarInitial } from '../lib/core/avatar';
 import { api } from '../lib/api';
@@ -37,7 +37,7 @@ type Group = {
   body?: string;
 };
 
-const ICONS = { response: 'message-circle', like: 'heart', follow: 'user-plus' } as const;
+const ICONS = { response: 'respond', like: 'heart', follow: 'follow' } as const;
 
 // X's aggregation, ours: the same event on the same annotation collapses
 // into one row — actors pile up, the newest body and time win.
@@ -143,7 +143,7 @@ export default function NotificationsScreen() {
             else if (group.actors[0]?.handle) router.push(`/web/u/${encodeURIComponent(group.actors[0].handle)}`);
           }}
         >
-          <Feather name={ICONS[group.type] || 'bell'} size={19} color={tokens['ink-soft']} style={styles.typeIcon} />
+          <View style={styles.typeIcon}><Icon name={ICONS[group.type] || 'bell'} size={19} color={tokens['ink-soft']} /></View>
           <View style={styles.main}>
             {facepile(group.actors)}
             {sentence(group)}

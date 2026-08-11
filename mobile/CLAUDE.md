@@ -20,7 +20,15 @@ Two deliberate exceptions, where annotated's own design law outranks the skill:
    (`lib/tokens.ts`, pinned by `test/consistency-audit.test.js`). Do not migrate
    to `Color.ios.*` / Material dynamic colors — the identity is the product's,
    not the platform's.
-2. **Shared iconography over SF Symbols.** Icon shapes are part of the
-   cross-surface anatomy (Feather here, matching outline SVGs on web and in the
-   panel). Moving to `expo-image` `sf:` sources is a product-wide iconography
-   decision (and needs an Android fallback) — raise it, don't drift into it.
+2. **One drawn icon set, sourced from core.** The product's icon vocabulary
+   lives in `packages/core/src/icons.ts` (the web's hand-drawn canon plus
+   Feather-derived additions, MIT) and renders natively through
+   `components/Icon.tsx` — never an icon font. The only platform glyphs
+   allowed are `SystemIcon`'s allowlist (share, back, forward): system
+   affordances wear the OS's own drawing — SF Symbols on iOS per the skill —
+   because those glyphs belong to the platform, not the brand. Adding a name
+   to that allowlist is a design decision; the consistency audit pins it.
+
+Touch targets: every tappable control meets the 44pt floor with real padded
+boxes, not stacked `hitSlop` (overlapping slop on neighbouring actions causes
+misfires). Pinned in `test/native-navigation.test.js`.
