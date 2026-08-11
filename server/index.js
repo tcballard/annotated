@@ -31,6 +31,7 @@ import { exactSourceGraph } from './evidence-graph.js';
 import { recordProductEvent, productFunnel } from './product-events.js';
 import { addPublisherReply, createPublisherChallenge, publisherClaimIds, publisherWorkspace, verifyPublisherChallenge } from './publisher-workspace.js';
 import { annotationEmbedHtml, annotationQrSvg, annotationShareDescriptor } from './share-surfaces.js';
+import { createResponseCache } from './response-cache.js';
 import {
   addComment,
   createAnnotation,
@@ -65,6 +66,7 @@ const { version: releaseVersion } = require('../package.json');
 const port = Number(process.env.PORT || 8787);
 const host = process.env.HOST || '127.0.0.1';
 const publicOrigin = process.env.PUBLIC_ORIGIN || `http://localhost:${port}`;
+const feedCache = createResponseCache();
 const defaultCorsOrigin = resolveCorsOrigin('');
 
 const send = (response, status, body, headers = {}) => {
@@ -342,7 +344,20 @@ const handleApi = async (request, response, pathname) => {
   }
 
   if (request.method === 'GET' && pathname === '/api/feed') {
-    const viewer = await currentUser(request);
+    // Signed-out feed pages are identical for every reader, so they are
+    // served from a one-second micro-TTL cache: a read spike collapses onto
+    // one page build per URL per second instead of one per request.
+    // "Anonymous" is strict — production auth mode with no bearer token and
+    // no session cookie — so no viewer-flavoured payload can ever be cached.
+    const anonymous = authIsRequired()
+      && !String(request.headers.authorization || '').startsWith('Bearer ')
+      && !parseCookies(request.headers.cookie).annotated_session;
+    const cacheKey = anonymous ? String(request.url || '/api/feed') : null;
+    if (cacheKey) {
+      const cached = feedCache.get(cacheKey);
+      if (cached) return send(response, 200, cached, { 'x-cache': 'hit' });
+    }
+    const viewer = anonymous ? null : await currentUser(request);
     const query = new URL(request.url || '/', publicOrigin).searchParams;
     const limit = normalizeFeedLimit(query.get('limit'));
     const offset = normalizeFeedCursor(query.get('cursor'));
@@ -355,7 +370,9 @@ const handleApi = async (request, response, pathname) => {
     const topic = isTopic(query.get('topic')) ? query.get('topic') : null;
     const trending = query.get('sort') === 'trending';
     const result = await listFeed({ viewerId: viewer?.id || '', limit, cursor: query.get('cursor') || '', offset, sourceType, search, urlKey, followingOnly, topic, trending });
-    return send(response, 200, { annotations: result.annotations.map(withAssetUrls), nextCursor: result.nextCursor, query: search || null, ...(result.topics ? { topics: result.topics, topic } : {}) });
+    const payload = JSON.stringify({ annotations: result.annotations.map(withAssetUrls), nextCursor: result.nextCursor, query: search || null, ...(result.topics ? { topics: result.topics, topic } : {}) });
+    if (cacheKey) feedCache.set(cacheKey, payload);
+    return send(response, 200, payload, cacheKey ? { 'x-cache': 'miss' } : {});
   }
 
   // Source hub: a host's public annotations and its annotators, discovery by
