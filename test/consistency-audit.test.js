@@ -118,11 +118,12 @@ test('one terracotta, one dark paper — the palette matches across surfaces', (
 });
 
 test('the feed tabs speak one language on web, panel, and the native app', () => {
-  // Every top switcher wears the panel's tab anatomy: meta text at rest,
+  // Every feed switcher wears the panel's tab anatomy: meta text at rest,
   // ink 700 when active, the short rounded terracotta underline at 34%
-  // insets naming the pane. Only the mobile web thumb dock keeps its own
-  // pill anatomy — it is a dock, not a top switcher, and lives inside its
-  // media scope only.
+  // insets naming the pane. No exemptions any more — the phone dock and
+  // the shell's segmented pills died when the native app started
+  // switching feeds from this exact rail; both phone experiences must
+  // read as one.
   for (const [surface, css] of [['web', webCss], ['panel', panelCss]]) {
     const active = css.match(/\.tab\.is-active::after \{[\s\S]*?\}/)?.[0] || '';
     for (const rule of ['left: 34%', 'right: 34%', 'height: 2px', 'background: var(--accent)', 'border-radius: 99px']) {
@@ -134,6 +135,11 @@ test('the feed tabs speak one language on web, panel, and the native app', () =>
   assert.match(timeline, /tabUnderline: \{ position: 'absolute', bottom: 0, left: '34%', right: '34%', height: 2, backgroundColor: tokens\.accent, borderRadius: 99 \}/, 'the native underline is the same rounded 34% rule');
   assert.match(timeline, /tabTextActive: \{ fontSize: 14, color: ink, fontWeight: '700' \}/, 'the native active tab is ink and bold');
   assert.match(timeline, /tabText: \{ fontSize: 14, color: meta \}/, 'the native resting tab is quiet meta at regular weight');
+  // And no pill switcher survives anywhere on the web: the rail never
+  // re-docks to the bottom, and no scope repaints the active tab as a
+  // filled chrome pill.
+  assert.doesNotMatch(webCss, /\.feedhead \{ position: fixed/, 'the feed rail must never dock to the bottom again');
+  assert.doesNotMatch(webCss, /\.feedhead \.tabs \.tab\.is-active \{ color: #fff/, 'no scope repaints the active tab as a filled pill');
 });
 
 test('the moment chip is the same component on every surface', () => {

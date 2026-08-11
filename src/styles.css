@@ -454,10 +454,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .feed.is-refreshing .post, .feed.is-refreshing .feed-empty { opacity: .45; }
 
 /* One tab anatomy across the product: the panel's flat rail — meta text,
-   ink when active, a short terracotta underline naming the pane. The pill
-   survives only where it is a different component with a different job:
-   the mobile thumb dock at the bottom of the screen, and the native
-   shell's segmented control. */
+   ink when active, a short terracotta underline naming the pane. The rail
+   holds at every width and in shell mode; the phone dock and the shell's
+   segmented pills are gone, because the native app switches feeds from
+   this exact rail and the two phone experiences must read as one. */
 .feedhead {
   position: sticky;
   top: 48px;
@@ -1308,12 +1308,6 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   html.app-banner-open .foot-meta .footer-note { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
 }
 
-@media (max-width: 560px) {
-  /* the feed switcher rides above the banner, not on top of it */
-  html.app-banner-open .feedhead { bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
-  html.app-banner-open .feed:has(.feedhead) { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
-}
-
 /* ── public doc pages ───────────────────────────────────────────────── */
 
 .doc-head { margin-top: 6px; }
@@ -1384,18 +1378,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   .chip.duration { align-self: flex-start; }
   .libhead .lib-counts { margin-left: 0; width: 100%; }
   .srcstrip { flex-wrap: wrap; }
-  /* The feed switcher docks into the thumb zone: fixed pill rail at the
-     bottom, floated above the home-indicator safe area. Chips stay with
-     the content up top; the feed pads so the last card clears the rail.
-     Down here the pill is a dock, not a tab bar — it keeps its own anatomy. */
-  .feedhead { position: fixed; top: auto; bottom: 0; left: 0; right: 0; background: transparent; backdrop-filter: none; border-bottom: 0; padding: 0 14px calc(12px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
-  .feedhead .tabs { pointer-events: auto; background: var(--card); border: 1px solid var(--border); border-radius: 99px; padding: 4px; box-shadow: 0 6px 24px rgba(38, 41, 47, .18); }
-  .feedhead .tabs .tab { border-radius: 99px; padding: 8px 0; min-height: 38px; }
-  .feedhead .tabs .tab:hover { background: var(--soft); }
-  .feedhead .tabs .tab.is-active { color: #fff; background: var(--chrome); }
-  .feedhead .tabs .tab.is-active::after { content: none; }
+  /* The feed switcher stays a top rail at phone widths — the same rail,
+     the same values, as the native app's Home. Swipes still flick the
+     panes; the rail names them. */
   .topic-chips { padding-top: 2px; }
-  .feed:has(.feedhead) { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
 }
 
 /* ── the publish moment ─────────────────────────────────────────────── */
@@ -1539,26 +1525,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 /* ── shell mode (native app) ────────────────────────────────────────── */
 
-/* Inside the native app the page is content only: no chrome bar above, no
-   footer below, and the bottom of the screen belongs to the app's own tab
-   bar — so the feed switcher returns to the top, iOS segmented-control
-   style, while swipes keep flicking panes. */
-html.shell-mode .feedhead {
-  position: sticky;
-  top: 0;
-  bottom: auto;
-  left: auto;
-  right: auto;
-  background: var(--paper);
-  backdrop-filter: none;
-  border-bottom: 0;
-  padding: 10px 0;
-  pointer-events: auto;
-}
-html.shell-mode .feedhead .tabs { background: var(--card); border: 1px solid var(--border); border-radius: 99px; padding: 4px; box-shadow: var(--shadow); }
-html.shell-mode .feedhead .tabs .tab { border-radius: 99px; padding: 8px 0; min-height: 38px; }
-html.shell-mode .feedhead .tabs .tab.is-active { color: #fff; background: var(--chrome); }
-html.shell-mode .feedhead .tabs .tab.is-active::after { content: none; }
+/* Inside the native app the page is content only — no chrome bar above —
+   so the rail's only difference is where it sticks. Anatomy is the base
+   rail, byte for byte. */
+html.shell-mode .feedhead { top: 0; }
 html.shell-mode .feed:has(.feedhead) { padding-bottom: 24px; }
 
 /* ── touch targets ──────────────────────────────────────────────────── */
