@@ -414,7 +414,12 @@ const recoverAuthError = (error, message = 'Your session has expired. Sign in ag
 // transparency is routed like a doc page but loads live data via navigate().
 const DOC_VIEWS = { about: '/about', extension: '/extension', panelDemo: '/extension/demo', audit: '/audit', rights: '/rights', terms: '/terms', transparency: '/transparency' };
 
-const routeFor = (view) => view === 'feed' ? '/'
+// The feed's three panes are real places: /  /trending  /following (and
+// /trending?topic=… for a chip). A refresh or a shared link lands on the
+// same pane instead of silently resetting to Recent.
+const routeFor = (view) => view === 'feed' ? (state.feedFollowing ? '/following'
+    : state.feedSort === 'trending' ? `/trending${state.feedTopic ? `?topic=${encodeURIComponent(state.feedTopic)}` : ''}`
+    : '/')
   : view === 'capture' ? '/capture'
   : view === 'library' ? '/library'
   : view === 'notifications' ? '/notifications'
@@ -475,10 +480,24 @@ const applyLocation = () => {
     state.activeView = 'notifications';
   } else if (window.location.pathname === '/moderation') {
     state.activeView = 'moderation';
+  } else if (window.location.pathname === '/trending') {
+    state.activeView = 'feed';
+    state.feedSort = 'trending';
+    state.feedFollowing = false;
+    const topicParam = new URLSearchParams(window.location.search).get('topic');
+    state.feedTopic = isTopic(topicParam) ? topicParam : null;
+  } else if (window.location.pathname === '/following') {
+    state.activeView = 'feed';
+    state.feedSort = 'recent';
+    state.feedFollowing = true;
+    state.feedTopic = null;
   } else if (Object.values(DOC_VIEWS).includes(window.location.pathname)) {
     state.activeView = Object.keys(DOC_VIEWS).find((view) => DOC_VIEWS[view] === window.location.pathname);
   } else {
     state.activeView = 'feed';
+    state.feedSort = 'recent';
+    state.feedFollowing = false;
+    state.feedTopic = null;
   }
 };
 
@@ -754,10 +773,10 @@ const feedView = () => {
       : `<div class="feed-empty"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h3>${emptyTitle}</h3><p>${emptyBody}</p>${emptyAction}</div>`;
   return `
   <div class="page">
-    <main class="feed">
+    <main class="feed${state.feedLoading && items.length ? ' is-refreshing' : ''}">
       <div class="feedhead">
         <h1 class="sr-only">Timeline</h1>
-        <div class="tabs" role="tablist" aria-label="Timeline filter">
+        <div class="tabs" role="tablist" aria-label="Timeline filter" aria-busy="${state.feedLoading}">
           <button class="tab ${!state.feedFollowing && state.feedSort !== 'trending' ? 'is-active' : ''}" data-action="feed-filter" data-following="false" data-sort="recent" role="tab" aria-selected="${!state.feedFollowing && state.feedSort !== 'trending'}">Recent</button>
           <button class="tab ${!state.feedFollowing && state.feedSort === 'trending' ? 'is-active' : ''}" data-action="feed-filter" data-following="false" data-sort="trending" role="tab" aria-selected="${!state.feedFollowing && state.feedSort === 'trending'}">Trending</button>
           <button class="tab ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true" data-sort="recent" role="tab" aria-selected="${state.feedFollowing}">Following</button>
@@ -1962,6 +1981,7 @@ const applyFeedFilter = (sort, following) => {
   state.feedSort = sort === 'trending' ? 'trending' : 'recent';
   if (state.feedSort !== 'trending' || state.feedFollowing) state.feedTopic = null;
   state.feedCursor = null;
+  if (state.activeView === 'feed') window.history.pushState({}, '', routeFor('feed'));
   loadFeed().then(render);
 };
 
@@ -2101,6 +2121,7 @@ app.addEventListener('click', (event) => {
     state.feedFollowing = false;
     state.feedCursor = null;
     if (state.activeView !== 'feed') navigate('feed');
+    else window.history.pushState({}, '', routeFor('feed'));
     loadFeed().then(render);
     return;
   }
@@ -2583,6 +2604,7 @@ window.addEventListener('popstate', () => {
     openAnnotation(state.publishedSlug);
     return;
   }
+  if (state.activeView === 'feed') { state.feedCursor = null; loadFeed().then(render); }
   if (state.activeView === 'profile' && state.profileHandle) { loadProfile().then(render); }
   if (state.activeView === 'library') { loadLibrary().then(render); }
   if (state.activeView === 'hub' && state.hubHost) { loadHub().then(render); }

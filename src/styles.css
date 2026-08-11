@@ -459,6 +459,11 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   background: transparent;
 }
 
+/* A filter click answers immediately: the outgoing list dims while the next
+   pane loads, so switching tabs or topics always visibly does something. */
+.feed .post, .feed .feed-empty { transition: opacity var(--t-fade) var(--e-ink); }
+.feed.is-refreshing .post, .feed.is-refreshing .feed-empty { opacity: .45; }
+
 .feedhead {
   position: sticky;
   top: 48px;
