@@ -9,6 +9,7 @@
 import { access, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { OG_WORDMARK } from '../server/og-wordmark.js';
 
 const repoRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const brandDir = path.join(repoRoot, 'public/brand');
@@ -29,37 +30,44 @@ const fonts = [
 const el = (type, style, children) => ({ type, props: { style, children } });
 const txt = (style, value) => el('div', style, value);
 
-// The default card: the identity in one frame — ink chrome, paper ground,
-// the wordmark with its terracotta full stop, and the rule in serif.
+// The outlined lockup rides in as the finished drawing — retyping the brand
+// in DejaVu is exactly the fourth-rendering mistake the OG pipeline retired.
+const wordmark = (height) => ({
+  type: 'img',
+  props: {
+    src: `data:image/svg+xml;base64,${Buffer.from(OG_WORDMARK.svg).toString('base64')}`,
+    width: Math.round((OG_WORDMARK.width / OG_WORDMARK.height) * height),
+    height,
+  },
+});
+
+// The default card: the identity in one frame, in the same dark grammar as
+// the annotation cards — ink ground, the lockup large, the rule in serif
+// paper, terracotta only on the closing line.
 const card = el('div', {
   width: 1200, height: 630, display: 'flex', flexDirection: 'column',
-  backgroundColor: '#F5F4F0', fontFamily: 'CardSans', color: '#26292F',
+  backgroundColor: '#26292F', fontFamily: 'CardSans', color: '#E9EAEC',
 }, [
-  el('div', { height: 62, backgroundColor: '#33383F', display: 'flex', alignItems: 'center', padding: '0 34px', flexShrink: 0 }, [
-    txt({ fontSize: 29, fontWeight: 700, color: '#FFFFFF', letterSpacing: -0.5 }, 'annotated'),
-    txt({ fontSize: 29, fontWeight: 700, color: '#E0A48E' }, '.'),
-    txt({ fontSize: 16, color: '#B9BEC6', marginLeft: 18, letterSpacing: 2 }, 'SOURCE-FIRST NOTES'),
+  el('div', { height: 84, backgroundColor: '#33383F', display: 'flex', alignItems: 'center', padding: '0 56px', flexShrink: 0 }, [
+    wordmark(32),
+    txt({ fontSize: 17, color: '#B9BEC6', marginLeft: 22, letterSpacing: 3 }, 'SOURCE-FIRST NOTES'),
   ]),
   el('div', {
-    display: 'flex', flexDirection: 'column', flexGrow: 1, margin: 26, padding: '0 56px',
-    backgroundColor: '#FFFFFF', border: '2px solid #DDDEE2', borderRadius: 14,
+    display: 'flex', flexDirection: 'column', flexGrow: 1, padding: '0 56px',
     alignItems: 'flex-start', justifyContent: 'center',
   }, [
-    el('div', { display: 'flex', alignItems: 'flex-end' }, [
-      txt({ fontSize: 110, fontWeight: 700, letterSpacing: -3, color: '#26292F' }, 'annotated'),
-      txt({ fontSize: 110, fontWeight: 700, color: '#B0674D' }, '.'),
-    ]),
-    txt({ fontFamily: 'CardSerif', fontSize: 38, color: '#3E444E', marginTop: 10, lineHeight: 1.3 },
+    wordmark(92),
+    txt({ fontFamily: 'CardSerif', fontSize: 44, color: '#F5F4F0', marginTop: 34, lineHeight: 1.25 },
       '“A clip without its source is just a rumour.”'),
-    txt({ fontSize: 24, color: '#666C74', marginTop: 22, lineHeight: 1.45 },
+    txt({ fontSize: 25, color: '#B9BEC6', marginTop: 20, lineHeight: 1.45 },
       'Keep the moment — a passage, a bounded clip, a screenshot — with your context and a live link back to the original.'),
-    el('div', {
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between', alignSelf: 'stretch',
-      borderTop: '2px solid #E8E9EC', marginTop: 34, paddingTop: 18, paddingBottom: 6,
-    }, [
-      txt({ fontFamily: 'CardMono', fontSize: 15, color: '#666C74', letterSpacing: 1 }, 'CLIPS ≤ 90s · 240p · ALWAYS LINKED'),
-      txt({ fontFamily: 'CardMono', fontSize: 15, color: '#666C74', letterSpacing: 1 }, 'THE ORIGINAL IS ONE CLICK AWAY'),
-    ]),
+  ]),
+  el('div', {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    borderTop: '2px solid rgba(255,255,255,0.12)', margin: '0 56px', padding: '22px 0', flexShrink: 0,
+  }, [
+    txt({ fontFamily: 'CardMono', fontSize: 15, color: '#9AA0A8', letterSpacing: 1.5 }, 'CLIPS ≤ 90s · 240p · ALWAYS LINKED'),
+    txt({ fontFamily: 'CardMono', fontSize: 15, color: '#E0A48E', letterSpacing: 1.5 }, 'THE ORIGINAL IS ONE CLICK AWAY'),
   ]),
 ]);
 
