@@ -114,22 +114,30 @@ const record = (response) => {
   return response;
 };
 
-const walkFeed = () => {
-  const depth = config.feedWalk.minDepth + Math.floor(Math.random() * (config.feedWalk.maxDepth - config.feedWalk.minDepth + 1));
-  let cursor = '';
-  for (let page = 0; page < depth; page += 1) {
-    const url = `${BASE_URL}/api/feed?limit=${config.feedWalk.pageLimit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
-    const response = record(http.get(url, { tags: { name: 'feed' } }));
-    if (response.status !== 200) return;
-    cursor = response.json('nextCursor');
-    if (!cursor) return;
-  }
+// Per-VU keyset walk state. Every iteration performs exactly ONE HTTP
+// request, so the scheduled arrival rate IS the request rate — the first
+// harness version looped whole walks inside one iteration and quietly
+// delivered ~2.6× the configured rate. A VU mid-walk continues its cursor
+// chain; walks end at a random depth of 1–8 pages. The cursor is pulled with
+// a cheap regex rather than a full JSON parse of a 30KB+ body.
+let feedCursor = '';
+let feedDepthLeft = 0;
+const feedPage = () => {
+  const url = `${BASE_URL}/api/feed?limit=${config.feedWalk.pageLimit}${feedCursor ? `&cursor=${encodeURIComponent(feedCursor)}` : ''}`;
+  const response = record(http.get(url, { tags: { name: 'feed' } }));
+  if (response.status !== 200) { feedCursor = ''; feedDepthLeft = 0; return; }
+  if (feedDepthLeft <= 0) feedDepthLeft = config.feedWalk.minDepth + Math.floor(Math.random() * (config.feedWalk.maxDepth - config.feedWalk.minDepth + 1));
+  feedDepthLeft -= 1;
+  const match = String(response.body).match(/"nextCursor":"([^"]+)"/);
+  feedCursor = feedDepthLeft > 0 && match ? match[1] : '';
 };
 
 const visitPermalink = (corpus) => {
-  const target = pick(corpus);
-  record(http.get(`${BASE_URL}/a/${target.slug}`, { tags: { name: 'permalink' } }));
-  record(http.get(`${BASE_URL}/api/oembed?url=${encodeURIComponent(`${BASE_URL}/a/${target.slug}`)}`, { tags: { name: 'oembed' } }));
+  record(http.get(`${BASE_URL}/a/${pick(corpus).slug}`, { tags: { name: 'permalink' } }));
+};
+
+const visitOembed = (corpus) => {
+  record(http.get(`${BASE_URL}/api/oembed?url=${encodeURIComponent(`${BASE_URL}/a/${pick(corpus).slug}`)}`, { tags: { name: 'oembed' } }));
 };
 
 const searchFeed = () => {
@@ -169,8 +177,9 @@ export function traffic(data) {
   for (const [action, weight] of Object.entries(mix)) {
     cumulative += weight;
     if (roll < cumulative) {
-      if (action === 'feed') return walkFeed();
+      if (action === 'feed') return feedPage();
       if (action === 'permalink') return visitPermalink(data.corpus);
+      if (action === 'oembed') return visitOembed(data.corpus);
       if (action === 'search') return searchFeed();
       if (action === 'like') return toggleLike(data.corpus);
       if (action === 'publish') return publishArticle(data.corpus);

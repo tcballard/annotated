@@ -1,7 +1,8 @@
 {
   "actorCount": 50,
   "feedWalk": { "minDepth": 1, "maxDepth": 8, "pageLimit": 20 },
-  "mix": { "feed": 70, "permalink": 15, "search": 8, "like": 5, "publish": 2 },
+  "mixComment": "Weights are per-REQUEST: every k6 iteration performs exactly one HTTP request, so scenario stage targets are true requests/second.",
+  "mix": { "feed": 70, "permalink": 10, "oembed": 5, "search": 8, "like": 5, "publish": 2 },
   "searchTerms": ["annotation", "podcast", "clip", "source", "video", "margin", "reading", "evidence"],
   "thresholds": {
     "comment": "Latency budgets are milliseconds. publish/like inherit the publish-ack budget in docs/PERFORMANCE.md; read paths use the soak graceful-degradation bar. Change budgets there first.",

@@ -79,8 +79,10 @@ npm run load:report -- --k6 load/out/<date>-<profile>.summary.json \
 
 ## Traffic-mix rationale
 
-70% feed (keyset walks to random depth 1–8), 15% permalink + oembed, 8%
-search, 5% likes, 2% article publishes. Mutations use distinct minted actors
+70% feed (keyset walks to random depth 1–8, carried as per-VU cursor state),
+10% permalink, 5% oembed, 8% search, 5% likes, 2% article publishes. Every
+iteration is exactly one HTTP request, so a stage target of 300 is a true
+300 requests/second. Mutations use distinct minted actors
 because the limiter buckets per `(ip, actor, action)` — anonymous mutation
 load from one box shares one bucket and 429s within seconds, measuring the
 limiter instead of the product. `/api/annotations/:id/open` is per-IP **by
