@@ -374,10 +374,11 @@ const chromeAuth = () => {
   }
   const providers = enabledProviders(state.authProviders);
   // No providers and online is a development stack — a visitor-facing
-  // deployment always configures at least one. Render nothing rather than
-  // leak the word "local" into a stranger's header; offline stays named
-  // because it explains why the page beneath has gone quiet.
-  if (!providers.length) return state.serverStatus === 'offline' ? `<span class="auth"><span class="connection-note">offline</span></span>` : '';
+  // deployment always configures at least one. Render an empty slot rather
+  // than leak the word "local" into a stranger's header; the slot itself
+  // stays so the search never shifts. Offline stays named because it
+  // explains why the page beneath has gone quiet.
+  if (!providers.length) return state.serverStatus === 'offline' ? `<span class="auth"><span class="connection-note">offline</span></span>` : '<span class="auth"></span>';
   return `<span class="auth"><button class="auth-link" data-action="open-signin">Sign in</button></span>`;
 };
 
@@ -619,7 +620,7 @@ const chromeBar = () => {
     ...(canModerate() ? [['moderation', 'Moderation']] : []),
   ];
   return `
-  <header class="chrome${state.activeView === 'feed' ? ' has-rail' : ''}">
+  <header class="chrome">
     <button class="logo" data-action="set-view" data-view="feed" aria-label="annotated home"><img src="/brand/logo-inverse.svg" alt="" aria-hidden="true" /></button>
     <nav aria-label="Primary">
       ${links.map(([view, label]) => `<button class="nav-link ${state.activeView === view ? 'is-active' : ''}" data-action="set-view" data-view="${view}">${label}</button>`).join('')}
@@ -737,9 +738,11 @@ const skeletonPost = () => `
 /* ── views ─────────────────────────────────────────────────────────── */
 
 const railView = () => {
+  // The front door leads with the door: getting the extension is the first
+  // action on the page, not a link buried in the last card.
   const signCard = state.user
     ? `<div class="card"><h2>Your library</h2><p>Everything you publish keeps a live link back to its source.</p><button class="btn btn-wide" data-action="set-view" data-view="library">Open your library</button></div>`
-    : `<div class="card"><h2>Build your public library</h2><p>Capture now. ${enabledProviders(state.authProviders).length ? `Sign in with ${enabledProviders(state.authProviders).map(providerLabel).join(' or ')} when you are ready to publish, follow, or respond.` : state.serverStatus === 'checking' ? 'Checking sign-in availability…' : 'Sign-in is unavailable on this deployment.'}</p></div>`;
+    : `<div class="card hero-card"><h2>Build your public library</h2><p>Capture the moment and its source together, from the page you are on.</p><a class="btn btn-wide" href="/extension" data-action="set-view" data-view="extension">Get the Chrome extension</a><p class="hero-note">Capture now. ${enabledProviders(state.authProviders).length ? `Sign in with ${enabledProviders(state.authProviders).map(providerLabel).join(' or ')} when you are ready to publish, follow, or respond.` : state.serverStatus === 'checking' ? 'Checking sign-in availability…' : 'Sign-in is unavailable on this deployment.'}</p></div>`;
   const trendingCard = state.trendingSources.length ? `
     <div class="card"><h2>Trending sources</h2><p>Where attention is going right now — ranked by opens of the original.</p>${state.trendingSources.map((source) => `
       <div class="trend-row"><a href="/s/${encodeURIComponent(source.host)}" data-action="open-hub" data-host="${escapeHTML(source.host)}">${escapeHTML(source.host)}</a><span class="trend-stat"><strong>${Number(source.opens) || 0}</strong> opens · ${Number(source.annotationCount) || 0} ${source.annotationCount === 1 ? 'note' : 'notes'}</span></div>`).join('')}</div>` : '';
@@ -1395,18 +1398,38 @@ const publishMomentView = () => `
     <div class="pub-hint">This moment now has a page — with the source attached.</div>
   </div>`;
 
+// The footer is a designed surface, not a link dump: the brand states its
+// rule, and every page groups under the audience it serves. The release
+// line stays — an evidence product signs its build.
 const footerView = () => `
-  <footer>
-    <a href="/about" data-action="set-view" data-view="about">About</a>
-    <a href="/extension" data-action="set-view" data-view="extension">Extension</a>
-    <a href="/audit" data-action="set-view" data-view="audit">Brief audit</a>
-    <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>
-    <a href="/publisher" data-action="set-view" data-view="publisher">Publisher desk</a>
-    <a href="/transparency" data-action="set-view" data-view="transparency">Transparency</a>
-    <a href="/terms" data-action="set-view" data-view="terms">Terms</a>
-    <a href="/privacy.html">Privacy</a>
-    <button class="footer-data" data-action="toggle-product-events">Product metrics ${state.analyticsOptOut ? 'off' : 'on'}</button>
-    <span class="footer-note">annotated © 2026 · source-first notes${state.capabilities?.release ? ` · <a href="/audit" data-action="set-view" data-view="audit">v${escapeHTML(state.capabilities.release.version)} ${escapeHTML((state.capabilities.release.gitSha || '').slice(0, 7))} · ${escapeHTML(state.capabilities.release.environment)}</a>` : ''}</span>
+  <footer class="site-footer">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <img class="foot-logo" src="/brand/logo-primary.svg" alt="annotated" width="104" height="27" />
+        <p class="foot-tag">Source-first notes. A clip without its source is just a rumour — every public page points back to the original.</p>
+      </div>
+      <nav class="foot-col" aria-label="Product">
+        <span class="foot-head">Product</span>
+        <a href="/about" data-action="set-view" data-view="about">About</a>
+        <a href="/extension" data-action="set-view" data-view="extension">Extension</a>
+        <a href="/audit" data-action="set-view" data-view="audit">Brief audit</a>
+      </nav>
+      <nav class="foot-col" aria-label="For sources">
+        <span class="foot-head">For sources</span>
+        <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>
+        <a href="/publisher" data-action="set-view" data-view="publisher">Publisher desk</a>
+        <a href="/transparency" data-action="set-view" data-view="transparency">Transparency</a>
+      </nav>
+      <nav class="foot-col" aria-label="Trust">
+        <span class="foot-head">Trust</span>
+        <a href="/terms" data-action="set-view" data-view="terms">Terms</a>
+        <a href="/privacy.html">Privacy</a>
+        <button class="footer-data" data-action="toggle-product-events" aria-pressed="${!state.analyticsOptOut}">Product metrics ${state.analyticsOptOut ? 'off' : 'on'}</button>
+      </nav>
+    </div>
+    <div class="foot-meta">
+      <span class="footer-note">annotated © 2026 · source-first notes${state.capabilities?.release ? ` · <a href="/audit" data-action="set-view" data-view="audit">v${escapeHTML(state.capabilities.release.version)} ${escapeHTML((state.capabilities.release.gitSha || '').slice(0, 7))} · ${escapeHTML(state.capabilities.release.environment)}</a>` : ''}</span>
+    </div>
   </footer>`;
 
 const render = () => {

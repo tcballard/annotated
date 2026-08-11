@@ -173,7 +173,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .chrome .search input {
   font: inherit;
   font-size: 13px;
-  width: 220px;
+  width: clamp(200px, 26vw, 300px);
   padding: 6px 12px;
   border: 1px solid var(--chrome-dark);
   border-radius: 4px;
@@ -184,7 +184,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .chrome .search input::placeholder { color: #8B919A; }
 
-.chrome .auth { display: flex; align-items: center; gap: 10px; flex-shrink: 0; position: relative; }
+/* The right cluster holds a fixed slot whether it shows "Sign in", the
+   bell + avatar, or nothing — the search box never moves between views
+   or auth states. */
+.chrome .auth { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-shrink: 0; position: relative; min-width: 84px; }
 
 /* the avatar opens a small menu — identity, profile, library, and only
    then sign out; the same anatomy the panel's D4 menu proved */
@@ -223,24 +226,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 }
 
 .me-menu [role="menuitem"]:hover { background: var(--hover-row); }
+/* When the search is hidden (small screens) the auth cluster still pins
+   itself to the right edge. */
 .chrome .auth:last-child { margin-left: auto; }
-.chrome .search { margin-left: auto; }
 .chrome .search + .auth { margin-left: 0; }
-.chrome.has-rail .search + .auth { margin-left: auto; }
-
-/* On the timeline the search box sits exactly over the rail column below
-   (300px band); on rail-less views it keeps its place in the right
-   cluster. The rest of the bar stays full-bleed everywhere. */
-.chrome.has-rail .search {
-  position: absolute;
-  left: min(calc(50% + 154px), calc(100% - 316px));
-  width: 300px;
-  top: 50%;
-  transform: translateY(-50%);
-  margin-left: 0;
-}
-
-.chrome.has-rail .search input { width: 100%; }
 
 .chrome .auth .auth-link { color: #fff; font-size: 13.5px; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
 
@@ -722,6 +711,11 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .btn-wide { display: flex; width: 100%; text-align: center; }
 .btn + .btn-wide, .btn-wide + .btn-wide { margin-top: 8px; }
+
+/* The signed-out hero: the extension button is the card's centrepiece;
+   the sign-in timing rides quietly underneath it. */
+.hero-card .btn { margin: 4px 0 10px; text-decoration: none; }
+.hero-card .hero-note { font-size: 12px; }
 
 .ghost {
   display: inline-flex;
@@ -1252,10 +1246,24 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 /* ── footer ─────────────────────────────────────────────────────────── */
 
-footer { max-width: 940px; margin: 0 auto; padding: 14px 16px 32px; font-size: 12px; color: var(--meta); display: flex; gap: 14px; flex-wrap: wrap; }
-footer a { color: var(--meta); }
-footer .footer-data { min-height: 40px; border: 0; padding: 0; background: transparent; color: var(--meta); text-decoration: underline; }
-footer .footer-note { margin-left: auto; }
+.site-footer { border-top: 1px solid var(--border); margin-top: 32px; }
+.foot-grid { max-width: 940px; margin: 0 auto; padding: 26px 16px 20px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 20px 48px; align-items: start; }
+.foot-brand { display: flex; flex-direction: column; gap: 10px; max-width: 320px; }
+.foot-logo { width: 104px; height: auto; display: block; }
+.foot-tag { font-size: 12.5px; color: var(--meta); line-height: 1.55; }
+.foot-col { display: flex; flex-direction: column; align-items: flex-start; font-size: 12.5px; }
+.foot-head { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--meta); margin-bottom: 8px; }
+.foot-col a, .foot-col .footer-data { color: var(--ink-soft); min-height: 30px; display: inline-flex; align-items: center; transition: color var(--t-hover) var(--e-ink); }
+.foot-col a:hover, .foot-col .footer-data:hover { color: var(--ink); text-decoration: none; }
+.foot-col .footer-data { border: 0; padding: 0; background: transparent; font-size: 12.5px; }
+.foot-meta { border-top: 1px solid var(--hair); }
+.foot-meta .footer-note { max-width: 940px; margin: 0 auto; padding: 12px 16px 26px; display: block; font-size: 12px; color: var(--meta); }
+.foot-meta .footer-note a { color: var(--meta); }
+
+@media (max-width: 760px) {
+  .foot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 20px; }
+  .foot-brand { grid-column: 1 / -1; }
+}
 
 /* ── public doc pages ───────────────────────────────────────────────── */
 
