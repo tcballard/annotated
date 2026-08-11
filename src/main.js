@@ -3,7 +3,7 @@ import { api } from './api.js';
 import { deleteMediaDraft, readMediaDraft, stageMediaDraft } from './media-draft-store.js';
 import { mediaPresentation } from './media-presentation.js';
 import { publicAnnotationUrl } from './share-links.js';
-import { shareDescriptor } from './share-kit.js';
+import { shareDescriptor, shareTargets } from './share-kit.js';
 import { authNoticeFromSearch, enabledProviders, oauthStartUrl, providerLabel } from './auth-ui.js';
 import { MAX_CLIP_SECONDS } from './clip-range.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
@@ -11,7 +11,7 @@ import { sharedUrlFromParams } from './share-capture.js';
 import { isTopic, TOPICS, topicLabel } from './topics.js';
 import { annotationToFeedItem, annotationVerb, chipFor, formatTime, hostOf, parseTimeInput, relTime, sourceLabels, VISIBILITIES } from './feed-item.js';
 import { avatarColor, avatarInitial } from './avatar.js';
-import { PRODUCT_ICONS as icons } from './icons.js';
+import { BRAND_ICONS, PRODUCT_ICONS as icons } from './icons.js';
 import { applyPanelDemoAction, createPanelDemoState, demoDraft, panelDemoView } from './panel-demo.js';
 import { captureDraftBlocker } from './capture-state.js';
 
@@ -82,7 +82,7 @@ const initialState = {
   publisherChallenge: null,
   publisherError: '',
   publisherReplyDrafts: {},
-  shareOpen: false,
+  shareModal: null,
   analyticsOptOut: (() => { try { return localStorage.getItem('annotated-analytics-opt-out') === '1'; } catch { return false; } })(),
   appBannerDismissed: (() => { try { return localStorage.getItem('annotated-app-banner') === '1'; } catch { return false; } })(),
   peopleResults: [],
@@ -707,7 +707,7 @@ const feedPost = (item) => {
         <button class="act ${item.likedByMe ? 'is-liked' : ''}" data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">${icon('heart')}${item.likes ? `<span class="n">${item.likes}</span>` : ''}</button>
         ${followAct}
         ${openOriginalAction(item)}
-        <button class="act share" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(item, window.location.origin))}" aria-label="Share annotation">${icon('share')}</button>
+        <button class="act share" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(item, window.location.origin))}" data-share-slug="${escapeHTML(item.slug || '')}" data-share-title="${escapeHTML(item.sourceTitle || '')}" data-share-quote="${escapeHTML(String(item.sourceExcerpt || item.quote || item.commentary || '').slice(0, 240))}" data-share-handle="${escapeHTML(item.handle || '')}" aria-haspopup="dialog" aria-label="Share annotation">${icon('share')}</button>
       </div>
     </div>
   </article>`;
@@ -841,7 +841,6 @@ const permalinkView = () => {
   const clip = `<div class="clip">${isMedia ? playerBlock(annotation) : screenshot}${srcstrip}</div>`;
   const pull = item.quote ? `<blockquote class="pull">&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
   const receipt = annotation.receipt ? `<details class="evidence-receipt permalink-receipt"><summary>Evidence receipt</summary><code>${escapeHTML(annotation.receipt.sourceId || annotation.sourceId || '')}</code><span>${annotation.sourceType === 'article' ? `paragraph ${annotation.receipt.range?.paragraph || '—'} · exact text anchor` : `${formatTime(annotation.receipt.range?.start)}–${formatTime(annotation.receipt.range?.end)} · ${formatTime(annotation.receipt.range?.duration)}`}</span><span>${annotation.receipt.artifact ? `${escapeHTML(annotation.receipt.artifact.mimeType)} · ${Number(annotation.receipt.artifact.bytes || 0)} bytes · ${annotation.receipt.artifact.sha256 ? `sha256 ${escapeHTML(annotation.receipt.artifact.sha256)}` : 'digest pending'} · ${escapeHTML(annotation.receipt.artifact.rightsState)}` : 'No hosted artifact; source anchor only.'}</span></details>` : '';
-  const sharing = state.shareOpen ? (() => { const descriptor = shareDescriptor(annotation, window.location.origin); return `<div class="share-tray" role="group" aria-label="Share annotation"><button data-action="share-choice" data-share-type="copy">Copy link</button>${navigator.share ? '<button data-action="share-choice" data-share-type="native">Share…</button>' : ''}<button data-action="share-choice" data-share-type="excerpt">Copy attributed excerpt</button><a href="${escapeHTML(descriptor.imageUrl)}?download=1" download>Save image</a><button data-action="share-choice" data-share-type="embed">Copy embed</button><a href="${escapeHTML(descriptor.url)}/qr.svg?v=1" target="_blank" rel="noreferrer">QR</a></div>`; })() : '';
   const respondArea = state.user || !state.authRequired
     ? `<form class="respform" data-action="comment-form"><input aria-label="Add a response" placeholder="Add a considered response…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" maxlength="500" /><button class="btn" aria-label="Post response">Respond</button></form>`
     : `<div class="respprompt">${enabledProviders(state.authProviders).length ? '<button class="linklike" data-action="open-signin"><b>Sign in</b></button> to add a response.' : 'Sign-in is unavailable right now.'}</div>`;
@@ -869,14 +868,13 @@ const permalinkView = () => {
       <div class="actions">
         <button class="act" data-action="focus-comment">${icon('respond')}Respond${comments.length ? ` <span class="n">· ${comments.length}</span>` : ''}</button>
         <button class="act ${item.likedByMe ? 'is-liked' : ''}" data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">${icon('heart')}${item.likes ? `<span class="n">${item.likes}</span>` : 'Like'}</button>
-        <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(annotation, window.location.origin))}" aria-expanded="${state.shareOpen}">${icon('share')}Share</button>
+        <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(annotation, window.location.origin))}" aria-haspopup="dialog">${icon('share')}Share</button>
         ${item.visibility !== 'private' ? `<a class="act" href="/og/${encodeURIComponent(item.slug)}.png?download=1" download="annotated-${escapeHTML(item.slug)}.png" title="Download this annotation's share card as an image">Save card</a>` : ''}
         ${isMine && annotation.commentaryMode === 'text' && withinEditWindow(annotation) && !state.editingNote ? `<button class="act" data-action="edit-note">Edit note</button>` : ''}
         ${isMine ? `<button class="act" data-action="delete-annotation" data-slug="${escapeHTML(item.slug)}">Delete</button>` : ''}
         ${openOriginalAction(item)}
         <button class="act claim" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug)}" data-claim-title="${escapeHTML(item.sourceTitle)}" title="Dispute a fair-use breach on this annotation">${icon('claim')}Dispute fair use</button>
       </div>
-      ${sharing}
     </article>
     <section class="responses">
       <h2>Responses</h2>
@@ -1124,6 +1122,33 @@ const moderationView = () => {
 
 // A screenshot enlarged in place — the moment at full size, the original one
 // click away. Backdrop or Esc closes.
+// The share sheet: one set of doors on every surface — X, WhatsApp,
+// Bluesky, Email from core's shareTargets — plus the link itself, the
+// system sheet where the browser has one, and (on a permalink) the
+// receipt extras. The preview IS the card that will land in the timeline.
+const shareModalView = () => {
+  if (!state.shareModal) return '';
+  const { annotation, extras } = state.shareModal;
+  const descriptor = shareDescriptor(annotation, window.location.origin);
+  const doors = shareTargets(descriptor).map((door) =>
+    `<a class="share-door" href="${escapeHTML(door.href)}" target="_blank" rel="noreferrer" data-action="share-target" data-target="${door.id}"><span class="icon">${BRAND_ICONS[door.id] || icons.mail}</span>${escapeHTML(door.label)}</a>`).join('');
+  return `<div class="share-modal" data-action="share-close" role="dialog" aria-modal="true" aria-label="Share annotation">
+    <div class="share-card" data-action="stop-modal">
+      <button class="share-close" data-action="share-close" aria-label="Close share sheet">${icon('close')}</button>
+      ${descriptor.imageUrl ? `<img class="share-preview" src="${escapeHTML(descriptor.imageUrl)}" alt="Preview of the share card" loading="lazy" />` : ''}
+      <div class="share-doors">${doors}</div>
+      <div class="share-rows">
+        <button data-action="share-choice" data-share-type="copy">${icon('link')}Copy link</button>
+        ${navigator.share ? `<button data-action="share-choice" data-share-type="native">${icon('share')}More options…</button>` : ''}
+        ${extras ? `<button data-action="share-choice" data-share-type="excerpt">${icon('respond')}Copy attributed excerpt</button>
+        <button data-action="share-choice" data-share-type="embed">${icon('file-text')}Copy embed</button>
+        <a href="${escapeHTML(descriptor.imageUrl)}?download=1" download>${icon('bookmark')}Save image</a>
+        <a href="${escapeHTML(descriptor.url)}/qr.svg?v=1" target="_blank" rel="noreferrer">${icon('open')}QR code</a>` : ''}
+      </div>
+    </div>
+  </div>`;
+};
+
 const lightboxView = () => state.lightbox ? `<div class="lightbox" data-action="close-lightbox" role="dialog" aria-modal="true" aria-label="${escapeHTML(state.lightbox.alt || 'Enlarged screenshot')}">
   <button class="modal-close" data-action="close-lightbox" aria-label="Close enlarged screenshot">${icon('close')}</button>
   <img src="${escapeHTML(state.lightbox.src)}" alt="${escapeHTML(state.lightbox.alt || '')}" data-action="stop-modal" data-stop-click="true" />
@@ -1488,7 +1513,7 @@ const render = () => {
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
   const restoreFocus = captureFocus();
-  app.innerHTML = `${SHELL_MODE ? '' : '<a class="skip-link" href="#main" data-action="skip-to-content">Skip to content</a>' + chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${SHELL_MODE ? '' : appBannerView()}${state.claimOpen ? claimModal() : ''}${state.signinOpen ? signinModal() : ''}${lightboxView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
+  app.innerHTML = `${SHELL_MODE ? '' : '<a class="skip-link" href="#main" data-action="skip-to-content">Skip to content</a>' + chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${SHELL_MODE ? '' : appBannerView()}${state.claimOpen ? claimModal() : ''}${state.signinOpen ? signinModal() : ''}${lightboxView()}${shareModalView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
   restoreFocus();
   document.documentElement.classList.toggle('app-banner-open', !SHELL_MODE && !state.appBannerDismissed);
   const overlayOpen = state.claimOpen || state.signinOpen || Boolean(state.lightbox);
@@ -2332,11 +2357,28 @@ app.addEventListener('click', (event) => {
   }
   if (action === 'focus-comment') { document.querySelector('[data-action="comment-draft"]')?.focus(); return; }
   if (action === 'share') {
-    if (state.activeView !== 'published') { copyPublicLink(target.dataset.shareUrl || ''); return; }
-    state.shareOpen = !state.shareOpen; render(); return;
+    const published = state.activeView === 'published' && state.publishedAnnotation;
+    state.shareModal = {
+      annotation: published || {
+        url: target.dataset.shareUrl || '',
+        slug: target.dataset.shareSlug || '',
+        sourceTitle: target.dataset.shareTitle || '',
+        sourceExcerpt: target.dataset.shareQuote || '',
+        handle: target.dataset.shareHandle || '',
+      },
+      extras: Boolean(published),
+    };
+    render(); return;
+  }
+  if (action === 'share-close') { state.shareModal = null; render(); return; }
+  if (action === 'share-target') {
+    // the anchor itself opens the door — this only records the walk-through
+    const annotation = state.shareModal?.annotation || {};
+    recordProductEvent('shared', { surface: 'web', shareType: target.dataset.target }, annotation.id ? { annotationId: annotation.id, sourceId: annotation.sourceId } : {});
+    return;
   }
   if (action === 'share-choice') {
-    const annotation = state.publishedAnnotation;
+    const annotation = state.shareModal?.annotation;
     if (!annotation) return;
     const descriptor = shareDescriptor(annotation, window.location.origin);
     const type = target.dataset.shareType;
@@ -2344,7 +2386,8 @@ app.addEventListener('click', (event) => {
       try {
         if (type === 'native' && navigator.share) await navigator.share({ title: descriptor.title, text: descriptor.text, url: descriptor.url });
         else await navigator.clipboard.writeText(type === 'excerpt' ? descriptor.text : type === 'embed' ? descriptor.embed : descriptor.url);
-        recordProductEvent('shared', { surface: 'web', shareType: type }, { annotationId: annotation.id, sourceId: annotation.sourceId });
+        recordProductEvent('shared', { surface: 'web', shareType: type }, annotation.id ? { annotationId: annotation.id, sourceId: annotation.sourceId } : {});
+        state.shareModal = null;
         notify(type === 'embed' ? 'Embed copied.' : type === 'excerpt' ? 'Attributed excerpt copied.' : 'Share ready.');
       } catch (error) { if (error?.name !== 'AbortError') notify('Sharing was blocked; copy the public link instead.'); }
     })();
@@ -2464,6 +2507,12 @@ app.addEventListener('timeupdate', (event) => {
 }, true);
 
 app.addEventListener('keydown', (event) => {
+  if (state.shareModal && event.key === 'Escape') {
+    event.preventDefault();
+    state.shareModal = null;
+    render();
+    return;
+  }
   if (state.publishMoment && event.key === 'Escape') {
     event.preventDefault();
     dismissPublishMoment();

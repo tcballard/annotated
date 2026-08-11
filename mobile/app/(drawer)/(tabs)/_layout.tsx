@@ -13,6 +13,7 @@ import Icon from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HeaderAvatar from '../../../components/HeaderAvatar';
 import CaptureSheet from '../../../components/CaptureSheet';
+import { ShareSheetHost } from '../../../components/ShareSheet';
 import { AccountContext } from '../../../components/AccountContext';
 import { card, ink, meta, paper, tokens } from '../../../lib/tokens';
 
@@ -26,7 +27,7 @@ export default function TabsLayout() {
   // icons over the home indicator. No pill, no shadow, no float.
   const webSceneStyle = { backgroundColor: paper };
   return (
-    <>
+    <ShareSheetHost>
     <Tabs
       screenOptions={{
         headerShown: true,
@@ -113,7 +114,7 @@ export default function TabsLayout() {
       />
     </Tabs>
     <CaptureSheet visible={captureOpen} onClose={() => setCaptureOpen(false)} />
-    </>
+    </ShareSheetHost>
   );
 }
 

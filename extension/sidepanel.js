@@ -5,6 +5,8 @@ import { deleteAudioDraft, readAudioDraft, stageAudioDraft } from './media-draft
 import { MAX_CLIP_SECONDS, moveClipBoundary, normalizeClipRange } from './clip-range.js';
 import { isTopic, TOPICS } from './topics.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
+import { shareDescriptor, shareTargets } from './share-kit.js';
+import { BRAND_ICONS, PRODUCT_ICONS } from './icons.js';
 import { avatarColor, avatarInitial } from './avatar.js';
 import { normalizeCaptureDraft } from './capture-state.js';
 
@@ -229,6 +231,50 @@ const showToast = (message, link = null) => {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toast.hidden = true; }, link ? 6000 : 2800);
 };
+
+// The share sheet, panel-sized: the same doors as the web and the app —
+// X, WhatsApp, Bluesky, Email from core's shareTargets — plus the link
+// itself. Rendered on demand; backdrop or Escape dismisses.
+const sharePop = document.getElementById('sharePop');
+const onSharePopKey = (event) => {
+  if (event.key === 'Escape') { event.preventDefault(); closeSharePop(); }
+};
+const closeSharePop = () => {
+  sharePop.hidden = true;
+  sharePop.innerHTML = '';
+  document.removeEventListener('keydown', onSharePopKey, true);
+};
+const openSharePop = async (annotation) => {
+  const origin = await apiOrigin().catch(() => '');
+  const descriptor = shareDescriptor(annotation, origin);
+  const doors = shareTargets(descriptor).map((door) => `
+    <a class="share-door" href="${escapeHTML(door.href)}" target="_blank" rel="noreferrer" data-share-target="${door.id}"><span class="glyph">${BRAND_ICONS[door.id] || PRODUCT_ICONS.mail}</span>${escapeHTML(door.label)}</a>`).join('');
+  sharePop.innerHTML = `
+    <div class="share-pop-backdrop" data-share-dismiss="true"></div>
+    <div class="share-pop-card" role="dialog" aria-modal="true" aria-label="Share annotation">
+      <div class="share-doors">${doors}</div>
+      <button class="share-copy" type="button" data-share-copy="${escapeHTML(descriptor.url)}">${PRODUCT_ICONS.link}Copy link</button>
+    </div>`;
+  sharePop.hidden = false;
+  document.addEventListener('keydown', onSharePopKey, true);
+};
+sharePop.addEventListener('click', async (event) => {
+  if (event.target.closest('[data-share-dismiss]')) { closeSharePop(); return; }
+  const door = event.target.closest('[data-share-target]');
+  if (door) {
+    void recordProductEvent('shared', { surface: 'panel', shareType: door.dataset.shareTarget });
+    // let the anchor open its tab before the sheet unmounts under it
+    setTimeout(closeSharePop, 0);
+    return;
+  }
+  const copy = event.target.closest('[data-share-copy]');
+  if (copy) {
+    try { await navigator.clipboard.writeText(copy.dataset.shareCopy); showToast('Link copied'); }
+    catch { showToast(copy.dataset.shareCopy); }
+    void recordProductEvent('shared', { surface: 'panel', shareType: 'copy' });
+    closeSharePop();
+  }
+});
 
 // The panel is where desktop publishing happens — it gets the full moment,
 // same anatomy as the web: the ring draws closed over the panel while the
@@ -2101,7 +2147,7 @@ const timelinePost = (item) => {
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg>
           ${item.opens ? `<span class="n">${item.opens}</span>` : ''}
         </a>
-        <button class="act share" type="button" data-share-url="${escapeHTML(item.url)}" title="Copy the page link" aria-label="Copy the page link">
+        <button class="act share" type="button" data-share-url="${escapeHTML(item.url)}" data-share-slug="${escapeHTML(item.slug || '')}" data-share-title="${escapeHTML(item.sourceTitle || '')}" data-share-quote="${escapeHTML(String(item.quote || item.commentary || '').slice(0, 240))}" data-share-handle="${escapeHTML(item.handle || '')}" title="Share this annotation" aria-haspopup="dialog" aria-label="Share this annotation">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12M8 7l4-4 4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg>
         </button>
       </div>
@@ -2290,12 +2336,13 @@ timeline.addEventListener('click', async (event) => {
   }
   const share = event.target.closest('[data-share-url]');
   if (share) {
-    try {
-      await navigator.clipboard.writeText(share.dataset.shareUrl);
-      showToast('Link copied');
-    } catch {
-      showToast(share.dataset.shareUrl);
-    }
+    void openSharePop({
+      url: share.dataset.shareUrl,
+      slug: share.dataset.shareSlug || '',
+      sourceTitle: share.dataset.shareTitle || '',
+      sourceExcerpt: share.dataset.shareQuote || '',
+      handle: share.dataset.shareHandle || '',
+    });
     return;
   }
   const open = event.target.closest('[data-open-slug]');

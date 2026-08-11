@@ -166,7 +166,7 @@ test('one icon vocabulary: the same drawings, sourced from core, on every surfac
     read('mobile/components/SystemIcon.tsx'),
     read('mobile/package.json'),
   ]);
-  assert.match(web, /import \{ PRODUCT_ICONS as icons \} from '\.\/icons\.js';/, 'the web renders the core set');
+  assert.match(web, /import \{ BRAND_ICONS, PRODUCT_ICONS as icons \} from '\.\/icons\.js';/, 'the web renders the core set');
   assert.match(nativeIcon, /from '\.\.\/lib\/core\/icons'/, 'native renders the same core set');
   for (const name of ['open', 'respond', 'share', 'claim', 'follow', 'mic', 'bell', 'heart']) {
     assert.ok(coreIcons.includes(`'${name}':`), `the core vocabulary carries ${name}`);
@@ -176,6 +176,31 @@ test('one icon vocabulary: the same drawings, sourced from core, on every surfac
   const allowlist = systemIcon.match(/const SYSTEM_ICONS = \{[\s\S]*?\} satisfies/)?.[0] || '';
   assert.deepEqual([...allowlist.matchAll(/^  (\w+): \{ sf:/gm)].map((match) => match[1]).sort(), ['back', 'forward', 'share'], 'the platform-glyph allowlist is exactly share/back/forward');
   assert.ok(!mobilePkg.includes('@expo/vector-icons'), 'the icon-font dependency is retired');
+});
+
+test('sharing offers the same doors on every surface', async () => {
+  // One contract from core: X, WhatsApp, Bluesky, Email via shareTargets,
+  // the link itself, and the system sheet where the platform has one.
+  // Each surface renders its own sheet, but the doors — and the brand
+  // marks on them — come from the same bytes.
+  const [shareKit, panelJs, shareSheet, tabsShell, timelineSrc] = await Promise.all([
+    read('packages/core/src/share-kit.ts'),
+    read('extension/sidepanel.js'),
+    read('mobile/components/ShareSheet.tsx'),
+    read('mobile/app/(drawer)/(tabs)/_layout.tsx'),
+    read('mobile/components/Timeline.tsx'),
+  ]);
+  assert.match(shareKit, /'x'.*x\.com\/intent\/post/, 'core owns the X door');
+  assert.match(shareKit, /'whatsapp'.*wa\.me/, 'core owns the WhatsApp door');
+  assert.match(web, /shareTargets\(descriptor\)/, 'the web sheet renders the core doors');
+  assert.match(web, /class="share-modal"/, 'the web share is a sheet, not a silent copy');
+  assert.match(panelJs, /shareTargets\(descriptor\)/, 'the panel sheet renders the core doors');
+  assert.match(panelJs, /openSharePop/, 'the panel share is a sheet, not a silent copy');
+  assert.match(shareSheet, /shareTargets\(descriptor\)/, 'the native sheet renders the core doors');
+  assert.match(shareSheet, /Share\.share\(/, 'the system sheet stays one row away on native');
+  assert.match(shareSheet, /Clipboard\.setStringAsync/, 'copy link is a first-class door on native');
+  assert.match(tabsShell, /<ShareSheetHost>/, 'the native sheet is hosted above the tabs');
+  assert.match(timelineSrc, /openShare\(item\)/, 'the timeline share glyph summons the sheet');
 });
 
 test('one lockup: the wordmark is the same drawing everywhere', async () => {

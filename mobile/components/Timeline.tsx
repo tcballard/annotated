@@ -17,7 +17,6 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -33,7 +32,7 @@ import type { FeedItem } from '../lib/core/feed-item';
 import { avatarColor } from '../lib/core/avatar';
 import { topicLabel } from '../lib/core/topics';
 import { openOriginalHref } from '../lib/core/deep-link';
-import { publicAnnotationUrl } from '../lib/core/share-links';
+import { ShareSheetContext } from './ShareSheet';
 import { api } from '../lib/api';
 import { ORIGIN } from '../lib/origin';
 import { AccountContext } from './AccountContext';
@@ -106,6 +105,7 @@ export const useFeedActions = () => {
   const router = useRouter();
   const { bump } = useContext(SessionEpochContext);
   const { signIn } = useContext(AuthProviderContext);
+  const { openShare } = useContext(ShareSheetContext);
   const [followingIds, setFollowingIds] = useState<Record<string, boolean>>({});
 
   const openAnnotation = (item: FeedItem) => {
@@ -118,10 +118,9 @@ export const useFeedActions = () => {
     if (item.slug) api.recordOpen(item.slug).catch(() => {});
     void WebBrowser.openBrowserAsync(openOriginalHref(item));
   };
-  const share = (item: FeedItem) => {
-    const url = publicAnnotationUrl(item, ORIGIN);
-    if (url) void Share.share(Platform.OS === 'ios' ? { url } : { message: url });
-  };
+  // The branded sheet first — X, WhatsApp, Bluesky, Email, Copy, and the
+  // system sheet behind "More options…" — same doors as web and panel.
+  const share = (item: FeedItem) => openShare(item);
   const toggleFollow = async (item: FeedItem) => {
     const next = !followingIds[item.authorId];
     setFollowingIds((current) => ({ ...current, [item.authorId]: next }));
