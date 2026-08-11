@@ -22,6 +22,7 @@ options.css
 options.html
 options.js
 share-kit.js
+share-links.js
 sidepanel.css
 sidepanel.html
 sidepanel.js
