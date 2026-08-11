@@ -1265,6 +1265,42 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   .foot-brand { grid-column: 1 / -1; }
 }
 
+/* ── app banner (mobile web only) ───────────────────────────────────── */
+
+.app-banner { display: none; }
+
+@media (max-width: 700px) {
+  html.app-banner-open .app-banner {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--chrome);
+    box-shadow: 0 -6px 24px rgba(38, 41, 47, .25);
+  }
+  .app-banner img { width: 36px; height: 36px; border-radius: 8px; }
+  .app-banner-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+  .app-banner-copy strong { font-size: 13px; color: #fff; }
+  .app-banner-copy span { font-size: 11.5px; color: #B9BEC6; }
+  /* paper on ink — the terracotta stays reserved for the moment */
+  .app-banner .btn { background: #F5F4F0; color: #26292F; text-decoration: none; flex-shrink: 0; }
+  .app-banner .btn:hover { background: #fff; color: #26292F; }
+  .app-banner-dismiss { color: #B9BEC6; min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  /* the footer's last line clears the banner instead of hiding under it */
+  html.app-banner-open .foot-meta .footer-note { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+}
+
+@media (max-width: 560px) {
+  /* the feed switcher rides above the banner, not on top of it */
+  html.app-banner-open .feedhead { bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
+  html.app-banner-open .feed:has(.feedhead) { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+}
+
 /* ── public doc pages ───────────────────────────────────────────────── */
 
 .doc-head { margin-top: 6px; }

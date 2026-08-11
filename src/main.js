@@ -97,6 +97,7 @@ const initialState = {
   publisherReplyDrafts: {},
   shareOpen: false,
   analyticsOptOut: (() => { try { return localStorage.getItem('annotated-analytics-opt-out') === '1'; } catch { return false; } })(),
+  appBannerDismissed: (() => { try { return localStorage.getItem('annotated-app-banner') === '1'; } catch { return false; } })(),
   peopleResults: [],
   curators: [],
   sourceType: 'video',
@@ -413,7 +414,7 @@ const recoverAuthError = (error, message = 'Your session has expired. Sign in ag
 /* ── routing ───────────────────────────────────────────────────────── */
 
 // transparency is routed like a doc page but loads live data via navigate().
-const DOC_VIEWS = { about: '/about', extension: '/extension', panelDemo: '/extension/demo', audit: '/audit', rights: '/rights', terms: '/terms', transparency: '/transparency' };
+const DOC_VIEWS = { about: '/about', extension: '/extension', panelDemo: '/extension/demo', app: '/app', audit: '/audit', rights: '/rights', terms: '/terms', transparency: '/transparency' };
 
 // The feed's three panes are real places: /  /trending  /following (and
 // /trending?topic=… for a chip). A refresh or a shared link lands on the
@@ -1237,6 +1238,30 @@ const extensionView = () => {
 `);
 };
 
+// The phone landing: what installs today (the PWA, with the share sheet on
+// Android), and where the native app stands — store buttons render the
+// moment an operator configures the URLs, and never before.
+const appView = () => {
+  const stores = state.capabilities?.distribution?.app;
+  const storeButtons = [
+    stores?.ios ? `<a class="btn" href="${escapeHTML(stores.ios)}" target="_blank" rel="noreferrer">Download on the App Store</a>` : '',
+    stores?.android ? `<a class="btn" href="${escapeHTML(stores.android)}" target="_blank" rel="noreferrer">Get it on Google Play</a>` : '',
+  ].filter(Boolean).join(' ');
+  return docPage('annotated on your phone', 'use in app', `
+  <div class="card"><h2>Install from your browser — today</h2>
+    <ol class="doc-steps">
+      <li><strong>Android (Chrome):</strong> menu → <strong>Add to Home screen</strong>. annotated joins your share sheet — share any page or video straight into capture.</li>
+      <li><strong>iPhone (Safari):</strong> Share → <strong>Add to Home Screen</strong>. Copy a link anywhere and tap <em>Paste link</em> on the capture desk.</li>
+    </ol>
+    <p>Same account, same library, same pages as the web and the extension — this is the full product, not a preview.</p>
+  </div>
+  <div class="card"><h2>The native app</h2>
+    ${storeButtons ? `<p>${storeButtons}</p>` : '<p>The native iOS and Android app is in development. Store links will appear right here the moment a listing is live — until then, the install above is the fastest door.</p>'}
+    <p>Already have it on this phone? <a href="annotated://">Open annotated in the app</a>.</p>
+  </div>
+`);
+};
+
 const auditView = () => {
   const truth = state.capabilities;
   const rows = truth?.capabilities || [];
@@ -1398,6 +1423,17 @@ const publishMomentView = () => `
     <div class="pub-hint">This moment now has a page — with the source attached.</div>
   </div>`;
 
+// Mobile web gets a door to the app, docked at the bottom of the screen.
+// Never inside the native shell (that IS the app), and a dismissal sticks.
+// Desktop never sees it — the CSS keeps it to small viewports.
+const appBannerView = () => state.appBannerDismissed ? '' : `
+  <div class="app-banner" role="complementary" aria-label="annotated app">
+    <img src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" />
+    <div class="app-banner-copy"><strong>Better in the app</strong><span>Capture straight from your share sheet.</span></div>
+    <a class="btn" href="/app" data-action="set-view" data-view="app">Use in app</a>
+    <button class="app-banner-dismiss" data-action="dismiss-app-banner" aria-label="Not now">${icon('close')}</button>
+  </div>`;
+
 // The footer is a designed surface, not a link dump: the brand states its
 // rule, and every page groups under the audience it serves. The release
 // line stays — an evidence product signs its build.
@@ -1412,6 +1448,7 @@ const footerView = () => `
         <span class="foot-head">Product</span>
         <a href="/about" data-action="set-view" data-view="about">About</a>
         <a href="/extension" data-action="set-view" data-view="extension">Extension</a>
+        <a href="/app" data-action="set-view" data-view="app">Mobile app</a>
         <a href="/audit" data-action="set-view" data-view="audit">Brief audit</a>
       </nav>
       <nav class="foot-col" aria-label="For sources">
@@ -1443,6 +1480,7 @@ const render = () => {
     : state.activeView === 'moderation' ? moderationView()
     : state.activeView === 'about' ? aboutView()
     : state.activeView === 'extension' ? extensionView()
+    : state.activeView === 'app' ? appView()
     : state.activeView === 'panelDemo' ? panelDemoView(state.panelDemo, escapeHTML)
     : state.activeView === 'audit' ? auditView()
     : state.activeView === 'rights' ? rightsView()
@@ -1452,10 +1490,11 @@ const render = () => {
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
   const restoreFocus = captureFocus();
-  app.innerHTML = `${SHELL_MODE ? '' : '<a class="skip-link" href="#main" data-action="skip-to-content">Skip to content</a>' + chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${state.claimOpen ? claimModal() : ''}${state.signinOpen ? signinModal() : ''}${lightboxView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
+  app.innerHTML = `${SHELL_MODE ? '' : '<a class="skip-link" href="#main" data-action="skip-to-content">Skip to content</a>' + chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${SHELL_MODE ? '' : appBannerView()}${state.claimOpen ? claimModal() : ''}${state.signinOpen ? signinModal() : ''}${lightboxView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
   restoreFocus();
+  document.documentElement.classList.toggle('app-banner-open', !SHELL_MODE && !state.appBannerDismissed);
   const overlayOpen = state.claimOpen || state.signinOpen || Boolean(state.lightbox);
-  for (const element of app.querySelectorAll('.chrome, .auth-notice, .auth-prompt, .page, footer, .offline-note')) {
+  for (const element of app.querySelectorAll('.chrome, .auth-notice, .auth-prompt, .page, footer, .offline-note, .app-banner')) {
     element.inert = overlayOpen;
     if (overlayOpen) element.setAttribute('aria-hidden', 'true');
   }
@@ -2335,6 +2374,12 @@ app.addEventListener('click', (event) => {
   if (action === 'publisher-bulk-review') {
     const claimIds = (state.publisherData?.claims || []).filter((claim) => ['open', 'in_review'].includes(claim.status)).map((claim) => claim.id);
     api.publisherClaimsBulk(state.publisherId, { claimIds, status: 'in_review', note: 'Publisher workspace bulk review' }).then(() => loadPublisherWorkspace()).then(render).then(() => notify(`${claimIds.length} claim${claimIds.length === 1 ? '' : 's'} moved to review.`)).catch((error) => notify(error.message || 'Claims could not be updated.'));
+    return;
+  }
+  if (action === 'dismiss-app-banner') {
+    state.appBannerDismissed = true;
+    try { localStorage.setItem('annotated-app-banner', '1'); } catch { /* still dismissed for this tab */ }
+    render();
     return;
   }
   if (action === 'toggle-product-events') {
