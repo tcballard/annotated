@@ -31,6 +31,7 @@ import { exactSourceGraph } from './evidence-graph.js';
 import { recordProductEvent, productFunnel } from './product-events.js';
 import { addPublisherReply, createPublisherChallenge, publisherClaimIds, publisherWorkspace, verifyPublisherChallenge } from './publisher-workspace.js';
 import { annotationEmbedHtml, annotationQrSvg, annotationShareDescriptor } from './share-surfaces.js';
+import { envLimit, permalinkCacheControl, staticCacheControl } from './edge-cache.js';
 import { createResponseCache } from './response-cache.js';
 import {
   addComment,
@@ -592,7 +593,7 @@ const handleApi = async (request, response, pathname) => {
   if (openMatch && request.method === 'POST') {
     const opener = await currentUser(request);
     if (!(await viewableAnnotation(openMatch[1], opener?.id))) return notFound(response);
-    if (!(await mutationAllowed(request, null, 'open-original', 120))) return send(response, 429, { error: 'Too many open events. Try again later.' }, { 'retry-after': '60' });
+    if (!(await mutationAllowed(request, null, 'open-original', envLimit('open-original', 120)))) return send(response, 429, { error: 'Too many open events. Try again later.' }, { 'retry-after': '60' });
     // Row-native hot path (Gate 1): the public, unauthenticated counter is
     // one jsonb_set on one row.
     const target = await findAnnotation(openMatch[1], opener?.id || '', { includeRemoved: false });
@@ -697,7 +698,11 @@ const servePermalink = async (response, slug) => {
   // The dispute path survives with JavaScript off: the meta injector adds a
   // visible no-script link to the plain /a/<slug>/claim form on every page.
   const payload = injectAnnotationMeta(html, found.annotation, found.author, publicOrigin, { index: allowsIndexing(found.annotation) });
-  response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...securityHeaders() });
+  // The shell is viewer-independent (personalisation is client-side), so
+  // PUBLIC pages are edge-cacheable for a minute — a shared-link stampede
+  // lands on the CDN, not here. Unlisted/private stay no-store: a cached
+  // owner page must never be servable to strangers.
+  response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': permalinkCacheControl(found.annotation.visibility), ...securityHeaders() });
   return response.end(payload);
 };
 
@@ -843,7 +848,7 @@ const shareableAnnotation = async (slug) => {
 };
 
 const serveAnnotationEmbed = async (request, response, slug) => {
-  if (!(await mutationAllowed(request, null, 'annotation-embed', 120))) return send(response, 429, 'Too many embed requests.', { 'retry-after': '60' });
+  if (!(await mutationAllowed(request, null, 'annotation-embed', envLimit('annotation-embed', 120)))) return send(response, 429, 'Too many embed requests.', { 'retry-after': '60' });
   const annotation = await shareableAnnotation(slug);
   if (!annotation) return notFound(response);
   const headers = securityHeaders({ api: true });
@@ -853,7 +858,7 @@ const serveAnnotationEmbed = async (request, response, slug) => {
 };
 
 const serveAnnotationQr = async (request, response, slug) => {
-  if (!(await mutationAllowed(request, null, 'annotation-qr', 120))) return send(response, 429, 'Too many QR requests.', { 'retry-after': '60' });
+  if (!(await mutationAllowed(request, null, 'annotation-qr', envLimit('annotation-qr', 120)))) return send(response, 429, 'Too many QR requests.', { 'retry-after': '60' });
   const annotation = await shareableAnnotation(slug);
   if (!annotation) return notFound(response);
   const svg = await annotationQrSvg(annotation, publicOrigin);
@@ -890,7 +895,8 @@ const serveStatic = async (request, response, pathname) => {
   try {
     const info = await stat(candidate);
     if (!info.isFile()) return notFound(response);
-    const releaseHeaders = pathname.startsWith('/release/') ? { 'cache-control': 'public, max-age=300, must-revalidate' } : {};
+    const staticCache = staticCacheControl(pathname);
+    const releaseHeaders = staticCache ? { 'cache-control': staticCache } : {};
     response.writeHead(200, { 'content-type': contentType[path.extname(candidate)] || 'application/octet-stream', ...releaseHeaders, ...securityHeaders() });
     return createReadStream(candidate).pipe(response);
   } catch {
