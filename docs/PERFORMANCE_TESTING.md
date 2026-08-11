@@ -3,12 +3,32 @@
 This document uses Simplified Technical English. Sentences are short. Each
 sentence gives one fact. All numbers come from tests that you can run again.
 
-**Where we measured.** We measured on one shared 4-core computer. The load
+**Where we measured.** We measured on one shared computer. The load
 generator, the API, and the database used the same computer. Loopback
 networking connected them. These numbers are development evidence. They are
 not deployment evidence. The procedure in [`load/RUNBOOK.md`](../load/RUNBOOK.md)
 makes deployment evidence: use a separate load computer, run the test twice,
 on two different days.
+
+**The test computer.** Record the same facts for every future test bench.
+
+| Component | Value |
+| --- | --- |
+| CPU | Intel Xeon at 2.10 GHz, 4 virtual cores |
+| Virtualization | Yes. The hypervisor flag is present. Neighbor load can change results |
+| Memory | 15.7 GiB |
+| Kernel | Linux 6.18.5, x86_64 |
+| Node.js | v22.22.2 |
+| PostgreSQL | 16.13, same host, default configuration |
+| Load generator | k6 v0.57.0, same host |
+| Network | Loopback only. No real network path |
+
+One API process served every test. The four cores carried the API, the
+database, and the load generator together. A production instance does not
+share its cores with a load generator. For deployment numbers, record the
+provider, the instance type, the vCPU count, the memory, and the PostgreSQL
+plan in the run report; `load/report.mjs` has the environment field for this
+purpose.
 
 ## 1. The tests we did
 
