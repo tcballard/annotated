@@ -17,11 +17,13 @@ test('the drawer is a card over the timeline, not a full-bleed sheet', () => {
   // own content to the same radii), over the ink scrim the web's modals use.
   assert.match(drawerLayout, /borderTopRightRadius: 24/, 'the container rounds its open edge');
   assert.match(drawerLayout, /borderBottomRightRadius: 24/);
-  assert.match(drawerLayout, /elevation: 16/, 'the card lifts off the timeline on Android');
-  assert.match(drawerLayout, /shadowColor: '#26292F'/, 'the card lifts off the timeline on iOS');
+  assert.match(drawerLayout, /borderCurve: 'continuous'/, 'rounded corners use the Apple continuous curve (expo-native-ui)');
+  assert.match(drawerLayout, /boxShadow: '6px 0 24px rgba\(38, 41, 47, 0\.25\)'/, 'the card lifts on the modern cross-platform shadow');
+  assert.doesNotMatch(drawerLayout, /shadowColor|elevation:/, 'legacy shadow*/elevation props are banned (expo-native-ui)');
   assert.match(drawerLayout, /overlayColor: 'rgba\(38, 41, 47, 0\.45\)'/, 'the scrim is the same ink tint as the web modal backdrop');
-  assert.match(drawerPanel, /borderTopRightRadius: 24, borderBottomRightRadius: 24, overflow: 'hidden'/, 'the panel clips its content to the card');
-  assert.match(drawerPanel, /borderRadius: 12/, 'rows highlight as inset pills, not full-bleed strips');
+  assert.match(drawerPanel, /borderTopRightRadius: 24, borderBottomRightRadius: 24, borderCurve: 'continuous', overflow: 'hidden'/, 'the panel clips its content to the card');
+  assert.match(drawerPanel, /borderRadius: 12, borderCurve: 'continuous'/, 'rows highlight as inset continuous-curve pills');
+  assert.match(drawerPanel, /process\.env\.EXPO_OS === 'ios'.*Haptics\.selectionAsync/, 'menu taps tick on iOS');
 });
 
 test('the header is X-anatomy in our identity: avatar opens the drawer, the wordmark sits center', async () => {

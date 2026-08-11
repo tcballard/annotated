@@ -15,20 +15,19 @@ export default function DrawerLayout() {
         drawerType: 'front',
         swipeEdgeWidth: 90,
         // The panel is a card over the timeline, not a full-bleed sheet:
-        // rounded on its open edge, lifted by a soft ink shadow, over the
-        // same ink scrim the web's modals use. The shadow lives here on the
-        // container — the panel clips its own content to the same radii,
-        // because overflow clipping on this view would swallow the shadow.
+        // rounded on its open edge with Apple's continuous curve, lifted by
+        // a soft ink boxShadow (the modern cross-platform shadow — never the
+        // legacy shadow*/elevation props), over the same ink scrim the web's
+        // modals use. The shadow lives here on the container — the panel
+        // clips its own content to the same radii, because overflow clipping
+        // on this view would swallow the shadow.
         drawerStyle: {
           backgroundColor: card,
           width: 304,
           borderTopRightRadius: 24,
           borderBottomRightRadius: 24,
-          shadowColor: '#26292F',
-          shadowOpacity: 0.25,
-          shadowRadius: 24,
-          shadowOffset: { width: 6, height: 0 },
-          elevation: 16,
+          borderCurve: 'continuous',
+          boxShadow: '6px 0 24px rgba(38, 41, 47, 0.25)',
         },
         overlayColor: 'rgba(38, 41, 47, 0.45)',
         sceneStyle: { backgroundColor: paper },
