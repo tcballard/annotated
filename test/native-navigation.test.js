@@ -76,7 +76,7 @@ test('the header is X-anatomy in our identity: avatar opens the drawer, the word
   // clause) — not the old pill language, and every tab is a real 44pt
   // target. Pills remain dock anatomy (the web's bottom switcher), never
   // a top switcher's.
-  assert.match(timeline, /tabUnderline: \{ position: 'absolute', bottom: 0, left: '34%', right: '34%', height: 2, backgroundColor: tokens\.accent \}/, 'the native underline mirrors the web tab anatomy');
+  assert.match(timeline, /tabUnderline: \{ position: 'absolute', bottom: 0, left: '34%', right: '34%', height: 2, backgroundColor: tokens\.accent, borderRadius: 99 \}/, 'the native underline mirrors the web tab anatomy, rounded caps included');
   assert.match(timeline, /tab: \{ flex: 1, minHeight: 44/, 'switcher tabs meet the touch floor');
   assert.doesNotMatch(timeline, /menuPill/, 'the pill switcher is gone');
   assert.doesNotMatch(timeline, /shadowColor|elevation:/, 'legacy shadow*/elevation props are banned (expo-native-ui)');

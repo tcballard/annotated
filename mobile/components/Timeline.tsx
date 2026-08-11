@@ -414,7 +414,11 @@ export default function Timeline() {
           {MENU.map((entry, position) => {
             const active = index === position;
             return (
-              <Pressable key={entry.key} style={styles.tab} onPress={() => select(position)}>
+              <Pressable
+                key={entry.key}
+                style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
+                onPress={() => select(position)}
+              >
                 <Text style={active ? styles.tabTextActive : styles.tabText}>{entry.label}</Text>
                 {active ? <View style={styles.tabUnderline} /> : null}
               </Pressable>
@@ -434,15 +438,18 @@ const styles = StyleSheet.create({
   chrome: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, backgroundColor: card },
   chromeHeader: { height: 48, flexDirection: 'row', alignItems: 'center' },
   chromeTitle: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
-  // The feed switcher wears the product's one tab anatomy — the flat rail
-  // with the terracotta underline the web and panel share (§1.1's
-  // active-tab clause). Pills are dock anatomy; a top switcher is a tab
-  // rail, and each tab is a true 44pt target.
+  // The feed switcher wears the product's one tab anatomy, value for
+  // value with the panel and the web (§1.1's active-tab clause): resting
+  // tabs are quiet meta at regular weight, the active tab is ink 700,
+  // and the rounded terracotta underline sits at 34% insets. Pills are
+  // dock anatomy; a top switcher is a tab rail, and each tab is a true
+  // 44pt target (the touch floor — the pointer surfaces run shorter).
   switcher: { flexDirection: 'row', backgroundColor: card, borderBottomWidth: 1, borderBottomColor: tokens.hair },
   tab: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  tabText: { fontSize: 14, color: tokens['ink-soft'], fontWeight: '600' },
+  tabPressed: { backgroundColor: tokens.soft },
+  tabText: { fontSize: 14, color: meta },
   tabTextActive: { fontSize: 14, color: ink, fontWeight: '700' },
-  tabUnderline: { position: 'absolute', bottom: 0, left: '34%', right: '34%', height: 2, backgroundColor: tokens.accent },
+  tabUnderline: { position: 'absolute', bottom: 0, left: '34%', right: '34%', height: 2, backgroundColor: tokens.accent, borderRadius: 99 },
   page: { flex: 1 },
   pane: { flex: 1 },
   offline: { margin: 14, marginBottom: 0, padding: 12, backgroundColor: card, borderRadius: radiusInner, borderWidth: 1, borderColor: tokens.border },

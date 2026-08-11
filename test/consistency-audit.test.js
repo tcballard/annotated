@@ -117,19 +117,23 @@ test('one terracotta, one dark paper — the palette matches across surfaces', (
   }
 });
 
-test('the feed tabs speak one language on web and panel', () => {
-  // The desktop web rail wears the panel's tab anatomy: meta text, ink when
-  // active, the short terracotta underline naming the pane. The mobile
-  // thumb dock and the native shell's segmented pill are different
-  // components with different jobs, and keep their own anatomy — inside
-  // their media/shell scopes only.
+test('the feed tabs speak one language on web, panel, and the native app', () => {
+  // Every top switcher wears the panel's tab anatomy: meta text at rest,
+  // ink 700 when active, the short rounded terracotta underline at 34%
+  // insets naming the pane. Only the mobile web thumb dock keeps its own
+  // pill anatomy — it is a dock, not a top switcher, and lives inside its
+  // media scope only.
   for (const [surface, css] of [['web', webCss], ['panel', panelCss]]) {
     const active = css.match(/\.tab\.is-active::after \{[\s\S]*?\}/)?.[0] || '';
-    for (const rule of ['left: 34%', 'right: 34%', 'height: 2px', 'background: var(--accent)']) {
+    for (const rule of ['left: 34%', 'right: 34%', 'height: 2px', 'background: var(--accent)', 'border-radius: 99px']) {
       assert.ok(active.includes(rule), `${surface} active-tab underline must carry ${rule}`);
     }
     assert.match(css, /\.tab\.is-active \{ color: var\(--ink\); font-weight: 700; \}/, `${surface} active tab is ink and bold`);
   }
+  // The native rail carries the same values through the shared tokens.
+  assert.match(timeline, /tabUnderline: \{ position: 'absolute', bottom: 0, left: '34%', right: '34%', height: 2, backgroundColor: tokens\.accent, borderRadius: 99 \}/, 'the native underline is the same rounded 34% rule');
+  assert.match(timeline, /tabTextActive: \{ fontSize: 14, color: ink, fontWeight: '700' \}/, 'the native active tab is ink and bold');
+  assert.match(timeline, /tabText: \{ fontSize: 14, color: meta \}/, 'the native resting tab is quiet meta at regular weight');
 });
 
 test('the moment chip is the same component on every surface', () => {
