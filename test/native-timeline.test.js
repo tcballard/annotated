@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const timeline = await readFile(new URL('../mobile/components/Timeline.tsx', import.meta.url), 'utf8');
 const nativeAuth = await readFile(new URL('../mobile/lib/native-auth.ts', import.meta.url), 'utf8');
+const authDoor = await readFile(new URL('../mobile/components/AuthProviderContext.tsx', import.meta.url), 'utf8');
 const nativeApi = await readFile(new URL('../mobile/lib/api.ts', import.meta.url), 'utf8');
 
 test('the native timeline renders through the shared core, not a private model', () => {
@@ -91,7 +92,8 @@ test('avatars: OAuth profile photos when present, deterministic colored initials
 test('native sign-in is the same ticket exchange, driven without a WebView', () => {
   assert.match(nativeAuth, /openAuthSessionAsync\(withMobileReturn\(startUrl\), 'annotated:\/\/auth'\)/);
   assert.match(nativeAuth, /sessionExchangeUrl\(ORIGIN, ticket, '\/'\)/);
-  assert.match(nativeAuth, /enabledProviders/);
-  assert.match(timeline, /await signInNatively\(\)/, 'a 401 on follow offers sign-in');
+  assert.match(authDoor, /enabledProviders/);
+  assert.match(authDoor, /signInWithProvider/);
+  assert.match(timeline, /await signIn\(\)/, 'a 401 on follow offers the branded sign-in door');
   assert.match(timeline, /\[epoch\]/, 'the timeline refreshes when a sign-in lands elsewhere in the app');
 });

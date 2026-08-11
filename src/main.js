@@ -322,7 +322,7 @@ const avatarHtml = (person = {}) => person.avatarUrl
 const signinModal = () => {
   const providers = enabledProviders(state.authProviders);
   const doors = providers.length
-    ? providers.map((provider) => `<a class="continue" href="${escapeHTML(oauthStartUrl(provider))}"><span class="pmark" aria-hidden="true">${escapeHTML(providerLabel(provider).slice(0, 1))}</span>Continue with ${providerLabel(provider)}</a>`).join('')
+    ? providers.map((provider) => `<a class="provider-login provider-login--${provider}" href="${escapeHTML(oauthStartUrl(provider))}"><img class="provider-login__mark" src="/brand/providers/${provider === 'google' ? 'google.png' : 'x.svg'}" alt="" aria-hidden="true" /><span>Continue with ${providerLabel(provider)}</span></a>`).join('')
     : '<p class="signin-unavailable">No sign-in provider is configured on this backend.</p>';
   return `<div class="modal-backdrop" data-action="close-signin">
   <div class="signin-modal" role="dialog" aria-modal="true" aria-labelledby="signin-title">
@@ -330,6 +330,7 @@ const signinModal = () => {
     <p class="signin-sub">One account across the extension, the web, and the app.</p>
     ${state.signinContext ? `<p class="signin-context">${escapeHTML(state.signinContext)} Your draft and current page stay put while you sign in.</p>` : ''}
     ${doors}
+    ${providers.length ? '<p class="signin-legal">By continuing, you agree to the <a href="/terms">Terms</a> and <a href="/privacy.html">Privacy Policy</a>.</p>' : ''}
     <button class="signin-cancel" data-action="close-signin">Not now</button>
   </div>
 </div>`;
@@ -340,7 +341,7 @@ const openSignin = (context = '') => {
   state.signinContext = context;
   state.signinOpen = true;
   render();
-  document.querySelector('.signin-modal .continue')?.focus();
+  document.querySelector('.signin-modal .provider-login')?.focus();
 };
 
 const closeSignin = () => {

@@ -78,7 +78,8 @@ test('every semantic action is declared and wired to a real destination', () => 
     assert.ok(screen.includes(action), `unwired action in the screen: ${action}`);
   }
   // sign-in and the primary CTA reach the app's own native sign-in
-  assert.match(route, /signInNatively/);
+  assert.match(route, /AuthProviderContext/);
+  assert.match(route, /await openSignIn\(\)/);
   assert.match(route, /speak-language\.sign-in/);
   assert.match(route, /speak-language\.start-speaking-today/);
   // tap-to-continue advances the authored sequence rather than skipping it

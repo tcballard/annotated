@@ -75,7 +75,7 @@ test('the drawer carries account, library, and the public pages — session acti
   assert.match(drawerPanel, /'\/web\/about'/);
   assert.match(drawerPanel, /canModerate .*\['owner', 'admin', 'moderator'\]/, 'moderation shows only to moderators');
   assert.match(drawerPanel, /api\.logout\(\)/);
-  assert.match(drawerPanel, /signInNatively\(\)/, 'signed out, the drawer offers sign-in');
+  assert.match(drawerPanel, /await signIn\(\)/, 'signed out, the drawer offers the branded sign-in door');
   // signed out the head is the wordmark, not plain text, and the session
   // action is pinned past the spacer at the bottom
   assert.match(drawerPanel, /<BrandMark size=\{26\} \/>/);

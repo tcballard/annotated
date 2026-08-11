@@ -9,11 +9,12 @@ import { useRouter } from 'expo-router';
 import { SpeakLanguageWelcome } from '../components/welcome/speak-language';
 import type { WelcomeActionId } from '../components/welcome/types';
 import { SessionEpochContext } from '../components/WebScreen';
-import { signInNatively } from '../lib/native-auth';
+import { AuthProviderContext } from '../components/AuthProviderContext';
 
 export default function WelcomeRoute() {
   const router = useRouter();
   const { bump } = useContext(SessionEpochContext);
+  const { signIn: openSignIn } = useContext(AuthProviderContext);
   const [busy, setBusy] = useState(false);
 
   const enterApp = () => router.replace('/(drawer)/(tabs)');
@@ -22,7 +23,7 @@ export default function WelcomeRoute() {
     if (busy) return;
     setBusy(true);
     try {
-      if (await signInNatively()) bump();
+      if (await openSignIn()) bump();
     } finally {
       setBusy(false);
     }

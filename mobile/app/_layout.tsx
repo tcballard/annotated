@@ -15,6 +15,7 @@ import { useFonts, Inter_400Regular, Inter_600SemiBold, Inter_700Bold, Inter_800
 import { useShareIntent } from '../lib/share-intent';
 import { SessionEpochContext } from '../components/WebScreen';
 import { AccountContext, type Me } from '../components/AccountContext';
+import { AuthProvider } from '../components/AuthProviderContext';
 import { api } from '../lib/api';
 import { card, ink, paper } from '../lib/tokens';
 
@@ -105,17 +106,19 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SessionEpochContext.Provider value={session}>
         <AccountContext.Provider value={account}>
-          <StatusBar style="auto" />
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: paper } }}>
-            <Stack.Screen name="(drawer)" />
-            {/* The welcome owns its canvas: no header, no safe-area inset,
-                and it fades rather than sliding in from the side. */}
-            <Stack.Screen
-              name="welcome"
-              options={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#F5F4F0' } }}
-            />
-            <Stack.Screen name="web/[...path]" options={webHeader} />
-          </Stack>
+          <AuthProvider>
+            <StatusBar style="auto" />
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: paper } }}>
+              <Stack.Screen name="(drawer)" />
+              {/* The welcome owns its canvas: no header, no safe-area inset,
+                  and it fades rather than sliding in from the side. */}
+              <Stack.Screen
+                name="welcome"
+                options={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#F5F4F0' } }}
+              />
+              <Stack.Screen name="web/[...path]" options={webHeader} />
+            </Stack>
+          </AuthProvider>
         </AccountContext.Provider>
       </SessionEpochContext.Provider>
     </GestureHandlerRootView>

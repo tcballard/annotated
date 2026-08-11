@@ -36,8 +36,8 @@ import { openOriginalHref } from '../lib/core/deep-link';
 import { publicAnnotationUrl } from '../lib/core/share-links';
 import { api } from '../lib/api';
 import { ORIGIN } from '../lib/origin';
-import { signInNatively } from '../lib/native-auth';
 import { AccountContext } from './AccountContext';
+import { AuthProviderContext } from './AuthProviderContext';
 import { SessionEpochContext } from './WebScreen';
 import FeedPager from './FeedPager';
 import HeaderAvatar from './HeaderAvatar';
@@ -105,6 +105,7 @@ const SourceCard = ({ item }: { item: FeedItem }) => {
 export const useFeedActions = () => {
   const router = useRouter();
   const { bump } = useContext(SessionEpochContext);
+  const { signIn } = useContext(AuthProviderContext);
   const [followingIds, setFollowingIds] = useState<Record<string, boolean>>({});
 
   const openAnnotation = (item: FeedItem) => {
@@ -129,7 +130,7 @@ export const useFeedActions = () => {
       void Haptics.selectionAsync();
     } catch (error: any) {
       setFollowingIds((current) => ({ ...current, [item.authorId]: !next }));
-      if (error?.status === 401 && await signInNatively()) bump();
+      if (error?.status === 401 && await signIn()) bump();
     }
   };
 
@@ -148,7 +149,7 @@ export const useFeedActions = () => {
       void Haptics.selectionAsync();
     } catch (error: any) {
       setLikeOverrides((overrides) => ({ ...overrides, [slug]: current }));
-      if (error?.status === 401 && await signInNatively()) bump();
+      if (error?.status === 401 && await signIn()) bump();
     }
   };
 

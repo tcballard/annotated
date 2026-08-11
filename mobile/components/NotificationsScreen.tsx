@@ -12,8 +12,8 @@ import Feather from '@expo/vector-icons/Feather';
 import { relTime } from '../lib/core/feed-item';
 import { avatarColor, avatarInitial } from '../lib/core/avatar';
 import { api } from '../lib/api';
-import { signInNatively } from '../lib/native-auth';
 import { AccountContext } from './AccountContext';
+import { AuthProviderContext } from './AuthProviderContext';
 import { SessionEpochContext } from './WebScreen';
 import { card, ink, meta, tokens } from '../lib/tokens';
 
@@ -60,6 +60,7 @@ export default function NotificationsScreen() {
   const router = useRouter();
   const { me, clearUnseen } = useContext(AccountContext);
   const { bump } = useContext(SessionEpochContext);
+  const { signIn } = useContext(AuthProviderContext);
   const [items, setItems] = useState<Notification[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -117,7 +118,7 @@ export default function NotificationsScreen() {
         <View style={styles.cardBox}>
           <Text style={styles.title}>Nothing to ring about yet.</Text>
           <Text style={styles.body}>Sign in to see responses, likes, and new followers.</Text>
-          <Pressable style={styles.signIn} onPress={async () => { if (await signInNatively()) bump(); }}>
+          <Pressable style={styles.signIn} onPress={async () => { if (await signIn()) bump(); }}>
             <Text style={styles.signInText}>Sign in</Text>
           </Pressable>
         </View>
