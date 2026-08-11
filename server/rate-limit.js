@@ -18,8 +18,18 @@ const hashKey = (key) => createHash('sha256').update(String(key)).digest('hex');
 export const createPostgresRateLimiter = ({ pool = new Pool(defaultPoolOptions), pruneEvery = 100 } = {}) => {
   let ready;
   let calls = 0;
+  // Same rule as the store's pool: an idle client dying during a database
+  // restart must not crash the process via an unhandled 'error' event.
+  if (typeof pool.on === 'function') pool.on('error', (error) => console.error(`PostgreSQL pool error (rate limit): ${error.message}`));
   const ensureReady = async () => {
-    ready ||= pool.query('SELECT 1');
+    // Same recovery rule as the store's schema check: never cache a rejected
+    // readiness probe. The limiter fails closed while the database is down —
+    // correct — but a cached rejection kept it failing closed forever, which
+    // turns one blip into a permanent 429 on every mutation.
+    ready ||= pool.query('SELECT 1').catch((error) => {
+      ready = undefined;
+      throw error;
+    });
     await ready;
   };
   const limit = async (key, { limit: maximum = 60, windowMs = 60_000 } = {}) => {
