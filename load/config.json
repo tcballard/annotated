@@ -1,0 +1,49 @@
+{
+  "actorCount": 50,
+  "feedWalk": { "minDepth": 1, "maxDepth": 8, "pageLimit": 20 },
+  "mixComment": "Weights are per-REQUEST: every k6 iteration performs exactly one HTTP request, so scenario stage targets are true requests/second.",
+  "mix": { "feed": 70, "permalink": 10, "oembed": 5, "search": 8, "like": 5, "publish": 2 },
+  "searchTerms": ["annotation", "podcast", "clip", "source", "video", "margin", "reading", "evidence"],
+  "thresholds": {
+    "comment": "Latency budgets are milliseconds. publish/like inherit the publish-ack budget in docs/PERFORMANCE.md; read paths use the soak graceful-degradation bar. Change budgets there first.",
+    "feed_p95_ms": 500,
+    "permalink_p95_ms": 500,
+    "oembed_p95_ms": 500,
+    "search_p95_ms": 500,
+    "like_p95_ms": 300,
+    "publish_p95_ms": 300,
+    "max_5xx": 0
+  },
+  "profiles": {
+    "smoke": {
+      "description": "Proves the harness runs end to end. Low rate, short, thresholds enforced.",
+      "scenarios": [
+        { "name": "pass", "startTime": "0s", "stages": [ { "target": 5, "duration": "30s" }, { "target": 10, "duration": "90s" } ], "enforceThresholds": true }
+      ]
+    },
+    "soak": {
+      "description": "Warm 30 req/s (discarded), 300 req/s pass/fail, 600 req/s burst. Graceful-degradation bar: p95 under 500ms, zero 5xx.",
+      "scenarios": [
+        { "name": "warm", "startTime": "0s", "stages": [ { "target": 30, "duration": "30s" }, { "target": 30, "duration": "90s" } ], "enforceThresholds": false },
+        { "name": "pass", "startTime": "2m", "stages": [ { "target": 300, "duration": "1m" }, { "target": 300, "duration": "9m" } ], "enforceThresholds": true },
+        { "name": "burst", "startTime": "12m", "stages": [ { "target": 600, "duration": "30s" }, { "target": 600, "duration": "90s" } ], "enforceThresholds": true }
+      ]
+    },
+    "ramp": {
+      "description": "Climb until it breaks. The deliverable is the ceiling and its named cause, not a pass.",
+      "scenarios": [
+        { "name": "ramp", "startTime": "0s", "stages": [ { "target": 300, "duration": "2m" }, { "target": 1000, "duration": "3m" }, { "target": 2000, "duration": "3m" }, { "target": 3000, "duration": "4m" } ], "enforceThresholds": false }
+      ]
+    }
+  },
+  "mediaDrain": {
+    "jobs": 30,
+    "workers": 1,
+    "clipSeconds": 8,
+    "pollMs": 2000,
+    "timeToReadyBudgetSec": 60,
+    "publishesPerActorPerMinute": 25,
+    "workerLeaseMs": 60000,
+    "workerLeaseComment": "Production default is 600000 (MEDIA_WORKER_LEASE_MS); drain runs shorten it so --kill-one can observe lease recovery inside one run. 30000 is the worker's floor."
+  }
+}

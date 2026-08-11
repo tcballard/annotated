@@ -32,6 +32,12 @@
     "db:migrate": "node scripts/migrate.js",
     "check:relational-integrity": "node scripts/check-relational-integrity.mjs",
     "load:relational": "node scripts/run-relational-load.mjs",
+    "load:actors": "node load/seed-actors.mjs",
+    "load:smoke": "mkdir -p load/out && k6 run load/k6-annotated.js -e PROFILE=smoke -e BASE_URL=$BASE_URL",
+    "load:soak": "mkdir -p load/out && k6 run load/k6-annotated.js -e PROFILE=soak -e BASE_URL=$BASE_URL",
+    "load:ramp": "mkdir -p load/out && k6 run load/k6-annotated.js -e PROFILE=ramp -e BASE_URL=$BASE_URL",
+    "load:media-drain": "node load/media-drain.mjs",
+    "load:report": "node load/report.mjs",
     "preview": "vite preview",
     "start": "NODE_ENV=production node server/index.js",
     "worker": "node server/media-worker-main.js"

@@ -37,8 +37,13 @@ Still deliberately ahead, gated on real traffic:
 
 The load budgets are database regression thresholds, not claims about deployed
 API p95. Authoritative latency needs repeated samples against the exact staging
-image, PostgreSQL, object store, and network path. Run the load suite only on an
-isolated disposable database:
+image, PostgreSQL, object store, and network path. HTTP-level load runs are
+operator-driven through the harness in [`load/`](../load/) (k6 profiles, actor
+seeding, a media-pipeline drain, and a committed report per run in
+[`load-reports/`](load-reports/)); the procedure and safety rails are in
+[`load/RUNBOOK.md`](../load/RUNBOOK.md). The thresholds those profiles enforce
+default to the budgets above — change them here first. Run the database suite
+only on an isolated disposable database:
 
 ```bash
 LOAD_DATABASE_URL=postgresql://.../annotated_load \
