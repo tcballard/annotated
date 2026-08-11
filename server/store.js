@@ -80,8 +80,20 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
   let schemaReady;
   let invalidationClient = null;
   let closing = false;
+  // An idle pooled client losing its connection (PostgreSQL restart,
+  // failover, network blip) emits 'error' on the pool; unhandled, that event
+  // kills the whole process. Log it and carry on — the next query checks out
+  // a fresh client, and the schema gate above retries honestly.
+  if (typeof pool.on === 'function') pool.on('error', (error) => console.error(`PostgreSQL pool error (store): ${error.message}`));
   const ensureSchema = async () => {
-    schemaReady ||= pool.query(postgresSchema);
+    // A rejected schema check must not be cached: caching it turned every
+    // transient database outage into a permanent one — the API kept serving
+    // the first connection error long after PostgreSQL was back, until the
+    // process was restarted. Clear on failure so the next request retries.
+    schemaReady ||= pool.query(postgresSchema).catch((error) => {
+      schemaReady = undefined;
+      throw error;
+    });
     await schemaReady;
   };
   const readLegacy = async (query = pool) => {
