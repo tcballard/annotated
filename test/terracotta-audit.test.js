@@ -40,6 +40,10 @@ const ALLOWED_SELECTORS = [
   // keyframe stops carry accent values only on behalf of animations that are
   // themselves applied via whitelisted selectors (mark-flash on .just-set,
   // the publish wash) — the accent still lands only where the law allows
+  // A live selection arms the grabber — the terracotta rule on its left
+  // edge is the mark-selection state, the same clause that covers the
+  // clip band's fill. The armed field's BORDER stays the shared hairline.
+  /\.grabber\.is-armed(?::hover)?$/,
   /^(from|to|\d+%)$/,
 ];
 

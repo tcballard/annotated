@@ -540,10 +540,25 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .grabber:hover { background: var(--hair); color: var(--ink); }
 
 /* a live selection arms the grabber: solid border, ink voice, the words
-   themselves quoting what is about to be kept */
-.grabber.is-armed { border-style: solid; border-color: var(--ink-soft); color: var(--ink); font-weight: 600; background: var(--card); }
+   themselves quoting what is about to be kept. The edge stays the same
+   hairline every field wears — the emphasis is the terracotta rule on the
+   left (a live selection IS the moment, the same clause as the clip
+   band's fill), not a heavier box. */
+.grabber.is-armed { border-style: solid; border-color: var(--border); color: var(--ink); font-weight: 600; background: var(--card); box-shadow: inset 3px 0 0 var(--accent); }
 .grabber.is-armed:hover { background: var(--hover-row); }
 .grabber svg { width: 14px; height: 14px; flex: none; }
+
+/* One field chrome: inputs, selects, and textareas all wear the same 1px
+   hairline at the same radius — and focus does not draw a second box
+   around a field that already has one. The field's own border takes the
+   ink instead; the 2px ring stays for controls without borders. */
+.type-select select:focus-visible,
+.relation-select select:focus-visible,
+.cap-note:focus-visible,
+.grabber:focus-visible {
+  outline: none;
+  border-color: var(--ink-soft);
+}
 
 .passage { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
 
