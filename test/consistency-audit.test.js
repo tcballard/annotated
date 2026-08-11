@@ -11,13 +11,14 @@ import test from 'node:test';
 
 const read = async (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-const [web, webCss, panelHtml, panelJs, panelCss, nativeAuth, timeline, search, notifications, tokens] = await Promise.all([
+const [web, webCss, panelHtml, panelJs, panelCss, nativeAuth, nativeDoor, timeline, search, notifications, tokens] = await Promise.all([
   read('src/main.js'),
   read('src/styles.css'),
   read('extension/sidepanel.html'),
   read('extension/sidepanel.js'),
   read('extension/sidepanel.css'),
   read('mobile/lib/native-auth.ts'),
+  read('mobile/components/AuthProviderContext.tsx'),
   read('mobile/components/Timeline.tsx'),
   read('mobile/components/SearchScreen.tsx'),
   read('mobile/components/NotificationsScreen.tsx'),
@@ -27,17 +28,29 @@ const [web, webCss, panelHtml, panelJs, panelCss, nativeAuth, timeline, search, 
 test('the sign-in door speaks the same words on every surface', () => {
   const pitch = 'One account across the extension, the web, and the app.';
   const title = 'Add your name to the margin';
-  for (const [surface, source] of [['web', web], ['panel', panelHtml], ['native', nativeAuth]]) {
+  for (const [surface, source] of [['web', web], ['panel', panelHtml], ['native', nativeDoor]]) {
     assert.ok(source.includes(title), `${surface} must open with "${title}"`);
     assert.ok(source.includes(pitch), `${surface} must carry the pitch line`);
     assert.ok(source.includes('Not now'), `${surface} must offer the same way out`);
   }
-  // Continue-with wording: web builds it from providerLabel, panel ships it
-  // statically, native templates it into the system sheet.
+  // Continue-with wording: web and native build it from providerLabel;
+  // the extension ships both provider doors statically.
   assert.match(web, /Continue with \$\{providerLabel\(provider\)\}/);
   assert.match(panelHtml, /Continue with X/);
   assert.match(panelHtml, /Continue with Google/);
-  assert.match(nativeAuth, /`Continue with \$\{providerLabel\(provider\)\}`/);
+  assert.match(nativeDoor, /`Continue with \$\{providerLabel\(provider\)\}`/);
+  assert.match(nativeAuth, /signInWithProvider/);
+});
+
+test('provider sign-in buttons use official marks and the same legal boundary', () => {
+  for (const [surface, source] of [['web', web], ['panel', panelHtml], ['native', nativeDoor]]) {
+    assert.ok(source.includes('Privacy Policy'), `${surface} links the privacy policy from the sign-in door`);
+    assert.ok(source.includes('Terms'), `${surface} links the terms from the sign-in door`);
+    assert.ok(/google\.png/.test(source), `${surface} uses the Google provider mark`);
+  }
+  assert.match(web, /providers\/.*x\.svg/);
+  assert.match(panelHtml, /providers\/x\.svg/);
+  assert.match(nativeDoor, /providers\/x\.png/);
 });
 
 test('the publish moment is the same beat on web and panel', () => {

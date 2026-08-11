@@ -2,9 +2,9 @@ import { useContext } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import WebScreen, { SessionEpochContext } from '../../../components/WebScreen';
 import { AccountContext } from '../../../components/AccountContext';
+import { AuthProviderContext } from '../../../components/AuthProviderContext';
 import { ORIGIN } from '../../../lib/origin';
 import { shellUrl } from '../../../lib/shell';
-import { signInNatively } from '../../../lib/native-auth';
 import { card, ink, meta, tokens } from '../../../lib/tokens';
 
 // Your public profile — the same shell-mode web surface readers see.
@@ -12,13 +12,14 @@ import { card, ink, meta, tokens } from '../../../lib/tokens';
 export default function ProfileTab() {
   const { me } = useContext(AccountContext);
   const { bump } = useContext(SessionEpochContext);
+  const { signIn } = useContext(AuthProviderContext);
   if (me?.handle) return <WebScreen uri={shellUrl(ORIGIN, `/u/${encodeURIComponent(me.handle)}`)} padTop={false} />;
   return (
     <View style={styles.frame}>
       <View style={styles.cardBox}>
         <Text style={styles.title}>Your profile is waiting.</Text>
         <Text style={styles.body}>Sign in to publish, follow, and keep your library.</Text>
-        <Pressable style={styles.signIn} onPress={async () => { if (await signInNatively()) bump(); }}>
+        <Pressable style={styles.signIn} onPress={async () => { if (await signIn()) bump(); }}>
           <Text style={styles.signInText}>Sign in</Text>
         </Pressable>
       </View>

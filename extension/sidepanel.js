@@ -63,6 +63,8 @@ const authActions = $('#authActions');
 const signInOpen = $('#signInOpen');
 const signinVeil = $('#signinVeil');
 const signinCancel = $('#signinCancel');
+const signinTerms = $('#signinTerms');
+const signinPrivacy = $('#signinPrivacy');
 const meButton = $('#meButton');
 const meMenu = $('#meMenu');
 const meName = $('#meName');
@@ -2468,6 +2470,8 @@ const scheduleBackendRetry = () => {
 const checkBackend = async () => {
   const origin = await apiOrigin();
   apiOriginCache = origin;
+  signinTerms.href = `${origin}/terms`;
+  signinPrivacy.href = `${origin}/privacy.html`;
   const wasOnline = backendOnline;
   clearTimeout(backendRetryTimer);
   try {

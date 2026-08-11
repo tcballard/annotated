@@ -502,6 +502,11 @@ test('sign-in is one door: a single trigger, both providers behind a modal', asy
   assert.match(html, /role="dialog" aria-modal="true" aria-labelledby="signinTitle"/);
   assert.match(html, /data-auth="x"[^>]*hidden>.*Continue with X</);
   assert.match(html, /data-auth="google"[^>]*hidden>.*Continue with Google</);
+  assert.match(html, /assets\/providers\/x\.svg/);
+  assert.match(html, /assets\/providers\/google\.png/);
+  assert.match(html, /Privacy Policy/);
+  assert.match(runtime, /signinTerms\.href = `\$\{origin\}\/terms`/);
+  assert.match(runtime, /signinPrivacy\.href = `\$\{origin\}\/privacy\.html`/);
   assert.match(runtime, /const openSignin = /);
   assert.match(runtime, /signinVeil\.querySelector\('\[data-auth\]:not\(\[hidden\]\)'\)\?\.focus\(\)/, 'focus lands on the first provider');
   assert.match(runtime, /if \(event\.target === signinVeil\) closeSignin\(\)/, 'the veil dismisses');

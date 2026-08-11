@@ -57,7 +57,7 @@ test('interactive targets keep at least 40px and focus stays visible everywhere'
   // focus is navigation, not the moment: ink ring, paper ring on dark chrome
   assert.match(styles, /:focus-visible \{ outline: 2px solid var\(--ink\)/u);
   assert.match(styles, /\.chrome :focus-visible \{ outline-color: #F5F4F0; \}/u);
-  for (const selector of ['.act', '.btn', '.tabs .tab', '.markfield', '.signin-modal .continue']) {
+  for (const selector of ['.act', '.btn', '.tabs .tab', '.markfield', '.signin-modal .provider-login']) {
     const block = styles.split(`${selector} {`).slice(1, 2).join('');
     assert.match(block.slice(0, 400), /min-height: (?:3[6-9]|4[0-9])px/u, `${selector} needs a ≥36px target`);
   }

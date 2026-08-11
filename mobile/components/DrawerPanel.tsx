@@ -12,8 +12,8 @@ import Feather from '@expo/vector-icons/Feather';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { avatarColor, avatarInitial } from '../lib/core/avatar';
 import { api } from '../lib/api';
-import { signInNatively } from '../lib/native-auth';
 import { AccountContext } from './AccountContext';
+import { AuthProviderContext } from './AuthProviderContext';
 import { SessionEpochContext } from './WebScreen';
 import BrandMark from './BrandMark';
 import { card, ink, meta, tokens } from '../lib/tokens';
@@ -25,6 +25,7 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
   const router = useRouter();
   const { me } = useContext(AccountContext);
   const { bump } = useContext(SessionEpochContext);
+  const { signIn } = useContext(AuthProviderContext);
   const [counts, setCounts] = useState<Counts | null>(null);
 
   useEffect(() => {
@@ -97,7 +98,7 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
         <View style={styles.foot}>
           <Pressable
             style={styles.signIn}
-            onPress={async () => { if (await signInNatively()) { bump(); close(); } }}
+            onPress={async () => { if (await signIn()) { bump(); close(); } }}
           >
             <Text style={styles.signInText}>Sign in</Text>
           </Pressable>
