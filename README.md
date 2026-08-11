@@ -152,6 +152,7 @@ acceptance source, not this README.
 - [Storage boundary](docs/STORAGE.md)
 - [Deployment boundary](docs/DEPLOYMENT.md)
 - [Performance architecture](docs/PERFORMANCE.md)
+- [Launch readiness](docs/LAUNCH.md)
 - [UX direction](docs/UX_DIRECTION.md)
 
 For a production-shaped run, start from [`.env.example`](.env.example) and
