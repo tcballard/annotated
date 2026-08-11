@@ -40,7 +40,7 @@ different corpus.
 | 1,500 req/s, read path | 0.4 ms median; 1 ms p95; zero failures |
 | 2,500 req/s, read path | 0.4 ms median; 2 ms p95; zero failures |
 | Likes, 400 per second, 600 actors | 6 ms median; 18 ms p95; zero 429; zero server errors |
-| Publishes, 120 per second, 600 actors | 6 ms median; 8 ms p95; zero 429; zero server errors |
+| Publishes, 600 per second, 2,400 actors | 4.6 ms median; 18 ms p95; zero 429; zero server errors |
 | Media drain, two workers | 4.8 clips per minute per worker; zero double claims; 2 of 2 leases recovered |
 | Web vitals, home and permalink | LCP under 100 ms; CLS 0.000 |
 
@@ -50,7 +50,7 @@ different corpus.
 | --- | --- | --- |
 | Anonymous reads, one instance | Holds 2,500 req/s. Breaks between 3,000 and 4,000 req/s | The Node event loop saturates. One cached response costs about 0.35 ms of JavaScript time. The database stays idle |
 | Signed-in reads, one instance | Holds 600 req/s. We did not find the break point | Most of the cost is parallel database wait, not JavaScript time |
-| Mutations, one instance | Holds 400 likes/s and 120 publishes/s. We did not find the break point | The write path is row-native. The p95 stays below 20 ms, against a 300 ms budget |
+| Mutations, one instance | Likes hold 400/s; break not found. Publishes hold 600/s; the path breaks between 600 and 1,000/s, near 850/s | The write path is row-native. At 600 publishes/s the p95 is 18 ms, against a 300 ms budget |
 | PostgreSQL | Not reached | The worst query uses 3% of its budget at full corpus |
 | Media pipeline | Linear with capture rate | Transcode uses CPU. Add worker processes to add throughput |
 
@@ -107,7 +107,7 @@ covers the worst minute of the 100,000-user scenario with margin.
 ## 6. What we did not measure
 
 - Deployment hardware, a real network path, and CDN behavior.
-- Likes above 400 per second. Publishes above 120 per second.
+- Likes above 400 per second.
 - More than one API instance under load at the same time.
 - Real provider media (YouTube, podcasts) under transcode load.
 - Signed-in rates above 600 req/s.
