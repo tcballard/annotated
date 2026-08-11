@@ -288,7 +288,14 @@ const createPostgresStore = ({ pool = new Pool({ connectionString: process.env.D
   // Note: named statements assume direct connections or session pooling —
   // transaction-pooling proxies (pgbouncer) would break them.
   const preparedNames = new Map();
+  // Full-text search stays unnamed: after five executions PostgreSQL may
+  // switch a named statement to a generic plan, and a generic plan for
+  // websearch_to_tsquery + LIKE parameters ignores the actual term —
+  // measured as a p95 collapse from ~90ms to over 2s on the search mix.
+  // Paying ~0.5ms of custom planning on an 8%-of-traffic endpoint is the
+  // right trade; the hot feed shapes keep their cached plans.
   const statementName = (text) => {
+    if (text.includes('websearch_to_tsquery')) return undefined;
     let name = preparedNames.get(text);
     if (!name && preparedNames.size < 500) {
       name = `q${createHash('sha1').update(text).digest('base64url').slice(0, 12)}`;
