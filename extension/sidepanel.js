@@ -79,6 +79,8 @@ const topicSelect = $('#topicSelect');
 const relationSelect = $('#relationSelect');
 const shotButton = $('#shotButton');
 const shotCard = $('#shotCard');
+const shotKindChip = $('#shotKindChip');
+const shotLabel = $('#shotLabel');
 const shotPreview = $('#shotPreview');
 const shotPreviewOpen = $('#shotPreviewOpen');
 const backendState = $('#backendState');
@@ -113,6 +115,8 @@ let topic = '';
 let relationType = 'response';
 let screenshotAssetId = '';
 let screenshotPreviewUrl = '';
+let screenshotKind = '';
+let screenshotDims = '';
 let apiOriginCache = '';
 let audioAssetId = '';
 let audioDurationSeconds = 0;
@@ -765,6 +769,15 @@ const syncScreenshot = () => {
   const has = Boolean(screenshotAssetId);
   shotCard.hidden = !has;
   shotButton.hidden = has;
+  // Say WHAT was captured, not just that something was: the drawn region
+  // (with its size) or the full visible tab. Restored drafts predating the
+  // distinction keep the generic line.
+  if (shotKindChip) shotKindChip.textContent = screenshotKind === 'snip' ? 'SNIP' : 'SHOT';
+  if (shotLabel) {
+    shotLabel.textContent = screenshotKind === 'snip'
+      ? `The region you drew${screenshotDims ? ` — ${screenshotDims}` : ''}`
+      : screenshotKind === 'tab' ? 'Full visible tab' : 'Screenshot attached';
+  }
   const src = screenshotPreviewUrl || (has && apiOriginCache ? `${apiOriginCache}/media/${screenshotAssetId}` : '');
   shotPreviewOpen.hidden = !src;
   if (src) shotPreview.src = src;
@@ -890,6 +903,9 @@ const captureScreenshot = async () => {
     if (!response.ok) throw new Error(body.error || `Screenshot upload failed (${response.status}).`);
     screenshotAssetId = body.media.id;
     screenshotPreviewUrl = dataUrl;
+    // Name what was kept: the region you drew, or the whole visible tab.
+    screenshotKind = region ? 'snip' : 'tab';
+    screenshotDims = region ? `${Math.round(region.w)}×${Math.round(region.h)}` : '';
     clearError();
     syncScreenshot();
     saveDraft();
@@ -905,6 +921,8 @@ shotButton.addEventListener('click', () => { void captureScreenshot(); });
 shotClear.addEventListener('click', () => {
   screenshotAssetId = '';
   screenshotPreviewUrl = '';
+  screenshotKind = '';
+  screenshotDims = '';
   syncScreenshot();
   saveDraft();
   shotButton.focus();
@@ -1041,6 +1059,8 @@ const draftPayload = () => ({
   visibility,
   topic,
   screenshotAssetId,
+  screenshotKind,
+  screenshotDims,
 });
 
 const saveDraft = () => {
@@ -1076,6 +1096,8 @@ const restoreDraft = (draft) => {
   topicSelect.value = topic;
   screenshotAssetId = draft.screenshotAssetId || '';
   screenshotPreviewUrl = '';
+  screenshotKind = draft.screenshotKind === 'snip' || draft.screenshotKind === 'tab' ? draft.screenshotKind : '';
+  screenshotDims = typeof draft.screenshotDims === 'string' ? draft.screenshotDims.slice(0, 12) : '';
   if (draft.sourceType) currentTab.sourceType = draft.sourceType;
 };
 
@@ -2024,6 +2046,22 @@ const showOnPage = async (item) => {
   }
 };
 
+// A media row about the page you are on plays its exact clip on the page's
+// own player (the bay's previewRangeInPage: seek to in, play, pause at out).
+// Pages with no reachable player fall back to the deep-linked tab.
+const seekPageToClip = async (item) => {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: currentTabId, allFrames: true },
+      func: previewRangeInPage,
+      args: [Number(item.clipStart) || 0, Math.max(Number(item.clipStart) || 0, Number(item.clipEnd) || 0)],
+    });
+    if (!results?.some((frame) => frame?.result?.ok)) window.open(openOriginalHref(item), '_blank', 'noopener');
+  } catch {
+    window.open(openOriginalHref(item), '_blank', 'noopener');
+  }
+};
+
 const timelinePost = (item) => {
   const noteLine = item.commentary
     ? `<p class="note">${escapeHTML(item.commentary)}</p>`
@@ -2032,6 +2070,8 @@ const timelinePost = (item) => {
   const chip = item.type === 'article' ? '' : `${format(item.clipStart)}–${format(item.clipEnd)}`;
   const quote = item.quote ? `<blockquote>&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
   const favicon = faviconUrl(item.canonicalUrl || item.sourceUrl);
+  // A row about the page you are on jumps in place; its label says so.
+  const openLabel = matchesCurrentTab(item) ? 'Show on this page' : openOriginalLabel(item);
   return `
   <article class="post">
     ${item.avatarUrl
@@ -2057,7 +2097,7 @@ const timelinePost = (item) => {
         ${item.type === 'article' && item.quote && (panelMode === 'page' || matchesCurrentTab(item)) ? `<button class="act" type="button" data-highlight-slug="${escapeHTML(item.slug)}" title="Highlight this passage on the page" aria-label="Highlight this passage on the page">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
         </button>` : ''}
-        <a class="act primary" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-open-slug="${escapeHTML(item.slug)}" title="${escapeHTML(openOriginalLabel(item))}${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}" aria-label="${escapeHTML(openOriginalLabel(item))}${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}">
+        <a class="act primary" href="${escapeHTML(openOriginalHref(item))}" target="_blank" rel="noreferrer" data-open-slug="${escapeHTML(item.slug)}" title="${escapeHTML(openLabel)}${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}" aria-label="${escapeHTML(openLabel)}${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg>
           ${item.opens ? `<span class="n">${item.opens}</span>` : ''}
         </a>
@@ -2259,7 +2299,29 @@ timeline.addEventListener('click', async (event) => {
     return;
   }
   const open = event.target.closest('[data-open-slug]');
-  if (open) { void recordOpen(open.dataset.openSlug); return; }
+  if (open) {
+    const item = (feedCache[panelMode]?.items || []).find((entry) => entry.slug === open.dataset.openSlug);
+    // The original is already the page you are on: jump in place instead of
+    // opening a duplicate tab — highlight the passage, or seek the page's
+    // player to the clip. Every other row (and any page that refuses
+    // injection) keeps the deep-linked new tab.
+    if (item && matchesCurrentTab(item) && Number.isInteger(currentTabId)) {
+      if (item.type === 'article' && item.quote) {
+        event.preventDefault();
+        void recordOpen(item.slug);
+        void showOnPage(item);
+        return;
+      }
+      if (item.type !== 'article') {
+        event.preventDefault();
+        void recordOpen(item.slug);
+        void seekPageToClip(item);
+        return;
+      }
+    }
+    void recordOpen(open.dataset.openSlug);
+    return;
+  }
   const like = event.target.closest('[data-like-slug]');
   if (like) {
     if (!(await extensionStorage.getAuthToken().catch(() => null))) { openSignin(); return; }
@@ -2470,6 +2532,8 @@ const scheduleBackendRetry = () => {
 const checkBackend = async () => {
   const origin = await apiOrigin();
   apiOriginCache = origin;
+  // A restored draft's preview waits on this origin: paint it now.
+  if (screenshotAssetId && !screenshotPreviewUrl) syncScreenshot();
   signinTerms.href = `${origin}/terms`;
   signinPrivacy.href = `${origin}/privacy.html`;
   const wasOnline = backendOnline;

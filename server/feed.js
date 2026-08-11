@@ -60,15 +60,25 @@ export const matchesFeedQuery = (annotation, users, query) => {
 };
 
 // "This page" in the side panel filters the feed to annotations of the URL the
-// user is looking at. Comparison ignores hash, trailing slash, and www.
+// user is looking at. Comparison ignores hash, trailing slash, www, and the
+// query parameters that carry no identity — the tracking tags share buttons
+// append (utm_*, fbclid, si, …) and position markers like YouTube's &t=.
+// Only the HOST is case-folded: paths and the surviving query keep their
+// case and their raw encoding, because video IDs and article slugs are
+// case-sensitive. The SQL twin (annotated_url_key, migration 008) must
+// mirror this byte for byte — a drift here is invisible in file-store dev
+// and permanently empties This page on PostgreSQL deployments.
+const TRACKING_PARAM = /^(utm_[a-z0-9_]*|fbclid|gclid|dclid|msclkid|twclid|yclid|wbraid|gbraid|igshid|igsh|mc_cid|mc_eid|vero_id|spm|ref|ref_src|si|feature|t)$/;
+
 export const normalizeSourceUrlKey = (value) => {
   try {
     const url = new URL(String(value || ''));
     if (!['http:', 'https:'].includes(url.protocol)) return '';
-    url.hash = '';
     const host = url.hostname.toLowerCase().replace(/^www\./, '');
     const pathname = url.pathname.replace(/\/+$/, '') || '/';
-    return `${host}${pathname}${url.search}`;
+    const kept = url.search.slice(1).split('&')
+      .filter((pair) => pair && !TRACKING_PARAM.test(pair.split('=', 1)[0].toLowerCase()));
+    return `${host}${pathname}${kept.length ? `?${kept.join('&')}` : ''}`;
   } catch {
     return '';
   }
