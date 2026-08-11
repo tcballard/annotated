@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { access } from 'node:fs/promises';
 import test from 'node:test';
-import { annotationCard, formatClipTime, ogCardData, renderOgCard } from '../server/og-card.js';
+import { annotationCard, formatClipTime, ogCardData, renderOgCard, youtubeThumbnailUrl } from '../server/og-card.js';
 import { escapeHtml, injectAnnotationMeta, permalinkMeta } from '../server/permalink-meta.js';
 
 const annotation = {
@@ -40,6 +40,27 @@ test('the card tree carries the ink chrome, the CLIP framing, and both voices', 
   assert.match(flat, /CardSerif/);        // the source speaks in serif
   assert.match(flat, /#B0674D/);          // terracotta on the moment
   assert.match(flat, /THE ORIGINAL IS ONE CLICK AWAY/);
+});
+
+test('the CLIP frame carries a poster when one exists, under its own overlays', () => {
+  const poster = 'data:image/jpeg;base64,QUJD';
+  const flat = JSON.stringify(annotationCard({ ...ogCardData(annotation, author), poster }));
+  assert.match(flat, /data:image\/jpeg;base64,QUJD/, 'the poster rides inside the frame');
+  assert.match(flat, /"CLIP"/, 'the CLIP tag stays on top of the poster');
+  assert.match(flat, /0:48 · 240p/, 'the badge stays on top of the poster');
+  assert.match(flat, /CardSerif/, 'the quote keeps its serif voice below the frame');
+  const bare = JSON.stringify(annotationCard(ogCardData(annotation, author)));
+  assert.doesNotMatch(bare, /data:image\/jpeg/, 'no poster, no phantom image node');
+});
+
+test('the YouTube thumbnail is derived from the video ID alone', () => {
+  assert.equal(youtubeThumbnailUrl({ sourceUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' }), 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
+  assert.equal(youtubeThumbnailUrl({ sourceUrl: 'https://youtu.be/dQw4w9WgXcQ?t=30' }), 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
+  assert.equal(youtubeThumbnailUrl({ sourceUrl: 'https://youtube.com/shorts/dQw4w9WgXcQ' }), 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
+  assert.equal(youtubeThumbnailUrl({ canonicalUrl: 'https://youtu.be/dQw4w9WgXcQ' }), 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
+  assert.equal(youtubeThumbnailUrl({ sourceUrl: 'https://vimeo.com/12345' }), null, 'only YouTube derives a thumbnail');
+  assert.equal(youtubeThumbnailUrl({ sourceUrl: 'https://youtube.com/watch?v=../../evil' }), null, 'a malformed ID derives nothing');
+  assert.equal(youtubeThumbnailUrl({}), null);
 });
 
 test('a screenshot capture puts the shot itself on the card, replacing the serif block', () => {

@@ -83,13 +83,40 @@ const shotFrame = (dataUri) => el('div', {
   }, 'SHOT'),
 ]);
 
+// The provider thumbnail for a clip with no hosted poster yet — YouTube
+// only, rebuilt from the extracted video ID so the fetch can never follow a
+// user-supplied path. Returns null for everything else.
+export const youtubeThumbnailUrl = (annotation = {}) => {
+  for (const candidate of [annotation.mediaUrl, annotation.canonicalUrl, annotation.sourceUrl]) {
+    if (!candidate) continue;
+    try {
+      const url = new URL(candidate);
+      const host = url.hostname.toLowerCase().replace(/^www\./, '');
+      let id = '';
+      if (host === 'youtu.be') [id] = url.pathname.slice(1).split('/');
+      else if (['youtube.com', 'm.youtube.com', 'music.youtube.com'].includes(host)) {
+        id = url.searchParams.get('v') || (url.pathname.match(/^\/(?:shorts|embed|live)\/([A-Za-z0-9_-]{11})/) || [])[1] || '';
+      }
+      if (/^[A-Za-z0-9_-]{11}$/.test(id)) return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+    } catch { /* try the next candidate */ }
+  }
+  return null;
+};
+
 // The 240p player at card scale: CLIP tag top-left, play affordance, badge
-// bottom-right. Only rendered for hosted media annotations.
-const clipFrame = (badge) => el('div', {
+// bottom-right. Only rendered for hosted media annotations. With a poster —
+// the transcode's own frame, or the provider thumbnail while the clip is
+// still processing — the frame shows the actual video under a scrim that
+// keeps the overlays legible.
+const clipFrame = (badge, poster = null) => el('div', {
   height: 148, backgroundColor: T.player, borderRadius: 14, border: `2px solid ${T.hair}`,
   display: 'flex', alignItems: 'center', justifyContent: 'center',
-  position: 'relative', marginBottom: 30,
+  position: 'relative', marginBottom: 30, overflow: 'hidden',
 }, [
+  ...(poster ? [
+    { type: 'img', props: { src: poster, style: { position: 'absolute', top: 0, left: 0, width: 1084, height: 144, objectFit: 'cover' } } },
+    el('div', { position: 'absolute', top: 0, left: 0, width: 1084, height: 144, backgroundColor: 'rgba(20, 21, 24, 0.38)' }, ' '),
+  ] : []),
   txt({
     position: 'absolute', top: 12, left: 16, fontSize: 18, fontWeight: 700,
     letterSpacing: 1.5, color: '#FFFFFF', backgroundColor: T.accent,
@@ -139,7 +166,7 @@ export function annotationCard(data) {
       display: 'flex', flexDirection: 'column', flexGrow: 1, overflow: 'hidden',
       padding: '42px 56px 0',
     }, [
-      ...(hasClipFrame ? [clipFrame(data.clipBadge)] : []),
+      ...(hasClipFrame ? [clipFrame(data.clipBadge, data.poster || null)] : []),
       hasShotFrame
         ? shotFrame(data.screenshot)
         : el('div', { display: 'flex' }, [
