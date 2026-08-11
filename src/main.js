@@ -1424,15 +1424,26 @@ const publishMomentView = () => `
   </div>`;
 
 // Mobile web gets a door to the app, docked at the bottom of the screen.
-// Never inside the native shell (that IS the app), and a dismissal sticks.
-// Desktop never sees it — the CSS keeps it to small viewports.
-const appBannerView = () => state.appBannerDismissed ? '' : `
+// The moment a store listing is configured, the button routes straight to
+// the right store for this device; until then it opens /app. Never inside
+// the native shell (that IS the app), and a dismissal sticks. Desktop
+// never sees it — the CSS keeps it to small viewports.
+const appBannerView = () => {
+  if (state.appBannerDismissed) return '';
+  const stores = state.capabilities?.distribution?.app || {};
+  const agent = navigator.userAgent || '';
+  const storeHref = /iPad|iPhone|iPod/.test(agent) ? stores.ios : /Android/i.test(agent) ? stores.android : null;
+  const cta = storeHref
+    ? `<a class="btn" href="${escapeHTML(storeHref)}" target="_blank" rel="noreferrer">Get the app</a>`
+    : `<a class="btn" href="/app" data-action="set-view" data-view="app">Use in app</a>`;
+  return `
   <div class="app-banner" role="complementary" aria-label="annotated app">
     <img src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" />
     <div class="app-banner-copy"><strong>Better in the app</strong><span>Capture straight from your share sheet.</span></div>
-    <a class="btn" href="/app" data-action="set-view" data-view="app">Use in app</a>
+    ${cta}
     <button class="app-banner-dismiss" data-action="dismiss-app-banner" aria-label="Not now">${icon('close')}</button>
   </div>`;
+};
 
 // The footer is a designed surface, not a link dump: the brand states its
 // rule, and every page groups under the audience it serves. The release

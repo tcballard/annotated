@@ -894,7 +894,10 @@ const serveAnnotationQr = async (request, response, slug) => {
 
 // The app shell ships default og:/twitter: images as root-relative paths;
 // crawlers require absolute URLs, so the served shell absolutizes them
-// against this deployment's public origin. Cached against the file's mtime —
+// against this deployment's public origin. A configured iOS listing also
+// turns on Safari's native Smart App Banner — Apple's own open-or-install
+// bar — derived from the same store URL that lights up /app, so one env
+// var switches on every door at once. Cached against the file's mtime —
 // a rebuild mid-process must never keep serving references to old bundles.
 let appShellCache = null;
 const serveAppShell = async (response) => {
@@ -902,10 +905,12 @@ const serveAppShell = async (response) => {
     const shellPath = path.join(projectRoot, 'dist/index.html');
     const info = await stat(shellPath);
     if (!appShellCache || appShellCache.mtimeMs !== info.mtimeMs) {
+      const appleAppId = (process.env.APP_STORE_URL_IOS || '').match(/\/id(\d{6,})/)?.[1] || '';
       appShellCache = {
         mtimeMs: info.mtimeMs,
         html: (await readFile(shellPath, 'utf8'))
-          .replaceAll('content="/brand/og-default.png"', `content="${publicOrigin}/brand/og-default.png"`),
+          .replaceAll('content="/brand/og-default.png"', `content="${publicOrigin}/brand/og-default.png"`)
+          .replace('</title>', `</title>${appleAppId ? `<meta name="apple-itunes-app" content="app-id=${appleAppId}" />` : ''}`),
       };
     }
   } catch { return notFound(response); }
