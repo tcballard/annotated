@@ -78,6 +78,7 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
         {me ? item('bookmark', 'Library', () => go('/web/library')) : null}
         {me ? item('user', 'Profile', () => go(`/web/u/${encodeURIComponent(me.handle || '')}`)) : null}
         {canModerate ? item('shield', 'Moderation', () => go('/web/moderation')) : null}
+        {me ? <View style={styles.divider} /> : null}
         {item('bar-chart-2', 'Transparency', () => go('/web/transparency'))}
         {item('info', 'About', () => go('/web/about'))}
         {item('flag', 'Rights & claims', () => go('/web/rights'))}
@@ -110,7 +111,10 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
 }
 
 const styles = StyleSheet.create({
-  frame: { flex: 1, backgroundColor: card },
+  // The frame carries the card's own radii and clips content to them — the
+  // matching drawerStyle radii (and the shadow) live on the navigator's
+  // container, which must keep overflow visible for the shadow to paint.
+  frame: { flex: 1, backgroundColor: card, borderTopRightRadius: 24, borderBottomRightRadius: 24, overflow: 'hidden' },
   head: { padding: 20, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: tokens.hair },
   avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   avatarImage: { width: 52, height: 52, borderRadius: 26, backgroundColor: tokens.soft, marginBottom: 10 },
@@ -121,10 +125,13 @@ const styles = StyleSheet.create({
   count: { color: meta, fontSize: 13 },
   countN: { color: ink, fontWeight: '700' },
   blurb: { color: meta, fontSize: 14, marginTop: 6 },
-  items: { paddingVertical: 10 },
-  item: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 20, paddingVertical: 15 },
+  items: { paddingVertical: 10, paddingHorizontal: 10 },
+  // Rows are inset rounded pills, so a press highlights a shape instead of
+  // smearing a full-bleed strip into the card's rounded edge.
+  item: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 12, paddingVertical: 13, borderRadius: 12 },
   itemPressed: { backgroundColor: tokens.soft },
   itemLabel: { color: ink, fontSize: 16.5, fontWeight: '700' },
+  divider: { height: 1, backgroundColor: tokens.hair, marginVertical: 8, marginHorizontal: 12 },
   spacer: { flex: 1 },
   foot: { borderTopWidth: 1, borderTopColor: tokens.hair, paddingHorizontal: 20, paddingVertical: 14 },
   signIn: { backgroundColor: tokens.chrome, borderRadius: 99, paddingVertical: 12, alignItems: 'center' },

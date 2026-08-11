@@ -7,8 +7,22 @@ const drawerPanel = await readFile(new URL('../mobile/components/DrawerPanel.tsx
 const brandMark = await readFile(new URL('../mobile/components/BrandMark.tsx', import.meta.url), 'utf8');
 const notifications = await readFile(new URL('../mobile/components/NotificationsScreen.tsx', import.meta.url), 'utf8');
 const search = await readFile(new URL('../mobile/components/SearchScreen.tsx', import.meta.url), 'utf8');
+const drawerLayout = await readFile(new URL('../mobile/app/(drawer)/_layout.tsx', import.meta.url), 'utf8');
 const rootLayout = await readFile(new URL('../mobile/app/_layout.tsx', import.meta.url), 'utf8');
 const server = await readFile(new URL('../server/index.js', import.meta.url), 'utf8');
+
+test('the drawer is a card over the timeline, not a full-bleed sheet', () => {
+  // Rounded on its open edge on both the navigator container (which owns
+  // the shadow, so it must not clip) and the panel frame (which clips its
+  // own content to the same radii), over the ink scrim the web's modals use.
+  assert.match(drawerLayout, /borderTopRightRadius: 24/, 'the container rounds its open edge');
+  assert.match(drawerLayout, /borderBottomRightRadius: 24/);
+  assert.match(drawerLayout, /elevation: 16/, 'the card lifts off the timeline on Android');
+  assert.match(drawerLayout, /shadowColor: '#26292F'/, 'the card lifts off the timeline on iOS');
+  assert.match(drawerLayout, /overlayColor: 'rgba\(38, 41, 47, 0\.45\)'/, 'the scrim is the same ink tint as the web modal backdrop');
+  assert.match(drawerPanel, /borderTopRightRadius: 24, borderBottomRightRadius: 24, overflow: 'hidden'/, 'the panel clips its content to the card');
+  assert.match(drawerPanel, /borderRadius: 12/, 'rows highlight as inset pills, not full-bleed strips');
+});
 
 test('the header is X-anatomy in our identity: avatar opens the drawer, the wordmark sits center', async () => {
   const { readFile } = await import('node:fs/promises');
