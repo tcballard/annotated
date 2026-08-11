@@ -32,3 +32,8 @@ Two deliberate exceptions, where annotated's own design law outranks the skill:
 Touch targets: every tappable control meets the 44pt floor with real padded
 boxes, not stacked `hitSlop` (overlapping slop on neighbouring actions causes
 misfires). Pinned in `test/native-navigation.test.js`.
+
+Switcher anatomy: a top switcher is the product's one tab rail — ink text,
+700 active, the 2px terracotta underline inset 34% each side, exactly the
+web/panel geometry. Pills are dock anatomy (the web's bottom feed dock) and
+never appear as a top switcher. Pinned in `test/native-navigation.test.js`.

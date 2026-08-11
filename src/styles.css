@@ -1362,11 +1362,15 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 @media (max-width: 560px) {
   .chrome { gap: 8px; padding: 0 12px; }
   .chrome .logo img { width: 74px; }
-  .chrome nav { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  /* When the links overrun, the edge fades instead of shearing a word in
-     half — the fade zone is empty whenever everything fits. */
-  .chrome nav { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
-  .chrome nav .nav-link { padding: 0 8px; flex: 0 0 auto; }
+  /* Phone chrome is wordmark + session, X-style. The inline product links
+     don't fit this width — a fade-masked "Libr…" reads as breakage, not
+     scrollability — and every door stays one tap away: Capture in the
+     hero and the dock's pen, Library and the doc pages in the avatar
+     menu and the footer. With the nav gone, the session slot needs its
+     own push right (the desktop cascade zeroes its auto margin because
+     the search field, though hidden here, still precedes it in the DOM). */
+  .chrome nav { display: none; }
+  .chrome .search + .auth { margin-left: auto; }
   /* The source line gives the title the full width and lets it wrap — on a
      provenance product the source's NAME outranks "· article ·", which used
      to keep its every pixel while the title shrank to "Web an…". */

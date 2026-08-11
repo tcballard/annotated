@@ -52,7 +52,7 @@ test('the menu sits beneath one moving surface, ChatGPT-style', () => {
   assert.doesNotMatch(swipeShell, /shadowColor|elevation:/, 'legacy shadow*/elevation props are banned (expo-native-ui)');
   // The hidden menu leaves the accessibility tree, and Android back
   // closes the menu before it leaves the screen.
-  assert.match(swipeShell, /no-hide-descendants/, 'the closed menu is hidden from assistive tech');
+  assert.match(swipeShell, /aria-hidden=\{!isMenuOpen\}/, 'the closed menu is hidden from assistive tech (one modern cross-platform prop)');
   assert.match(swipeShell, /hardwareBackPress/, 'Android back closes the menu first');
   // The panel itself is now the flat underneath layer; its rows keep the
   // inset continuous-curve pills and the iOS tick.
@@ -71,6 +71,16 @@ test('the header is X-anatomy in our identity: avatar opens the drawer, the word
   assert.match(timeline, /<HeaderAvatar \/>/, 'the timeline draws its own chrome');
   assert.match(timeline, /<BrandMark \/>/, 'Home leads with the wordmark');
   assert.match(brandMark, /annotated<Text style=\{\{ color: accent \}\}>\.<\/Text>/, 'the terracotta dot is the one accent in chrome');
+  // The feed switcher wears the product's one tab anatomy — the flat
+  // rail with the web's own underline geometry (§1.1's active-tab
+  // clause) — not the old pill language, and every tab is a real 44pt
+  // target. Pills remain dock anatomy (the web's bottom switcher), never
+  // a top switcher's.
+  assert.match(timeline, /tabUnderline: \{ position: 'absolute', bottom: 0, left: '34%', right: '34%', height: 2, backgroundColor: tokens\.accent \}/, 'the native underline mirrors the web tab anatomy');
+  assert.match(timeline, /tab: \{ flex: 1, minHeight: 44/, 'switcher tabs meet the touch floor');
+  assert.doesNotMatch(timeline, /menuPill/, 'the pill switcher is gone');
+  assert.doesNotMatch(timeline, /shadowColor|elevation:/, 'legacy shadow*/elevation props are banned (expo-native-ui)');
+  assert.match(timeline, /boxShadow: '0 2px 10px rgba\(38, 41, 47, 0\.06\)'/, 'the card shadow is the web --shadow token');
 });
 
 test('the home chrome hides on scroll down and returns on scroll up', async () => {

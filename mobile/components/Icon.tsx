@@ -10,6 +10,19 @@ import { PRODUCT_ICONS, type ProductIconName } from '../lib/core/icons';
 
 export type { ProductIconName };
 
+// The canon's aria-hidden="true" is right where the web injects these
+// strings as markup, but react-native-svg's web renderer re-creates
+// parsed attributes as React props — the hyphenated attribute arrives as
+// an invalid `ariaHidden` DOM prop and trips React (and its `accessible`
+// prop forwards to the DOM the same broken way, so no substitute prop
+// either). Strip the attribute here; the glyphs are decorative and every
+// icon sits beside its own text label.
+const xml: Record<string, string> = {};
+const xmlFor = (name: ProductIconName): string => {
+  xml[name] ??= PRODUCT_ICONS[name].replace(' aria-hidden="true"', '');
+  return xml[name];
+};
+
 export default function Icon({ name, size = 21, color }: { name: ProductIconName; size?: number; color: ColorValue }) {
-  return <SvgXml xml={PRODUCT_ICONS[name]} width={size} height={size} color={color} />;
+  return <SvgXml xml={xmlFor(name)} width={size} height={size} color={color} />;
 }

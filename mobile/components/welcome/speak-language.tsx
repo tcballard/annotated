@@ -97,7 +97,7 @@ function OnboardingPage({ copy, index, time }: PageProps) {
   });
 
   return (
-    <Animated.View style={[styles.page, animatedStyle]} pointerEvents="none">
+    <Animated.View style={[styles.page, animatedStyle, { pointerEvents: 'none' }]}>
       <View style={styles.lockup}>
         <Wordmark size={40} />
       </View>
@@ -174,7 +174,7 @@ export function SpeakLanguageWelcome({
             describing sits under them the whole time. It arrives once,
             after page one has landed, and stays put while the pages slide
             across above it. */}
-        <Animated.View style={[styles.specimen, specimenStyle]} pointerEvents="none">
+        <Animated.View style={[styles.specimen, specimenStyle, { pointerEvents: 'none' }]}>
           <View style={styles.specimenHead}>
             <Text style={styles.specimenChip}>0:14–1:02</Text>
             <Text style={styles.specimenSource} numberOfLines={1}>Deep Dive into LLMs · youtube.com</Text>
@@ -208,13 +208,13 @@ export function SpeakLanguageWelcome({
         </Animated.View>
       </Animated.View>
 
-      <Animated.View pointerEvents="none" style={[styles.loader, loaderStyle]}>
+      <Animated.View style={[styles.loader, loaderStyle, { pointerEvents: 'none' }]}>
         <ActivityIndicator color={META} size="small" style={styles.loaderIndicator} />
       </Animated.View>
 
       {/* The launch page matches the native splash exactly, so the handoff
           from the OS splash into React is a dissolve, not a cut. */}
-      <Animated.View pointerEvents="none" style={[styles.splash, splashStyle]}>
+      <Animated.View style={[styles.splash, splashStyle, { pointerEvents: 'none' }]}>
         <View style={styles.splashWordmark}>
           <Wordmark size={42} />
         </View>

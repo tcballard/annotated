@@ -195,10 +195,12 @@ export default function SwipeMenuShell({ menu, children }: { menu: ReactNode; ch
       <GestureDetector gesture={swipeGesture}>
         <View style={styles.root}>
           <View
-            accessibilityElementsHidden={!isMenuOpen}
-            importantForAccessibility={isMenuOpen ? 'auto' : 'no-hide-descendants'}
-            pointerEvents={isMenuOpen ? 'auto' : 'none'}
-            style={StyleSheet.absoluteFill}
+            // One modern prop hides the closed menu from assistive tech on
+            // every platform (accessibilityElementsHidden on iOS,
+            // no-hide-descendants on Android, aria-hidden on web) — and
+            // pointerEvents lives in style, its modern home, likewise.
+            aria-hidden={!isMenuOpen}
+            style={[StyleSheet.absoluteFill, { pointerEvents: isMenuOpen ? 'auto' : 'none' }]}
           >
             <Animated.View style={[styles.menu, { width: menuWidth }, menuRevealStyle]}>{menu}</Animated.View>
           </View>
@@ -207,7 +209,7 @@ export default function SwipeMenuShell({ menu, children }: { menu: ReactNode; ch
             <View style={styles.surfaceShadow}>
               <View style={styles.surface}>
                 {children}
-                <View pointerEvents={isMenuOpen ? 'auto' : 'none'} style={StyleSheet.absoluteFill}>
+                <View style={[StyleSheet.absoluteFill, { pointerEvents: isMenuOpen ? 'auto' : 'none' }]}>
                   <Pressable
                     accessibilityLabel="Close menu"
                     accessibilityRole="button"

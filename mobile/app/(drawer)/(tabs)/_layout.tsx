@@ -45,8 +45,9 @@ export default function TabsLayout() {
           height: 52 + insets.bottom,
           paddingBottom: insets.bottom,
           paddingTop: 2,
+          // Android's default tab-bar elevation is the one legacy value
+          // still worth zeroing; the bar itself never draws a shadow.
           elevation: 0,
-          shadowOpacity: 0,
         },
         tabBarItemStyle: { height: 50 },
       }}
