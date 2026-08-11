@@ -1,24 +1,16 @@
-// The drawer wraps the tab bar, X-style: swipe right from the left edge —
-// or tap your avatar in the header — for account, library, and the
-// product's public pages.
+// The menu wraps the tab bar ChatGPT-style: the whole app face is one
+// rounded surface that slides right — swipe from the left edge, or tap
+// your avatar in the header — revealing the panel mounted beneath it:
+// account, library, and the product's public pages.
 
-import { Drawer } from 'expo-router/drawer';
+import { Slot } from 'expo-router';
 import DrawerPanel from '../../components/DrawerPanel';
-import { card, paper } from '../../lib/tokens';
+import SwipeMenuShell from '../../components/SwipeMenuShell';
 
 export default function DrawerLayout() {
   return (
-    <Drawer
-      drawerContent={(props) => <DrawerPanel {...props} />}
-      screenOptions={{
-        headerShown: false,
-        drawerType: 'front',
-        swipeEdgeWidth: 90,
-        drawerStyle: { backgroundColor: card, width: 300 },
-        sceneStyle: { backgroundColor: paper },
-      }}
-    >
-      <Drawer.Screen name="(tabs)" />
-    </Drawer>
+    <SwipeMenuShell menu={<DrawerPanel />}>
+      <Slot />
+    </SwipeMenuShell>
   );
 }

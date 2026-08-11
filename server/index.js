@@ -11,7 +11,7 @@ import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, enqueueMediaJob, mediaWorkerExecution, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
 import { followingFeedRequiresAuth, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey } from './feed.js';
-import { ogCardData, renderOgCardCached } from './og-card.js';
+import { ogCardData, renderOgCardCached, youtubeThumbnailUrl } from './og-card.js';
 import { escapeHtml, injectAnnotationMeta } from './permalink-meta.js';
 import { allowsIndexing, canViewAnnotation, VISIBILITIES } from './visibility.js';
 import { normalizeHost } from './discovery.js';
@@ -801,7 +801,7 @@ const serveOgCard = async (request, response, slug, { download = false } = {}) =
   if (!found) return notFound(response);
   const { annotation, author } = found;
   try {
-    const cacheKey = [annotation.id, annotation.mediaStatus, annotation.openCount || 0, annotation.editedAt || '', annotation.visibility || 'public', annotation.screenshotAssetId || ''].join(':');
+    const cacheKey = [annotation.id, annotation.mediaStatus, annotation.openCount || 0, annotation.editedAt || '', annotation.visibility || 'public', annotation.screenshotAssetId || '', annotation.posterAssetId || ''].join(':');
     // Crawlers refetch share cards on every unfurl. The ETag is the cache
     // key that already names everything the pixels depend on, so an
     // unchanged card answers 304 before any render happens — and s-maxage
@@ -826,6 +826,32 @@ const serveOgCard = async (request, response, slug, { download = false } = {}) =
               data.screenshot = `data:image/png;base64,${bytes.toString('base64')}`;
             }
           } catch { /* text layout */ }
+        }
+      }
+      // The CLIP frame shows the actual video: the transcode's own poster
+      // frame once the clip is ready, else the YouTube thumbnail while it
+      // is still in the queue. Any failure keeps the framed-player look.
+      if (data.clipBadge && annotation.posterAssetId) {
+        try {
+          const record = await findMedia(annotation.posterAssetId);
+          const bytes = record ? await getObjectStore().getBytes(record) : null;
+          if (bytes && bytes.length > 24 && bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
+            data.poster = `data:image/jpeg;base64,${bytes.toString('base64')}`;
+          }
+        } catch { /* framed-player look */ }
+      }
+      if (data.clipBadge && !data.poster) {
+        const thumbnail = youtubeThumbnailUrl(annotation);
+        if (thumbnail) {
+          try {
+            const thumbResponse = await fetch(thumbnail, { signal: AbortSignal.timeout(3000) });
+            if (thumbResponse.ok) {
+              const bytes = Buffer.from(await thumbResponse.arrayBuffer());
+              if (bytes.length > 24 && bytes.length < 2_000_000 && bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) {
+                data.poster = `data:image/jpeg;base64,${bytes.toString('base64')}`;
+              }
+            }
+          } catch { /* framed-player look */ }
         }
       }
       return data;
@@ -868,7 +894,10 @@ const serveAnnotationQr = async (request, response, slug) => {
 
 // The app shell ships default og:/twitter: images as root-relative paths;
 // crawlers require absolute URLs, so the served shell absolutizes them
-// against this deployment's public origin. Cached against the file's mtime —
+// against this deployment's public origin. A configured iOS listing also
+// turns on Safari's native Smart App Banner — Apple's own open-or-install
+// bar — derived from the same store URL that lights up /app, so one env
+// var switches on every door at once. Cached against the file's mtime —
 // a rebuild mid-process must never keep serving references to old bundles.
 let appShellCache = null;
 const serveAppShell = async (response) => {
@@ -876,10 +905,12 @@ const serveAppShell = async (response) => {
     const shellPath = path.join(projectRoot, 'dist/index.html');
     const info = await stat(shellPath);
     if (!appShellCache || appShellCache.mtimeMs !== info.mtimeMs) {
+      const appleAppId = (process.env.APP_STORE_URL_IOS || '').match(/\/id(\d{6,})/)?.[1] || '';
       appShellCache = {
         mtimeMs: info.mtimeMs,
         html: (await readFile(shellPath, 'utf8'))
-          .replaceAll('content="/brand/og-default.png"', `content="${publicOrigin}/brand/og-default.png"`),
+          .replaceAll('content="/brand/og-default.png"', `content="${publicOrigin}/brand/og-default.png"`)
+          .replace('</title>', `</title>${appleAppId ? `<meta name="apple-itunes-app" content="app-id=${appleAppId}" />` : ''}`),
       };
     }
   } catch { return notFound(response); }

@@ -1,10 +1,10 @@
 // The native timeline: the app's reading surface, built with the shared
 // core (domain model, API client, deep links) and the web's own design
-// tokens. The top menu scrolls, X-style — Recent · Trending · Following,
-// then every topic as its own feed — and the feeds themselves swipe
-// left/right underneath it (react-native-pager-view; taps work too, and
-// are all the web preview gets). Each pane is its own lazy FlatList with
-// pull-to-refresh and cursor paging. Clips and audio play inline via
+// tokens. The switcher is the product's one tab anatomy — Recent ·
+// Trending · Following on a flat rail with the terracotta underline —
+// and the feeds swipe left/right underneath it (react-native-pager-view;
+// taps work too, and are all the web preview gets). Each pane is its own
+// lazy FlatList with pull-to-refresh and cursor paging. Clips and audio play inline via
 // players mounted on demand; annotation pages, profiles, and hubs push
 // as web surfaces; originals open OUT in the real browser.
 
@@ -17,7 +17,6 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -26,7 +25,8 @@ import {
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as WebBrowser from 'expo-web-browser';
-import Feather from '@expo/vector-icons/Feather';
+import Icon from './Icon';
+import SystemIcon from './SystemIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { annotationToFeedItem, chipFor, formatTime } from '../lib/core/feed-item';
 import type { FeedItem } from '../lib/core/feed-item';
@@ -199,25 +199,25 @@ export const FeedCard = ({ item, following, ownId, liked, likeCount, onOpenAnnot
         : <Text style={styles.note}>Audio note{item.audioDuration ? ` · ${formatTime(item.audioDuration)}` : ''} — listen below.</Text>}
       <SourceCard item={item} />
       <View style={styles.actions}>
-        <Pressable style={styles.act} onPress={() => onOpenAnnotation(item)} hitSlop={8} accessibilityLabel="Respond">
-          <Feather name="message-circle" size={15} color={meta} />
+        <Pressable style={styles.act} onPress={() => onOpenAnnotation(item)} accessibilityLabel="Respond">
+          <Icon name="respond" size={18} color={meta} />
           {item.comments ? <Text style={styles.actMuted}>{item.comments}</Text> : null}
         </Pressable>
-        <Pressable style={styles.act} onPress={() => onToggleLike(item)} hitSlop={8} accessibilityLabel={liked ? 'Unlike this annotation' : 'Like this annotation'}>
-          <Feather name="heart" size={15} color={liked ? ink : meta} />
+        <Pressable style={styles.act} onPress={() => onToggleLike(item)} accessibilityLabel={liked ? 'Unlike this annotation' : 'Like this annotation'}>
+          <Icon name="heart" size={18} color={liked ? ink : meta} />
           {likeCount ? <Text style={liked ? styles.actText : styles.actMuted}>{likeCount}</Text> : null}
         </Pressable>
         {item.authorId && item.authorId !== ownId ? (
-          <Pressable style={styles.act} onPress={() => onToggleFollow(item)} hitSlop={8} accessibilityLabel={following ? 'Following' : 'Follow'}>
-            <Feather name={following ? 'user-check' : 'user-plus'} size={15} color={following ? ink : meta} />
+          <Pressable style={styles.act} onPress={() => onToggleFollow(item)} accessibilityLabel={following ? 'Following' : 'Follow'}>
+            <Icon name="follow" size={18} color={following ? ink : meta} />
           </Pressable>
         ) : null}
-        <Pressable style={[styles.act, styles.actRight]} onPress={() => onOpenOriginal(item)} hitSlop={8} accessibilityLabel={`Open the original source${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}`}>
-          <Feather name="external-link" size={15} color={ink} />
+        <Pressable style={[styles.act, styles.actRight]} onPress={() => onOpenOriginal(item)} accessibilityLabel={`Open the original source${item.opens ? ` — ${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original` : ''}`}>
+          <Icon name="open" size={18} color={ink} />
           {item.opens ? <Text style={styles.actText}>{item.opens}</Text> : null}
         </Pressable>
-        <Pressable style={styles.act} onPress={() => onShare(item)} hitSlop={8} accessibilityLabel="Share annotation">
-          <Feather name="share" size={15} color={meta} />
+        <Pressable style={styles.act} onPress={() => onShare(item)} accessibilityLabel="Share annotation">
+          <SystemIcon name="share" size={18} color={meta} />
         </Pressable>
       </View>
     </View>
@@ -357,8 +357,6 @@ export default function Timeline() {
   const actions = useFeedActions();
   const insets = useSafeAreaInsets();
   const [index, setIndex] = useState(0);
-  const menuRef = useRef<ScrollView>(null);
-  const pillX = useRef<Record<number, number>>({});
 
   // The chrome (avatar + wordmark + feed menu) hides when the feed scrolls
   // down and returns on any scroll up — it should never cost reading room.
@@ -373,15 +371,13 @@ export default function Timeline() {
     Animated.timing(chromeY, { toValue: show ? 0 : -chromeHeightRef.current, duration: 190, useNativeDriver: true }).start();
   }, [chromeY]);
 
-  // Swipes and taps land here alike: haptic tick, the menu keeps the
-  // active pill in view, and switching feeds always reveals the chrome.
+  // Swipes and taps land here alike: haptic tick, and switching feeds
+  // always reveals the chrome.
   const select = (next: number) => {
     if (next === index) return;
     void Haptics.selectionAsync();
     setIndex(next);
     setChrome('show');
-    const x = pillX.current[next] ?? 0;
-    menuRef.current?.scrollTo({ x: Math.max(0, x - 110), animated: true });
   };
 
   return (
@@ -412,21 +408,22 @@ export default function Timeline() {
       >
         <View style={styles.chromeHeader}>
           <HeaderAvatar />
-          <View style={styles.chromeTitle} pointerEvents="none"><BrandMark /></View>
+          <View style={[styles.chromeTitle, { pointerEvents: 'none' }]}><BrandMark /></View>
         </View>
         <View style={styles.switcher}>
-          <ScrollView ref={menuRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.menuRow}>
-            {MENU.map((entry, position) => (
+          {MENU.map((entry, position) => {
+            const active = index === position;
+            return (
               <Pressable
                 key={entry.key}
-                onLayout={(event) => { pillX.current[position] = event.nativeEvent.layout.x; }}
-                style={[styles.menuPill, index === position && styles.menuPillActive]}
+                style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
                 onPress={() => select(position)}
               >
-                <Text style={index === position ? styles.menuPillActiveText : styles.menuPillText}>{entry.label}</Text>
+                <Text style={active ? styles.tabTextActive : styles.tabText}>{entry.label}</Text>
+                {active ? <View style={styles.tabUnderline} /> : null}
               </Pressable>
-            ))}
-          </ScrollView>
+            );
+          })}
         </View>
       </Animated.View>
     </View>
@@ -441,12 +438,18 @@ const styles = StyleSheet.create({
   chrome: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10, backgroundColor: card },
   chromeHeader: { height: 48, flexDirection: 'row', alignItems: 'center' },
   chromeTitle: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
-  switcher: { backgroundColor: card, borderBottomWidth: 1, borderBottomColor: tokens.hair },
-  menuRow: { gap: 6, paddingHorizontal: 12, paddingVertical: 8 },
-  menuPill: { borderRadius: 99, paddingHorizontal: 13, paddingVertical: 6, backgroundColor: tokens.soft },
-  menuPillActive: { backgroundColor: tokens.chrome },
-  menuPillText: { fontSize: 13, color: tokens['ink-soft'], fontWeight: '600' },
-  menuPillActiveText: { fontSize: 13, color: '#fff', fontWeight: '700' },
+  // The feed switcher wears the product's one tab anatomy, value for
+  // value with the panel and the web (§1.1's active-tab clause): resting
+  // tabs are quiet meta at regular weight, the active tab is ink 700,
+  // and the rounded terracotta underline sits at 34% insets. Pills are
+  // dock anatomy; a top switcher is a tab rail, and each tab is a true
+  // 44pt target (the touch floor — the pointer surfaces run shorter).
+  switcher: { flexDirection: 'row', backgroundColor: card, borderBottomWidth: 1, borderBottomColor: tokens.hair },
+  tab: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  tabPressed: { backgroundColor: tokens.soft },
+  tabText: { fontSize: 14, color: meta },
+  tabTextActive: { fontSize: 14, color: ink, fontWeight: '700' },
+  tabUnderline: { position: 'absolute', bottom: 0, left: '34%', right: '34%', height: 2, backgroundColor: tokens.accent, borderRadius: 99 },
   page: { flex: 1 },
   pane: { flex: 1 },
   offline: { margin: 14, marginBottom: 0, padding: 12, backgroundColor: card, borderRadius: radiusInner, borderWidth: 1, borderColor: tokens.border },
@@ -461,11 +464,9 @@ const styles = StyleSheet.create({
     borderRadius: radiusCard,
     padding: 12,
     marginBottom: 10,
-    shadowColor: tokens['chrome-dark'],
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    // The web's --shadow token, spelled as the modern cross-platform
+    // boxShadow (expo-native-ui bans the legacy shadow*/elevation props).
+    boxShadow: '0 2px 10px rgba(38, 41, 47, 0.06)',
   },
   postPressed: { opacity: 0.92 },
   avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
@@ -490,11 +491,13 @@ const styles = StyleSheet.create({
   media: { marginTop: 8, borderRadius: 10, overflow: 'hidden', position: 'relative' },
   mediaImage: { width: '100%', aspectRatio: 16 / 10, backgroundColor: tokens.soft },
   quote: { fontFamily: serif, fontSize: 14.5, lineHeight: 21, color: tokens['ink-soft'], marginTop: 8 },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 18, marginTop: 8, paddingRight: 4 },
-  act: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  actText: { color: ink, fontSize: 12.5, fontWeight: '600' },
+  // Every action is a true 44pt target (HIG floor) — the row grows, the
+  // card compensates, and hitSlop goes: padded neighbours must not overlap.
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2, marginBottom: -6, marginLeft: -12, paddingRight: 4 },
+  act: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 44, minHeight: 44, paddingHorizontal: 6 },
+  actText: { color: ink, fontSize: 13, fontWeight: '600' },
   actRight: { marginLeft: 'auto' },
-  actMuted: { color: meta, fontSize: 12.5 },
+  actMuted: { color: meta, fontSize: 13 },
   empty: { backgroundColor: card, borderRadius: radiusCard, padding: 22, alignItems: 'center' },
   emptyTitle: { color: ink, fontWeight: '700', fontSize: 15.5, textAlign: 'center' },
   emptyBody: { color: meta, fontSize: 13.5, marginTop: 6, textAlign: 'center', lineHeight: 19 },

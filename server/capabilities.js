@@ -149,6 +149,12 @@ export const getCapabilities = async ({ publicOrigin, releaseVersion, providers,
           : { status: 'unverified', blocker: storeEvidence.reason },
       },
       directArtifact: artifact ? { ...manifest.distribution.directArtifact, available: true, version: artifact.version, sha256: artifact.sha256, bytes: artifact.bytes } : { ...manifest.distribution.directArtifact, available: false },
+      // Native app store listings light up the /app page and its banner the
+      // moment an operator configures the URLs; absent, the page says so.
+      app: {
+        ios: process.env.APP_STORE_URL_IOS || null,
+        android: process.env.APP_STORE_URL_ANDROID || null,
+      },
     },
     proofWorld: proofWorldStatus(store),
     capabilities: manifest.capabilities.map((item) => {

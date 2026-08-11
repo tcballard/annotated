@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import Feather from '@expo/vector-icons/Feather';
+import Icon from './Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebScreen from './WebScreen';
 import { ORIGIN } from '../lib/origin';
@@ -53,12 +53,12 @@ export default function CaptureSheet({ visible, onClose }: { visible: boolean; o
           <View style={styles.grip}>
             <View style={styles.handle} />
             <Pressable style={styles.close} onPress={onClose} accessibilityLabel="Close capture" hitSlop={8}>
-              <Feather name="x" color={ink} size={18} />
+              <Icon name="close" color={ink} size={18} />
             </Pressable>
           </View>
           {hasCopiedLink ? (
             <Pressable style={styles.chip} onPress={() => { void pasteCopiedLink(); }} accessibilityLabel="Paste the copied link">
-              <Feather name="link" color={ink} size={14} />
+              <Icon name="link" color={ink} size={14} />
               <Text style={styles.chipText}>Paste copied link</Text>
             </Pressable>
           ) : null}
@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
   },
   grip: { alignItems: 'center', justifyContent: 'center', paddingTop: 8, paddingBottom: 6 },
   handle: { width: 36, height: 4, borderRadius: 99, backgroundColor: tokens.border },
-  close: { position: 'absolute', right: 12, top: 6, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: paper },
+  close: { position: 'absolute', right: 8, top: 2, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: paper },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',

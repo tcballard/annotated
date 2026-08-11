@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, type ColorValue } from 'react-native';
-import Feather from '@expo/vector-icons/Feather';
+import Icon from './Icon';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { formatTime } from '../lib/core/feed-item';
@@ -50,7 +50,7 @@ export const InlineClip = ({ uri, posterUri, seconds }: { uri: string; posterUri
   return (
     <Pressable style={styles.media} onPress={() => setPlaying(true)} accessibilityLabel="Play clip">
       {posterUri ? <Image source={{ uri: posterUri }} style={styles.poster} resizeMode="cover" /> : <View style={[styles.poster, styles.posterEmpty]} />}
-      <View style={styles.playButton}><Feather name="play" size={22} color="#fff" /></View>
+      <View style={styles.playButton}><Icon name="play" size={22} color="#fff" /></View>
       <Text style={styles.cliptag}>CLIP</Text>
       <Text style={styles.badge}>{formatTime(seconds)} · 240p</Text>
     </Pressable>
@@ -72,7 +72,7 @@ const PlayingAudio = ({ uri, peaks }: { uri: string; peaks: number[] | null }) =
   return (
     <>
       <Pressable onPress={toggle} hitSlop={8} style={styles.playToggle} accessibilityLabel={status.playing ? 'Pause' : 'Play'}>
-        <Feather name={status.playing ? 'pause' : 'play'} size={15} color="#fff" />
+        <Icon name={status.playing ? 'pause' : 'play'} size={15} color="#fff" />
       </Pressable>
       <Waveform peaks={peaks} progress={progress} />
       <Text style={styles.audioTime}>{formatTime(status.duration > 0 ? Math.max(0, status.duration - status.currentTime) : 0)}</Text>
@@ -93,8 +93,8 @@ export const InlineAudio = ({ uri, peaks, seconds, icon }: { uri: string; peaks:
   }
   return (
     <Pressable style={styles.audioRow} onPress={() => setStarted(true)} accessibilityLabel="Play audio">
-      <View style={styles.playToggle}><Feather name="play" size={15} color="#fff" /></View>
-      {icon === 'mic' ? <Feather name="mic" size={14} color={meta} /> : null}
+      <View style={styles.playToggle}><Icon name="play" size={15} color="#fff" /></View>
+      {icon === 'mic' ? <Icon name="mic" size={14} color={meta} /> : null}
       <Waveform peaks={peaks} />
       {seconds ? <Text style={styles.audioTime}>{formatTime(seconds)}</Text> : null}
     </Pressable>

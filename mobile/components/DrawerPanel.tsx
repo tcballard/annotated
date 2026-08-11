@@ -1,31 +1,34 @@
-// The slide-out panel: who you are, your library, and the product's public
-// pages — the X drawer anatomy in annotated's identity. The panel has a
-// top and a bottom: identity (or the wordmark) up top, navigation in the
-// middle with room to breathe, and the session action — sign in or sign
-// out — pinned to the bottom where X keeps settings.
+// The menu panel: who you are, your library, and the product's public
+// pages — the X drawer anatomy in annotated's identity. It stays mounted
+// beneath the app's moving surface (SwipeMenuShell) and has a top and a
+// bottom: identity (or the wordmark) up top, navigation in the middle
+// with room to breathe, and the session action — sign in or sign out —
+// pinned to the bottom where X keeps settings.
 
-import { useContext, useEffect, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import Feather from '@expo/vector-icons/Feather';
+import Icon, { type ProductIconName } from './Icon';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { avatarColor, avatarInitial } from '../lib/core/avatar';
 import { api } from '../lib/api';
 import { AccountContext } from './AccountContext';
 import { AuthProviderContext } from './AuthProviderContext';
 import { SessionEpochContext } from './WebScreen';
+import { SwipeMenuContext } from './SwipeMenuShell';
 import BrandMark from './BrandMark';
 import { card, ink, meta, tokens } from '../lib/tokens';
 
 type Counts = { followers: number; following: number; annotationCount: number };
 
-// Typed to the slice we use of the drawer's navigation object.
-export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(): void } }) {
+export default function DrawerPanel() {
   const router = useRouter();
-  const { me } = useContext(AccountContext);
-  const { bump } = useContext(SessionEpochContext);
-  const { signIn } = useContext(AuthProviderContext);
+  const { close } = use(SwipeMenuContext);
+  const { me } = use(AccountContext);
+  const { bump } = use(SessionEpochContext);
+  const { signIn } = use(AuthProviderContext);
   const [counts, setCounts] = useState<Counts | null>(null);
 
   useEffect(() => {
@@ -37,12 +40,14 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
     return () => { cancelled = true; };
   }, [me?.handle]);
 
-  const close = () => navigation.closeDrawer();
-  const go = (path: string) => { close(); router.push(path as never); };
+  // A light tick on iOS turns each menu tap into a physical event; Android
+  // keeps its own system feedback.
+  const tick = () => { if (process.env.EXPO_OS === 'ios') void Haptics.selectionAsync(); };
+  const go = (path: string) => { tick(); close(); router.push(path as never); };
 
-  const item = (iconName: keyof typeof Feather.glyphMap, label: string, onPress: () => void) => (
+  const item = (iconName: ProductIconName, label: string, onPress: () => void) => (
     <Pressable key={label} style={({ pressed }) => [styles.item, pressed && styles.itemPressed]} onPress={onPress}>
-      <Feather name={iconName} size={21} color={ink} />
+      <Icon name={iconName} size={21} color={ink} />
       <Text style={styles.itemLabel}>{label}</Text>
     </Pressable>
   );
@@ -78,9 +83,10 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
         {me ? item('bookmark', 'Library', () => go('/web/library')) : null}
         {me ? item('user', 'Profile', () => go(`/web/u/${encodeURIComponent(me.handle || '')}`)) : null}
         {canModerate ? item('shield', 'Moderation', () => go('/web/moderation')) : null}
+        {me ? <View style={styles.divider} /> : null}
         {item('bar-chart-2', 'Transparency', () => go('/web/transparency'))}
         {item('info', 'About', () => go('/web/about'))}
-        {item('flag', 'Rights & claims', () => go('/web/rights'))}
+        {item('claim', 'Rights & claims', () => go('/web/rights'))}
         {item('file-text', 'Terms', () => go('/web/terms'))}
       </View>
 
@@ -89,16 +95,16 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
       {me ? (
         <Pressable
           style={({ pressed }) => [styles.item, styles.foot, pressed && styles.itemPressed]}
-          onPress={async () => { await api.logout().catch(() => {}); bump(); close(); }}
+          onPress={async () => { tick(); await api.logout().catch(() => {}); bump(); close(); }}
         >
-          <Feather name="log-out" size={20} color={meta} />
+          <Icon name="log-out" size={20} color={meta} />
           <Text style={[styles.itemLabel, { color: meta }]}>Sign out</Text>
         </Pressable>
       ) : (
         <View style={styles.foot}>
           <Pressable
             style={styles.signIn}
-            onPress={async () => { if (await signIn()) { bump(); close(); } }}
+            onPress={async () => { tick(); if (await signIn()) { bump(); close(); } }}
           >
             <Text style={styles.signInText}>Sign in</Text>
           </Pressable>
@@ -110,6 +116,9 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
 }
 
 const styles = StyleSheet.create({
+  // The panel is the flat layer beneath the moving surface — the rounded
+  // card in this anatomy is the surface above it (SwipeMenuShell), so the
+  // frame itself stays square and full-bleed.
   frame: { flex: 1, backgroundColor: card },
   head: { padding: 20, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: tokens.hair },
   avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
@@ -119,12 +128,15 @@ const styles = StyleSheet.create({
   handle: { color: meta, fontSize: 13.5, marginTop: 1 },
   counts: { flexDirection: 'row', gap: 14, marginTop: 10 },
   count: { color: meta, fontSize: 13 },
-  countN: { color: ink, fontWeight: '700' },
+  countN: { color: ink, fontWeight: '700', fontVariant: ['tabular-nums'] },
   blurb: { color: meta, fontSize: 14, marginTop: 6 },
-  items: { paddingVertical: 10 },
-  item: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 20, paddingVertical: 15 },
+  items: { paddingVertical: 10, paddingHorizontal: 10 },
+  // Rows are inset rounded pills, so a press highlights a shape instead of
+  // smearing a full-bleed strip into the card's rounded edge.
+  item: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 12, paddingVertical: 13, borderRadius: 12, borderCurve: 'continuous' },
   itemPressed: { backgroundColor: tokens.soft },
   itemLabel: { color: ink, fontSize: 16.5, fontWeight: '700' },
+  divider: { height: 1, backgroundColor: tokens.hair, marginVertical: 8, marginHorizontal: 12 },
   spacer: { flex: 1 },
   foot: { borderTopWidth: 1, borderTopColor: tokens.hair, paddingHorizontal: 20, paddingVertical: 14 },
   signIn: { backgroundColor: tokens.chrome, borderRadius: 99, paddingVertical: 12, alignItems: 'center' },

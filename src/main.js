@@ -11,6 +11,7 @@ import { sharedUrlFromParams } from './share-capture.js';
 import { isTopic, TOPICS, topicLabel } from './topics.js';
 import { annotationToFeedItem, annotationVerb, chipFor, formatTime, hostOf, parseTimeInput, relTime, sourceLabels, VISIBILITIES } from './feed-item.js';
 import { avatarColor, avatarInitial } from './avatar.js';
+import { PRODUCT_ICONS as icons } from './icons.js';
 import { applyPanelDemoAction, createPanelDemoState, demoDraft, panelDemoView } from './panel-demo.js';
 import { captureDraftBlocker } from './capture-state.js';
 
@@ -31,20 +32,6 @@ const SHELL_MODE = (() => {
 })();
 if (SHELL_MODE) document.documentElement.classList.add('shell-mode');
 
-const icons = {
-  open: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg>',
-  respond: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H4l3-3a8 8 0 1 1 14-5z"/></svg>',
-  share: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg>',
-  claim: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V4a1 1 0 0 1 1-1h11l-2 4 2 4H5"/></svg>',
-  follow: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 4h3a1 1 0 0 1 1 1v15l-8-4-8 4V5a1 1 0 0 1 1-1h3"/><path d="M12 3v8M8.5 7.5h7"/></svg>',
-  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4.3 4.3L19 7"/></svg>',
-  close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>',
-  back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg>',
-  mic: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="12" rx="4"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/></svg>',
-  stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>',
-  bell: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
-  heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>',
-};
 
 const escapeHTML = (value = '') => String(value)
   .replaceAll('&', '&amp;')
@@ -97,6 +84,7 @@ const initialState = {
   publisherReplyDrafts: {},
   shareOpen: false,
   analyticsOptOut: (() => { try { return localStorage.getItem('annotated-analytics-opt-out') === '1'; } catch { return false; } })(),
+  appBannerDismissed: (() => { try { return localStorage.getItem('annotated-app-banner') === '1'; } catch { return false; } })(),
   peopleResults: [],
   curators: [],
   sourceType: 'video',
@@ -374,10 +362,11 @@ const chromeAuth = () => {
   }
   const providers = enabledProviders(state.authProviders);
   // No providers and online is a development stack — a visitor-facing
-  // deployment always configures at least one. Render nothing rather than
-  // leak the word "local" into a stranger's header; offline stays named
-  // because it explains why the page beneath has gone quiet.
-  if (!providers.length) return state.serverStatus === 'offline' ? `<span class="auth"><span class="connection-note">offline</span></span>` : '';
+  // deployment always configures at least one. Render an empty slot rather
+  // than leak the word "local" into a stranger's header; the slot itself
+  // stays so the search never shifts. Offline stays named because it
+  // explains why the page beneath has gone quiet.
+  if (!providers.length) return state.serverStatus === 'offline' ? `<span class="auth"><span class="connection-note">offline</span></span>` : '<span class="auth"></span>';
   return `<span class="auth"><button class="auth-link" data-action="open-signin">Sign in</button></span>`;
 };
 
@@ -412,9 +401,14 @@ const recoverAuthError = (error, message = 'Your session has expired. Sign in ag
 /* ── routing ───────────────────────────────────────────────────────── */
 
 // transparency is routed like a doc page but loads live data via navigate().
-const DOC_VIEWS = { about: '/about', extension: '/extension', panelDemo: '/extension/demo', audit: '/audit', rights: '/rights', terms: '/terms', transparency: '/transparency' };
+const DOC_VIEWS = { about: '/about', extension: '/extension', panelDemo: '/extension/demo', app: '/app', audit: '/audit', rights: '/rights', terms: '/terms', transparency: '/transparency' };
 
-const routeFor = (view) => view === 'feed' ? '/'
+// The feed's three panes are real places: /  /trending  /following (and
+// /trending?topic=… for a chip). A refresh or a shared link lands on the
+// same pane instead of silently resetting to Recent.
+const routeFor = (view) => view === 'feed' ? (state.feedFollowing ? '/following'
+    : state.feedSort === 'trending' ? `/trending${state.feedTopic ? `?topic=${encodeURIComponent(state.feedTopic)}` : ''}`
+    : '/')
   : view === 'capture' ? '/capture'
   : view === 'library' ? '/library'
   : view === 'notifications' ? '/notifications'
@@ -475,10 +469,24 @@ const applyLocation = () => {
     state.activeView = 'notifications';
   } else if (window.location.pathname === '/moderation') {
     state.activeView = 'moderation';
+  } else if (window.location.pathname === '/trending') {
+    state.activeView = 'feed';
+    state.feedSort = 'trending';
+    state.feedFollowing = false;
+    const topicParam = new URLSearchParams(window.location.search).get('topic');
+    state.feedTopic = isTopic(topicParam) ? topicParam : null;
+  } else if (window.location.pathname === '/following') {
+    state.activeView = 'feed';
+    state.feedSort = 'recent';
+    state.feedFollowing = true;
+    state.feedTopic = null;
   } else if (Object.values(DOC_VIEWS).includes(window.location.pathname)) {
     state.activeView = Object.keys(DOC_VIEWS).find((view) => DOC_VIEWS[view] === window.location.pathname);
   } else {
     state.activeView = 'feed';
+    state.feedSort = 'recent';
+    state.feedFollowing = false;
+    state.feedTopic = null;
   }
 };
 
@@ -600,7 +608,7 @@ const chromeBar = () => {
     ...(canModerate() ? [['moderation', 'Moderation']] : []),
   ];
   return `
-  <header class="chrome${state.activeView === 'feed' ? ' has-rail' : ''}">
+  <header class="chrome">
     <button class="logo" data-action="set-view" data-view="feed" aria-label="annotated home"><img src="/brand/logo-inverse.svg" alt="" aria-hidden="true" /></button>
     <nav aria-label="Primary">
       ${links.map(([view, label]) => `<button class="nav-link ${state.activeView === view ? 'is-active' : ''}" data-action="set-view" data-view="${view}">${label}</button>`).join('')}
@@ -718,9 +726,11 @@ const skeletonPost = () => `
 /* ── views ─────────────────────────────────────────────────────────── */
 
 const railView = () => {
+  // The front door leads with the door: getting the extension is the first
+  // action on the page, not a link buried in the last card.
   const signCard = state.user
     ? `<div class="card"><h2>Your library</h2><p>Everything you publish keeps a live link back to its source.</p><button class="btn btn-wide" data-action="set-view" data-view="library">Open your library</button></div>`
-    : `<div class="card"><h2>Build your public library</h2><p>Capture now. ${enabledProviders(state.authProviders).length ? `Sign in with ${enabledProviders(state.authProviders).map(providerLabel).join(' or ')} when you are ready to publish, follow, or respond.` : state.serverStatus === 'checking' ? 'Checking sign-in availability…' : 'Sign-in is unavailable on this deployment.'}</p></div>`;
+    : `<div class="card hero-card"><h2>Build your public library</h2><p>Capture the moment and its source together, from the page you are on.</p><a class="btn btn-wide" href="/extension" data-action="set-view" data-view="extension">Get the Chrome extension</a><p class="hero-note">Capture now. ${enabledProviders(state.authProviders).length ? `Sign in with ${enabledProviders(state.authProviders).map(providerLabel).join(' or ')} when you are ready to publish, follow, or respond.` : state.serverStatus === 'checking' ? 'Checking sign-in availability…' : 'Sign-in is unavailable on this deployment.'}</p></div>`;
   const trendingCard = state.trendingSources.length ? `
     <div class="card"><h2>Trending sources</h2><p>Where attention is going right now — ranked by opens of the original.</p>${state.trendingSources.map((source) => `
       <div class="trend-row"><a href="/s/${encodeURIComponent(source.host)}" data-action="open-hub" data-host="${escapeHTML(source.host)}">${escapeHTML(source.host)}</a><span class="trend-stat"><strong>${Number(source.opens) || 0}</strong> opens · ${Number(source.annotationCount) || 0} ${source.annotationCount === 1 ? 'note' : 'notes'}</span></div>`).join('')}</div>` : '';
@@ -754,10 +764,10 @@ const feedView = () => {
       : `<div class="feed-empty"><img class="empty-symbol" src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" /><h3>${emptyTitle}</h3><p>${emptyBody}</p>${emptyAction}</div>`;
   return `
   <div class="page">
-    <main class="feed">
+    <main class="feed${state.feedLoading && items.length ? ' is-refreshing' : ''}">
       <div class="feedhead">
         <h1 class="sr-only">Timeline</h1>
-        <div class="tabs" role="tablist" aria-label="Timeline filter">
+        <div class="tabs" role="tablist" aria-label="Timeline filter" aria-busy="${state.feedLoading}">
           <button class="tab ${!state.feedFollowing && state.feedSort !== 'trending' ? 'is-active' : ''}" data-action="feed-filter" data-following="false" data-sort="recent" role="tab" aria-selected="${!state.feedFollowing && state.feedSort !== 'trending'}">Recent</button>
           <button class="tab ${!state.feedFollowing && state.feedSort === 'trending' ? 'is-active' : ''}" data-action="feed-filter" data-following="false" data-sort="trending" role="tab" aria-selected="${!state.feedFollowing && state.feedSort === 'trending'}">Trending</button>
           <button class="tab ${state.feedFollowing ? 'is-active' : ''}" data-action="feed-filter" data-following="true" data-sort="recent" role="tab" aria-selected="${state.feedFollowing}">Following</button>
@@ -1215,6 +1225,30 @@ const extensionView = () => {
 `);
 };
 
+// The phone landing: what installs today (the PWA, with the share sheet on
+// Android), and where the native app stands — store buttons render the
+// moment an operator configures the URLs, and never before.
+const appView = () => {
+  const stores = state.capabilities?.distribution?.app;
+  const storeButtons = [
+    stores?.ios ? `<a class="btn" href="${escapeHTML(stores.ios)}" target="_blank" rel="noreferrer">Download on the App Store</a>` : '',
+    stores?.android ? `<a class="btn" href="${escapeHTML(stores.android)}" target="_blank" rel="noreferrer">Get it on Google Play</a>` : '',
+  ].filter(Boolean).join(' ');
+  return docPage('annotated on your phone', 'use in app', `
+  <div class="card"><h2>Install from your browser — today</h2>
+    <ol class="doc-steps">
+      <li><strong>Android (Chrome):</strong> menu → <strong>Add to Home screen</strong>. annotated joins your share sheet — share any page or video straight into capture.</li>
+      <li><strong>iPhone (Safari):</strong> Share → <strong>Add to Home Screen</strong>. Copy a link anywhere and tap <em>Paste link</em> on the capture desk.</li>
+    </ol>
+    <p>Same account, same library, same pages as the web and the extension — this is the full product, not a preview.</p>
+  </div>
+  <div class="card"><h2>The native app</h2>
+    ${storeButtons ? `<p>${storeButtons}</p>` : '<p>The native iOS and Android app is in development. Store links will appear right here the moment a listing is live — until then, the install above is the fastest door.</p>'}
+    <p>Already have it on this phone? <a href="annotated://">Open annotated in the app</a>.</p>
+  </div>
+`);
+};
+
 const auditView = () => {
   const truth = state.capabilities;
   const rows = truth?.capabilities || [];
@@ -1376,18 +1410,61 @@ const publishMomentView = () => `
     <div class="pub-hint">This moment now has a page — with the source attached.</div>
   </div>`;
 
+// Mobile web gets a door to the app, docked at the bottom of the screen.
+// The moment a store listing is configured, the button routes straight to
+// the right store for this device; until then it opens /app. Never inside
+// the native shell (that IS the app), and a dismissal sticks. Desktop
+// never sees it — the CSS keeps it to small viewports.
+const appBannerView = () => {
+  if (state.appBannerDismissed) return '';
+  const stores = state.capabilities?.distribution?.app || {};
+  const agent = navigator.userAgent || '';
+  const storeHref = /iPad|iPhone|iPod/.test(agent) ? stores.ios : /Android/i.test(agent) ? stores.android : null;
+  const cta = storeHref
+    ? `<a class="btn" href="${escapeHTML(storeHref)}" target="_blank" rel="noreferrer">Get the app</a>`
+    : `<a class="btn" href="/app" data-action="set-view" data-view="app">Use in app</a>`;
+  return `
+  <div class="app-banner" role="complementary" aria-label="annotated app">
+    <img src="/brand/app-icon-light-128.png" alt="" aria-hidden="true" />
+    <div class="app-banner-copy"><strong>Better in the app</strong><span>Capture straight from your share sheet.</span></div>
+    ${cta}
+    <button class="app-banner-dismiss" data-action="dismiss-app-banner" aria-label="Not now">${icon('close')}</button>
+  </div>`;
+};
+
+// The footer is a designed surface, not a link dump: the brand states its
+// rule, and every page groups under the audience it serves. The release
+// line stays — an evidence product signs its build.
 const footerView = () => `
-  <footer>
-    <a href="/about" data-action="set-view" data-view="about">About</a>
-    <a href="/extension" data-action="set-view" data-view="extension">Extension</a>
-    <a href="/audit" data-action="set-view" data-view="audit">Brief audit</a>
-    <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>
-    <a href="/publisher" data-action="set-view" data-view="publisher">Publisher desk</a>
-    <a href="/transparency" data-action="set-view" data-view="transparency">Transparency</a>
-    <a href="/terms" data-action="set-view" data-view="terms">Terms</a>
-    <a href="/privacy.html">Privacy</a>
-    <button class="footer-data" data-action="toggle-product-events">Product metrics ${state.analyticsOptOut ? 'off' : 'on'}</button>
-    <span class="footer-note">annotated © 2026 · source-first notes${state.capabilities?.release ? ` · <a href="/audit" data-action="set-view" data-view="audit">v${escapeHTML(state.capabilities.release.version)} ${escapeHTML((state.capabilities.release.gitSha || '').slice(0, 7))} · ${escapeHTML(state.capabilities.release.environment)}</a>` : ''}</span>
+  <footer class="site-footer">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <img class="foot-logo" src="/brand/logo-primary.svg" alt="annotated" width="104" height="27" />
+        <p class="foot-tag">Source-first notes. A clip without its source is just a rumour — every public page points back to the original.</p>
+      </div>
+      <nav class="foot-col" aria-label="Product">
+        <span class="foot-head">Product</span>
+        <a href="/about" data-action="set-view" data-view="about">About</a>
+        <a href="/extension" data-action="set-view" data-view="extension">Extension</a>
+        <a href="/app" data-action="set-view" data-view="app">Mobile app</a>
+        <a href="/audit" data-action="set-view" data-view="audit">Brief audit</a>
+      </nav>
+      <nav class="foot-col" aria-label="For sources">
+        <span class="foot-head">For sources</span>
+        <a href="/rights" data-action="set-view" data-view="rights">Rights &amp; claims</a>
+        <a href="/publisher" data-action="set-view" data-view="publisher">Publisher desk</a>
+        <a href="/transparency" data-action="set-view" data-view="transparency">Transparency</a>
+      </nav>
+      <nav class="foot-col" aria-label="Trust">
+        <span class="foot-head">Trust</span>
+        <a href="/terms" data-action="set-view" data-view="terms">Terms</a>
+        <a href="/privacy.html">Privacy</a>
+        <button class="footer-data" data-action="toggle-product-events" aria-pressed="${!state.analyticsOptOut}">Product metrics ${state.analyticsOptOut ? 'off' : 'on'}</button>
+      </nav>
+    </div>
+    <div class="foot-meta">
+      <span class="footer-note">annotated © 2026 · source-first notes${state.capabilities?.release ? ` · <a href="/audit" data-action="set-view" data-view="audit">v${escapeHTML(state.capabilities.release.version)} ${escapeHTML((state.capabilities.release.gitSha || '').slice(0, 7))} · ${escapeHTML(state.capabilities.release.environment)}</a>` : ''}</span>
+    </div>
   </footer>`;
 
 const render = () => {
@@ -1401,6 +1478,7 @@ const render = () => {
     : state.activeView === 'moderation' ? moderationView()
     : state.activeView === 'about' ? aboutView()
     : state.activeView === 'extension' ? extensionView()
+    : state.activeView === 'app' ? appView()
     : state.activeView === 'panelDemo' ? panelDemoView(state.panelDemo, escapeHTML)
     : state.activeView === 'audit' ? auditView()
     : state.activeView === 'rights' ? rightsView()
@@ -1410,10 +1488,11 @@ const render = () => {
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
   const restoreFocus = captureFocus();
-  app.innerHTML = `${SHELL_MODE ? '' : '<a class="skip-link" href="#main" data-action="skip-to-content">Skip to content</a>' + chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${state.claimOpen ? claimModal() : ''}${state.signinOpen ? signinModal() : ''}${lightboxView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
+  app.innerHTML = `${SHELL_MODE ? '' : '<a class="skip-link" href="#main" data-action="skip-to-content">Skip to content</a>' + chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${SHELL_MODE ? '' : appBannerView()}${state.claimOpen ? claimModal() : ''}${state.signinOpen ? signinModal() : ''}${lightboxView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
   restoreFocus();
+  document.documentElement.classList.toggle('app-banner-open', !SHELL_MODE && !state.appBannerDismissed);
   const overlayOpen = state.claimOpen || state.signinOpen || Boolean(state.lightbox);
-  for (const element of app.querySelectorAll('.chrome, .auth-notice, .auth-prompt, .page, footer, .offline-note')) {
+  for (const element of app.querySelectorAll('.chrome, .auth-notice, .auth-prompt, .page, footer, .offline-note, .app-banner')) {
     element.inert = overlayOpen;
     if (overlayOpen) element.setAttribute('aria-hidden', 'true');
   }
@@ -1962,6 +2041,7 @@ const applyFeedFilter = (sort, following) => {
   state.feedSort = sort === 'trending' ? 'trending' : 'recent';
   if (state.feedSort !== 'trending' || state.feedFollowing) state.feedTopic = null;
   state.feedCursor = null;
+  if (state.activeView === 'feed') window.history.pushState({}, '', routeFor('feed'));
   loadFeed().then(render);
 };
 
@@ -2101,6 +2181,7 @@ app.addEventListener('click', (event) => {
     state.feedFollowing = false;
     state.feedCursor = null;
     if (state.activeView !== 'feed') navigate('feed');
+    else window.history.pushState({}, '', routeFor('feed'));
     loadFeed().then(render);
     return;
   }
@@ -2291,6 +2372,12 @@ app.addEventListener('click', (event) => {
   if (action === 'publisher-bulk-review') {
     const claimIds = (state.publisherData?.claims || []).filter((claim) => ['open', 'in_review'].includes(claim.status)).map((claim) => claim.id);
     api.publisherClaimsBulk(state.publisherId, { claimIds, status: 'in_review', note: 'Publisher workspace bulk review' }).then(() => loadPublisherWorkspace()).then(render).then(() => notify(`${claimIds.length} claim${claimIds.length === 1 ? '' : 's'} moved to review.`)).catch((error) => notify(error.message || 'Claims could not be updated.'));
+    return;
+  }
+  if (action === 'dismiss-app-banner') {
+    state.appBannerDismissed = true;
+    try { localStorage.setItem('annotated-app-banner', '1'); } catch { /* still dismissed for this tab */ }
+    render();
     return;
   }
   if (action === 'toggle-product-events') {
@@ -2583,6 +2670,7 @@ window.addEventListener('popstate', () => {
     openAnnotation(state.publishedSlug);
     return;
   }
+  if (state.activeView === 'feed') { state.feedCursor = null; loadFeed().then(render); }
   if (state.activeView === 'profile' && state.profileHandle) { loadProfile().then(render); }
   if (state.activeView === 'library') { loadLibrary().then(render); }
   if (state.activeView === 'hub' && state.hubHost) { loadHub().then(render); }

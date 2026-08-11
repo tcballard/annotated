@@ -34,7 +34,9 @@ test('the pane and topic contract matches the web feed exactly', () => {
 });
 
 test('the home menu is the three panes; topic feeds live in explore', () => {
-  assert.match(timeline, /<ScrollView[^>]*horizontal/);
+  // Three fixed panes share a flat tab rail — nothing scrolls up there
+  // any more (the scrolling pill menu died with the topic feeds).
+  assert.doesNotMatch(timeline, /<ScrollView[^>]*horizontal/, 'the switcher is a fixed rail, not a scroller');
   // X anatomy: Home is who and when; Search is what about. The topic
   // pills moved to the explore screen.
   assert.doesNotMatch(timeline, /\.\.\.TOPICS\.map/, 'topics no longer crowd the home menu');
@@ -54,7 +56,7 @@ test('the feeds swipe under the menu, and the two stay in sync', async () => {
   assert.match(pager, /setPage\(index\)/, 'menu taps drive the pager');
   assert.match(pagerWeb, /pages\[index\]/, 'the DOM preview falls back to the active pane');
   assert.match(timeline, /<FeedPager index=\{index\} onSelect=\{select\}>/);
-  assert.match(timeline, /menuRef\.current\?\.scrollTo/, 'the active pill scrolls into view');
+  assert.match(timeline, /const active = index === position/, 'the rail marks the pager position');
   assert.match(timeline, /active=\{Math\.abs\(position - index\) <= 1\}/, 'panes load lazily around the active page');
 });
 

@@ -7,7 +7,8 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import Feather from '@expo/vector-icons/Feather';
+import Icon from './Icon';
+import SystemIcon from './SystemIcon';
 import { annotationToFeedItem } from '../lib/core/feed-item';
 import type { FeedItem } from '../lib/core/feed-item';
 import { avatarColor, avatarInitial } from '../lib/core/avatar';
@@ -104,7 +105,7 @@ export default function SearchScreen() {
         <Text style={styles.personName} numberOfLines={1}>{person.displayName || `@${person.handle}`}</Text>
         <Text style={styles.personHandle} numberOfLines={1}>@{person.handle}</Text>
       </View>
-      <Feather name="chevron-right" size={17} color={meta} />
+      <SystemIcon name="forward" size={17} color={meta} />
     </Pressable>
   );
 
@@ -167,7 +168,7 @@ export default function SearchScreen() {
   return (
     <View style={styles.frame}>
       <View style={styles.searchBox}>
-        <Feather name="search" size={16} color={meta} />
+        <Icon name="search" size={16} color={meta} />
         <TextInput
           style={styles.input}
           value={query}
@@ -180,8 +181,8 @@ export default function SearchScreen() {
           maxLength={80}
         />
         {query ? (
-          <Pressable onPress={() => setQuery('')} hitSlop={8} accessibilityLabel="Clear search">
-            <Feather name="x" size={16} color={meta} />
+          <Pressable onPress={() => setQuery('')} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', marginRight: -12 }} accessibilityLabel="Clear search">
+            <Icon name="close" size={16} color={meta} />
           </Pressable>
         ) : null}
       </View>

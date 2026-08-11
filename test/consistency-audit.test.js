@@ -117,6 +117,25 @@ test('one terracotta, one dark paper — the palette matches across surfaces', (
   }
 });
 
+test('the feed tabs speak one language on web, panel, and the native app', () => {
+  // Every top switcher wears the panel's tab anatomy: meta text at rest,
+  // ink 700 when active, the short rounded terracotta underline at 34%
+  // insets naming the pane. Only the mobile web thumb dock keeps its own
+  // pill anatomy — it is a dock, not a top switcher, and lives inside its
+  // media scope only.
+  for (const [surface, css] of [['web', webCss], ['panel', panelCss]]) {
+    const active = css.match(/\.tab\.is-active::after \{[\s\S]*?\}/)?.[0] || '';
+    for (const rule of ['left: 34%', 'right: 34%', 'height: 2px', 'background: var(--accent)', 'border-radius: 99px']) {
+      assert.ok(active.includes(rule), `${surface} active-tab underline must carry ${rule}`);
+    }
+    assert.match(css, /\.tab\.is-active \{ color: var\(--ink\); font-weight: 700; \}/, `${surface} active tab is ink and bold`);
+  }
+  // The native rail carries the same values through the shared tokens.
+  assert.match(timeline, /tabUnderline: \{ position: 'absolute', bottom: 0, left: '34%', right: '34%', height: 2, backgroundColor: tokens\.accent, borderRadius: 99 \}/, 'the native underline is the same rounded 34% rule');
+  assert.match(timeline, /tabTextActive: \{ fontSize: 14, color: ink, fontWeight: '700' \}/, 'the native active tab is ink and bold');
+  assert.match(timeline, /tabText: \{ fontSize: 14, color: meta \}/, 'the native resting tab is quiet meta at regular weight');
+});
+
 test('the moment chip is the same component on every surface', () => {
   // Law 1's first entry: the chip marks the moment — mono type, accent-ink
   // on accent-soft, 3px radius. The native timeline wore grey here while
@@ -132,6 +151,25 @@ test('the moment chip is the same component on every surface', () => {
   assert.match(nativeChip, /color: tokens\['accent-ink'\]/, 'the native chip text must be accent-ink');
   assert.match(nativeChip, /backgroundColor: tokens\['accent-soft'\]/, 'the native chip wash must be accent-soft');
   assert.match(nativeChip, /borderRadius: 3,/, 'the native chip radius must be 3');
+});
+
+test('one icon vocabulary: the same drawings, sourced from core, on every surface', async () => {
+  const [coreIcons, nativeIcon, systemIcon, mobilePkg] = await Promise.all([
+    read('packages/core/src/icons.ts'),
+    read('mobile/components/Icon.tsx'),
+    read('mobile/components/SystemIcon.tsx'),
+    read('mobile/package.json'),
+  ]);
+  assert.match(web, /import \{ PRODUCT_ICONS as icons \} from '\.\/icons\.js';/, 'the web renders the core set');
+  assert.match(nativeIcon, /from '\.\.\/lib\/core\/icons'/, 'native renders the same core set');
+  for (const name of ['open', 'respond', 'share', 'claim', 'follow', 'mic', 'bell', 'heart']) {
+    assert.ok(coreIcons.includes(`'${name}':`), `the core vocabulary carries ${name}`);
+  }
+  // System affordances are a deliberate allowlist, not a drift channel: the
+  // platform's own glyph (SF Symbols on iOS) for exactly these, nothing else.
+  const allowlist = systemIcon.match(/const SYSTEM_ICONS = \{[\s\S]*?\} satisfies/)?.[0] || '';
+  assert.deepEqual([...allowlist.matchAll(/^  (\w+): \{ sf:/gm)].map((match) => match[1]).sort(), ['back', 'forward', 'share'], 'the platform-glyph allowlist is exactly share/back/forward');
+  assert.ok(!mobilePkg.includes('@expo/vector-icons'), 'the icon-font dependency is retired');
 });
 
 test('one lockup: the wordmark is the same drawing everywhere', async () => {

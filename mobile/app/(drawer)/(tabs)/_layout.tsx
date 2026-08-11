@@ -9,7 +9,7 @@ import { useContext, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { Tabs } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import Feather from '@expo/vector-icons/Feather';
+import Icon from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HeaderAvatar from '../../../components/HeaderAvatar';
 import CaptureSheet from '../../../components/CaptureSheet';
@@ -45,8 +45,9 @@ export default function TabsLayout() {
           height: 52 + insets.bottom,
           paddingBottom: insets.bottom,
           paddingTop: 2,
+          // Android's default tab-bar elevation is the one legacy value
+          // still worth zeroing; the bar itself never draws a shadow.
           elevation: 0,
-          shadowOpacity: 0,
         },
         tabBarItemStyle: { height: 50 },
       }}
@@ -60,7 +61,7 @@ export default function TabsLayout() {
           title: 'Home',
           // The timeline draws its own chrome so it can hide on scroll.
           headerShown: false,
-          tabBarIcon: ({ color, size }) => <Feather name="home" color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Icon name="home" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
@@ -69,7 +70,7 @@ export default function TabsLayout() {
           title: 'Search',
           headerTitle: 'Search',
           headerTitleStyle: styles.headerTitle,
-          tabBarIcon: ({ color, size }) => <Feather name="search" color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Icon name="search" color={color} size={size} />,
         }}
       />
       <Tabs.Screen
@@ -79,7 +80,7 @@ export default function TabsLayout() {
           headerTitle: 'Capture',
           headerTitleStyle: styles.headerTitle,
           sceneStyle: webSceneStyle,
-          tabBarIcon: ({ color, size }) => <Feather name="edit-3" color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Icon name="edit-3" color={color} size={size} />,
         }}
         listeners={{
           // The share sheet still lands on the tab screen (it arrives with
@@ -96,7 +97,7 @@ export default function TabsLayout() {
           title: 'Notifications',
           headerTitle: 'Notifications',
           headerTitleStyle: styles.headerTitle,
-          tabBarIcon: ({ color, size }) => <Feather name="bell" color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Icon name="bell" color={color} size={size} />,
           ...(unseen > 0 ? { tabBarBadge: unseen > 9 ? '9+' : unseen, tabBarBadgeStyle: styles.badge } : {}),
         }}
       />
@@ -107,7 +108,7 @@ export default function TabsLayout() {
           headerTitle: 'Profile',
           headerTitleStyle: styles.headerTitle,
           sceneStyle: webSceneStyle,
-          tabBarIcon: ({ color, size }) => <Feather name="user" color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => <Icon name="user" color={color} size={size} />,
         }}
       />
     </Tabs>

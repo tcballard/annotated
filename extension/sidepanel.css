@@ -56,6 +56,9 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 320px;
+  /* One scrollbar: .scroll owns vertical scrolling; the document never
+     grows past the viewport, so the host cannot add a second bar. */
+  overflow: hidden;
 }
 
 a { color: var(--link); text-decoration: none; }
@@ -256,7 +259,10 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .signin-cancel:hover { color: var(--ink-soft); }
 
-.scroll { overflow-y: auto; flex: 1; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+/* min-height: 0 lets the flex column actually clamp this pane — without it
+   the pane's min-content height pushes the document taller than 100% and
+   the panel grows a second scrollbar. */
+.scroll { overflow-y: auto; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
 /* the scrollbar matches the paper it slides on */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -534,10 +540,25 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .grabber:hover { background: var(--hair); color: var(--ink); }
 
 /* a live selection arms the grabber: solid border, ink voice, the words
-   themselves quoting what is about to be kept */
-.grabber.is-armed { border-style: solid; border-color: var(--ink-soft); color: var(--ink); font-weight: 600; background: var(--card); }
+   themselves quoting what is about to be kept. The edge stays the same
+   hairline every field wears — the emphasis is the terracotta rule on the
+   left (a live selection IS the moment, the same clause as the clip
+   band's fill), not a heavier box. */
+.grabber.is-armed { border-style: solid; border-color: var(--border); color: var(--ink); font-weight: 600; background: var(--card); box-shadow: inset 3px 0 0 var(--accent); }
 .grabber.is-armed:hover { background: var(--hover-row); }
 .grabber svg { width: 14px; height: 14px; flex: none; }
+
+/* One field chrome: inputs, selects, and textareas all wear the same 1px
+   hairline at the same radius — and focus does not draw a second box
+   around a field that already has one. The field's own border takes the
+   ink instead; the 2px ring stays for controls without borders. */
+.type-select select:focus-visible,
+.relation-select select:focus-visible,
+.cap-note:focus-visible,
+.grabber:focus-visible {
+  outline: none;
+  border-color: var(--ink-soft);
+}
 
 .passage { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }
 

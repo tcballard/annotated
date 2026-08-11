@@ -173,7 +173,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .chrome .search input {
   font: inherit;
   font-size: 13px;
-  width: 220px;
+  width: clamp(200px, 26vw, 300px);
   padding: 6px 12px;
   border: 1px solid var(--chrome-dark);
   border-radius: 4px;
@@ -184,7 +184,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .chrome .search input::placeholder { color: #8B919A; }
 
-.chrome .auth { display: flex; align-items: center; gap: 10px; flex-shrink: 0; position: relative; }
+/* The right cluster holds a fixed slot whether it shows "Sign in", the
+   bell + avatar, or nothing — the search box never moves between views
+   or auth states. */
+.chrome .auth { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-shrink: 0; position: relative; min-width: 84px; }
 
 /* the avatar opens a small menu — identity, profile, library, and only
    then sign out; the same anatomy the panel's D4 menu proved */
@@ -223,24 +226,10 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 }
 
 .me-menu [role="menuitem"]:hover { background: var(--hover-row); }
+/* When the search is hidden (small screens) the auth cluster still pins
+   itself to the right edge. */
 .chrome .auth:last-child { margin-left: auto; }
-.chrome .search { margin-left: auto; }
 .chrome .search + .auth { margin-left: 0; }
-.chrome.has-rail .search + .auth { margin-left: auto; }
-
-/* On the timeline the search box sits exactly over the rail column below
-   (300px band); on rail-less views it keeps its place in the right
-   cluster. The rest of the bar stays full-bleed everywhere. */
-.chrome.has-rail .search {
-  position: absolute;
-  left: min(calc(50% + 154px), calc(100% - 316px));
-  width: 300px;
-  top: 50%;
-  transform: translateY(-50%);
-  margin-left: 0;
-}
-
-.chrome.has-rail .search input { width: 100%; }
 
 .chrome .auth .auth-link { color: #fff; font-size: 13.5px; font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
 
@@ -459,41 +448,57 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   background: transparent;
 }
 
+/* A filter click answers immediately: the outgoing list dims while the next
+   pane loads, so switching tabs or topics always visibly does something. */
+.feed .post, .feed .feed-empty { transition: opacity var(--t-fade) var(--e-ink); }
+.feed.is-refreshing .post, .feed.is-refreshing .feed-empty { opacity: .45; }
+
+/* One tab anatomy across the product: the panel's flat rail — meta text,
+   ink when active, a short terracotta underline naming the pane. The pill
+   survives only where it is a different component with a different job:
+   the mobile thumb dock at the bottom of the screen, and the native
+   shell's segmented control. */
 .feedhead {
   position: sticky;
   top: 48px;
-  background: var(--paper);
-  padding: 10px 0 10px;
+  background: color-mix(in srgb, var(--paper) 95%, transparent);
+  backdrop-filter: blur(4px);
+  padding: 6px 0 0;
   z-index: 5;
+  border-bottom: 1px solid var(--hair);
 }
 
 /* The chrome bar already names this view; the h1 stays for the document
    outline only. */
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
-.tabs {
-  display: flex;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 99px;
-  padding: 4px;
-  box-shadow: var(--shadow);
-}
+.tabs { display: flex; }
 
 .tabs .tab {
   flex: 1;
   text-align: center;
-  padding: 8px 0;
-  font-size: 13.5px;
+  padding: 9px 0 10px;
+  font-size: 13px;
   color: var(--meta);
-  border-radius: 99px;
-  min-height: 38px;
-  transition: background var(--t-hover) var(--e-ink), color var(--t-hover) var(--e-ink);
+  position: relative;
+  min-height: 40px;
+  transition: color var(--t-hover) var(--e-ink);
 }
 
-.tabs .tab:hover { background: var(--soft); color: var(--ink); }
+.tabs .tab:hover { color: var(--ink); }
 
-.tabs .tab.is-active { color: #fff; background: var(--chrome); font-weight: 700; }
+.tabs .tab.is-active { color: var(--ink); font-weight: 700; }
+
+.tabs .tab.is-active::after {
+  content: "";
+  position: absolute;
+  left: 34%;
+  right: 34%;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 99px;
+}
 
 .post {
   display: flex;
@@ -676,7 +681,9 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 /* ── rail ───────────────────────────────────────────────────────────── */
 
-.rail { padding-top: 16px; position: sticky; top: 64px; }
+/* The rail shares the feed's top line: same sticky offset, same first-pixel
+   spacing, so the first card and the tab bar sit level. */
+.rail { padding-top: 6px; position: sticky; top: 48px; }
 
 .card {
   background: var(--card);
@@ -717,6 +724,11 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 .btn-wide { display: flex; width: 100%; text-align: center; }
 .btn + .btn-wide, .btn-wide + .btn-wide { margin-top: 8px; }
+
+/* The signed-out hero: the extension button is the card's centrepiece;
+   the sign-in timing rides quietly underneath it. */
+.hero-card .btn { margin: 4px 0 10px; text-decoration: none; }
+.hero-card .hero-note { font-size: 12px; }
 
 .ghost {
   display: inline-flex;
@@ -1247,10 +1259,60 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 /* ── footer ─────────────────────────────────────────────────────────── */
 
-footer { max-width: 940px; margin: 0 auto; padding: 14px 16px 32px; font-size: 12px; color: var(--meta); display: flex; gap: 14px; flex-wrap: wrap; }
-footer a { color: var(--meta); }
-footer .footer-data { min-height: 40px; border: 0; padding: 0; background: transparent; color: var(--meta); text-decoration: underline; }
-footer .footer-note { margin-left: auto; }
+.site-footer { border-top: 1px solid var(--border); margin-top: 32px; }
+.foot-grid { max-width: 940px; margin: 0 auto; padding: 26px 16px 20px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; gap: 20px 48px; align-items: start; }
+.foot-brand { display: flex; flex-direction: column; gap: 10px; max-width: 320px; }
+.foot-logo { width: 104px; height: auto; display: block; }
+.foot-tag { font-size: 12.5px; color: var(--meta); line-height: 1.55; }
+.foot-col { display: flex; flex-direction: column; align-items: flex-start; font-size: 12.5px; }
+.foot-head { font-size: 10.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--meta); margin-bottom: 8px; }
+.foot-col a, .foot-col .footer-data { color: var(--ink-soft); min-height: 30px; display: inline-flex; align-items: center; transition: color var(--t-hover) var(--e-ink); }
+.foot-col a:hover, .foot-col .footer-data:hover { color: var(--ink); text-decoration: none; }
+.foot-col .footer-data { border: 0; padding: 0; background: transparent; font-size: 12.5px; }
+.foot-meta { border-top: 1px solid var(--hair); }
+.foot-meta .footer-note { max-width: 940px; margin: 0 auto; padding: 12px 16px 26px; display: block; font-size: 12px; color: var(--meta); }
+.foot-meta .footer-note a { color: var(--meta); }
+
+@media (max-width: 760px) {
+  .foot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 20px; }
+  .foot-brand { grid-column: 1 / -1; }
+}
+
+/* ── app banner (mobile web only) ───────────────────────────────────── */
+
+.app-banner { display: none; }
+
+@media (max-width: 700px) {
+  html.app-banner-open .app-banner {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--chrome);
+    box-shadow: 0 -6px 24px rgba(38, 41, 47, .25);
+  }
+  .app-banner img { width: 36px; height: 36px; border-radius: 8px; }
+  .app-banner-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+  .app-banner-copy strong { font-size: 13px; color: #fff; }
+  .app-banner-copy span { font-size: 11.5px; color: #B9BEC6; }
+  /* paper on ink — the terracotta stays reserved for the moment */
+  .app-banner .btn { background: #F5F4F0; color: #26292F; text-decoration: none; flex-shrink: 0; }
+  .app-banner .btn:hover { background: #fff; color: #26292F; }
+  .app-banner-dismiss { color: #B9BEC6; min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  /* the footer's last line clears the banner instead of hiding under it */
+  html.app-banner-open .foot-meta .footer-note { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+}
+
+@media (max-width: 560px) {
+  /* the feed switcher rides above the banner, not on top of it */
+  html.app-banner-open .feedhead { bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
+  html.app-banner-open .feed:has(.feedhead) { padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+}
 
 /* ── public doc pages ───────────────────────────────────────────────── */
 
@@ -1300,11 +1362,15 @@ footer .footer-note { margin-left: auto; }
 @media (max-width: 560px) {
   .chrome { gap: 8px; padding: 0 12px; }
   .chrome .logo img { width: 74px; }
-  .chrome nav { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  /* When the links overrun, the edge fades instead of shearing a word in
-     half — the fade zone is empty whenever everything fits. */
-  .chrome nav { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
-  .chrome nav .nav-link { padding: 0 8px; flex: 0 0 auto; }
+  /* Phone chrome is wordmark + session, X-style. The inline product links
+     don't fit this width — a fade-masked "Libr…" reads as breakage, not
+     scrollability — and every door stays one tap away: Capture in the
+     hero and the dock's pen, Library and the doc pages in the avatar
+     menu and the footer. With the nav gone, the session slot needs its
+     own push right (the desktop cascade zeroes its auto margin because
+     the search field, though hidden here, still precedes it in the DOM). */
+  .chrome nav { display: none; }
+  .chrome .search + .auth { margin-left: auto; }
   /* The source line gives the title the full width and lets it wrap — on a
      provenance product the source's NAME outranks "· article ·", which used
      to keep its every pixel while the title shrank to "Web an…". */
@@ -1320,9 +1386,14 @@ footer .footer-note { margin-left: auto; }
   .srcstrip { flex-wrap: wrap; }
   /* The feed switcher docks into the thumb zone: fixed pill rail at the
      bottom, floated above the home-indicator safe area. Chips stay with
-     the content up top; the feed pads so the last card clears the rail. */
-  .feedhead { position: fixed; top: auto; bottom: 0; left: 0; right: 0; background: transparent; padding: 0 14px calc(12px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
-  .feedhead .tabs { pointer-events: auto; box-shadow: 0 6px 24px rgba(38, 41, 47, .18); }
+     the content up top; the feed pads so the last card clears the rail.
+     Down here the pill is a dock, not a tab bar — it keeps its own anatomy. */
+  .feedhead { position: fixed; top: auto; bottom: 0; left: 0; right: 0; background: transparent; backdrop-filter: none; border-bottom: 0; padding: 0 14px calc(12px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
+  .feedhead .tabs { pointer-events: auto; background: var(--card); border: 1px solid var(--border); border-radius: 99px; padding: 4px; box-shadow: 0 6px 24px rgba(38, 41, 47, .18); }
+  .feedhead .tabs .tab { border-radius: 99px; padding: 8px 0; min-height: 38px; }
+  .feedhead .tabs .tab:hover { background: var(--soft); }
+  .feedhead .tabs .tab.is-active { color: #fff; background: var(--chrome); }
+  .feedhead .tabs .tab.is-active::after { content: none; }
   .topic-chips { padding-top: 2px; }
   .feed:has(.feedhead) { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
 }
@@ -1479,10 +1550,15 @@ html.shell-mode .feedhead {
   left: auto;
   right: auto;
   background: var(--paper);
+  backdrop-filter: none;
+  border-bottom: 0;
   padding: 10px 0;
   pointer-events: auto;
 }
-html.shell-mode .feedhead .tabs { box-shadow: var(--shadow); }
+html.shell-mode .feedhead .tabs { background: var(--card); border: 1px solid var(--border); border-radius: 99px; padding: 4px; box-shadow: var(--shadow); }
+html.shell-mode .feedhead .tabs .tab { border-radius: 99px; padding: 8px 0; min-height: 38px; }
+html.shell-mode .feedhead .tabs .tab.is-active { color: #fff; background: var(--chrome); }
+html.shell-mode .feedhead .tabs .tab.is-active::after { content: none; }
 html.shell-mode .feed:has(.feedhead) { padding-bottom: 24px; }
 
 /* ── touch targets ──────────────────────────────────────────────────── */

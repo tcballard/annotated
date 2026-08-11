@@ -394,7 +394,12 @@ export async function listFeed({
     const position = parameters.length;
     where.push(`(a.search_document @@ websearch_to_tsquery('simple', $${position}) OR lower(u.handle) LIKE '%' || lower($${position}) || '%' OR lower(u.display_name) LIKE '%' || lower($${position}) || '%')`);
   }
-  if (urlKey) add('a.source_url_key = ?', urlKey);
+  if (urlKey) {
+    // Match the capture URL or its canonical form — a youtu.be tab must find
+    // the youtube.com capture, exactly as the file store's matchesFeedUrl does.
+    parameters.push(urlKey);
+    where.push(`(a.source_url_key = $${parameters.length} OR a.canonical_url_key = $${parameters.length})`);
+  }
   const topicCountWhere = [...where];
   const topicCountParameters = [...parameters];
   if (topic) add('a.topic = ?', topic);
