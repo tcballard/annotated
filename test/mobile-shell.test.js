@@ -35,8 +35,12 @@ test('navigation is native, X-anatomy: a stack over a drawer over tabs', () => {
   assert.match(rootLayout, /<Stack/);
   assert.match(rootLayout, /name="\(drawer\)"/);
   assert.match(rootLayout, /name="web\/\[\.\.\.path\]"/, 'internal pages push over the tabs');
-  assert.match(drawerLayout, /<Drawer/);
-  assert.match(drawerLayout, /swipeEdgeWidth/, 'the drawer answers an edge swipe');
+  // The menu layer is the ChatGPT-style swipe shell, not a Drawer
+  // navigator — the panel mounts beneath one moving surface, and the
+  // edge-swipe contract lives in SwipeMenuShell (pinned by
+  // native-navigation.test.js).
+  assert.match(drawerLayout, /<SwipeMenuShell menu=\{<DrawerPanel \/>\}>/);
+  assert.match(drawerLayout, /<Slot \/>/);
   for (const name of ['index', 'search', 'capture', 'notifications', 'profile']) {
     assert.match(tabsLayout, new RegExp(`name="${name}"`), `the ${name} tab must exist`);
   }

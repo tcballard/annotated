@@ -1,8 +1,9 @@
-// The slide-out panel: who you are, your library, and the product's public
-// pages — the X drawer anatomy in annotated's identity. The panel has a
-// top and a bottom: identity (or the wordmark) up top, navigation in the
-// middle with room to breathe, and the session action — sign in or sign
-// out — pinned to the bottom where X keeps settings.
+// The menu panel: who you are, your library, and the product's public
+// pages — the X drawer anatomy in annotated's identity. It stays mounted
+// beneath the app's moving surface (SwipeMenuShell) and has a top and a
+// bottom: identity (or the wordmark) up top, navigation in the middle
+// with room to breathe, and the session action — sign in or sign out —
+// pinned to the bottom where X keeps settings.
 
 import { use, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -16,14 +17,15 @@ import { api } from '../lib/api';
 import { AccountContext } from './AccountContext';
 import { AuthProviderContext } from './AuthProviderContext';
 import { SessionEpochContext } from './WebScreen';
+import { SwipeMenuContext } from './SwipeMenuShell';
 import BrandMark from './BrandMark';
 import { card, ink, meta, tokens } from '../lib/tokens';
 
 type Counts = { followers: number; following: number; annotationCount: number };
 
-// Typed to the slice we use of the drawer's navigation object.
-export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(): void } }) {
+export default function DrawerPanel() {
   const router = useRouter();
+  const { close } = use(SwipeMenuContext);
   const { me } = use(AccountContext);
   const { bump } = use(SessionEpochContext);
   const { signIn } = use(AuthProviderContext);
@@ -38,7 +40,6 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
     return () => { cancelled = true; };
   }, [me?.handle]);
 
-  const close = () => navigation.closeDrawer();
   // A light tick on iOS turns each menu tap into a physical event; Android
   // keeps its own system feedback.
   const tick = () => { if (process.env.EXPO_OS === 'ios') void Haptics.selectionAsync(); };
@@ -115,10 +116,10 @@ export default function DrawerPanel({ navigation }: { navigation: { closeDrawer(
 }
 
 const styles = StyleSheet.create({
-  // The frame carries the card's own radii and clips content to them — the
-  // matching drawerStyle radii (and the shadow) live on the navigator's
-  // container, which must keep overflow visible for the shadow to paint.
-  frame: { flex: 1, backgroundColor: card, borderTopRightRadius: 24, borderBottomRightRadius: 24, borderCurve: 'continuous', overflow: 'hidden' },
+  // The panel is the flat layer beneath the moving surface — the rounded
+  // card in this anatomy is the surface above it (SwipeMenuShell), so the
+  // frame itself stays square and full-bleed.
+  frame: { flex: 1, backgroundColor: card },
   head: { padding: 20, paddingTop: 22, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: tokens.hair },
   avatar: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   avatarImage: { width: 52, height: 52, borderRadius: 26, backgroundColor: tokens.soft, marginBottom: 10 },

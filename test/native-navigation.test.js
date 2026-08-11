@@ -8,6 +8,7 @@ const brandMark = await readFile(new URL('../mobile/components/BrandMark.tsx', i
 const notifications = await readFile(new URL('../mobile/components/NotificationsScreen.tsx', import.meta.url), 'utf8');
 const search = await readFile(new URL('../mobile/components/SearchScreen.tsx', import.meta.url), 'utf8');
 const drawerLayout = await readFile(new URL('../mobile/app/(drawer)/_layout.tsx', import.meta.url), 'utf8');
+const swipeShell = await readFile(new URL('../mobile/components/SwipeMenuShell.tsx', import.meta.url), 'utf8');
 const rootLayout = await readFile(new URL('../mobile/app/_layout.tsx', import.meta.url), 'utf8');
 const server = await readFile(new URL('../server/index.js', import.meta.url), 'utf8');
 
@@ -24,17 +25,38 @@ test('touch targets meet the 44pt floor', async () => {
   assert.match(search, /minWidth: 44, minHeight: 44/, 'the search clear meets the floor');
 });
 
-test('the drawer is a card over the timeline, not a full-bleed sheet', () => {
-  // Rounded on its open edge on both the navigator container (which owns
-  // the shadow, so it must not clip) and the panel frame (which clips its
-  // own content to the same radii), over the ink scrim the web's modals use.
-  assert.match(drawerLayout, /borderTopRightRadius: 24/, 'the container rounds its open edge');
-  assert.match(drawerLayout, /borderBottomRightRadius: 24/);
-  assert.match(drawerLayout, /borderCurve: 'continuous'/, 'rounded corners use the Apple continuous curve (expo-native-ui)');
-  assert.match(drawerLayout, /boxShadow: '6px 0 24px rgba\(38, 41, 47, 0\.25\)'/, 'the card lifts on the modern cross-platform shadow');
-  assert.doesNotMatch(drawerLayout, /shadowColor|elevation:/, 'legacy shadow*/elevation props are banned (expo-native-ui)');
-  assert.match(drawerLayout, /overlayColor: 'rgba\(38, 41, 47, 0\.45\)'/, 'the scrim is the same ink tint as the web modal backdrop');
-  assert.match(drawerPanel, /borderTopRightRadius: 24, borderBottomRightRadius: 24, borderCurve: 'continuous', overflow: 'hidden'/, 'the panel clips its content to the card');
+test('the menu sits beneath one moving surface, ChatGPT-style', () => {
+  // The panel stays mounted underneath; the whole app face is a single
+  // rounded surface that slides right on the UI thread. The layout is
+  // just the shell composed around the panel and the tab routes.
+  assert.match(drawerLayout, /<SwipeMenuShell menu=\{<DrawerPanel \/>\}>/, 'the layout composes the shell around the panel');
+  assert.match(drawerLayout, /<Slot \/>/, 'the tab routes ride inside the moving surface');
+  assert.doesNotMatch(drawerLayout, /expo-router\/drawer/, 'the Drawer navigator is gone');
+  // The gesture: Reanimated shared value driven by a pan on the UI
+  // thread, sprung home without overshoot; vertical travel hands the
+  // touch back to scrolling.
+  assert.match(swipeShell, /withSpring\(shouldOpen \? menuWidth : 0, SWIPE_SPRING\)/, 'release springs the surface to a seat');
+  assert.match(swipeShell, /overshootClamping: true/, 'the spring never overshoots — that would flash the root behind the menu');
+  assert.match(swipeShell, /failOffsetY/, 'vertical intent belongs to the scroll views');
+  // Closed, the timeline's feed pager owns mid-screen horizontal swipes —
+  // the surface drag arms only at the left edge, and only rightward.
+  assert.match(swipeShell, /hitSlop\(\{ left: 0, width: SWIPE_GESTURE\.edgeWidth \}\)/, 'closed, the drag starts at the left edge');
+  assert.match(swipeShell, /pan\.activeOffsetX\(SWIPE_GESTURE\.activationDistance\)/, 'closed, only a rightward drag arms it');
+  // The surface wears the example's fallback screen-corner radii (Expo Go
+  // cannot load the native corner module) with the continuous curve and
+  // the modern shadow, ink-tinted like every shadow in the identity.
+  assert.match(swipeShell, /process\.env\.EXPO_OS === 'ios' \? 55 : process\.env\.EXPO_OS === 'android' \? 32 : 28/, 'the corner radius approximates the device screen corner');
+  assert.match(swipeShell, /borderCurve: 'continuous'/, 'rounded corners use the Apple continuous curve (expo-native-ui)');
+  assert.match(swipeShell, /boxShadow: SWIPE_MENU_SURFACE_SHADOW/, 'the surface lifts on the modern cross-platform shadow');
+  assert.match(swipeShell, /rgba\(38, 41, 47, 0\.2\)/, 'the shadow is ink, not black');
+  assert.doesNotMatch(swipeShell, /shadowColor|elevation:/, 'legacy shadow*/elevation props are banned (expo-native-ui)');
+  // The hidden menu leaves the accessibility tree, and Android back
+  // closes the menu before it leaves the screen.
+  assert.match(swipeShell, /no-hide-descendants/, 'the closed menu is hidden from assistive tech');
+  assert.match(swipeShell, /hardwareBackPress/, 'Android back closes the menu first');
+  // The panel itself is now the flat underneath layer; its rows keep the
+  // inset continuous-curve pills and the iOS tick.
+  assert.doesNotMatch(drawerPanel, /borderTopRightRadius/, 'the panel is flat — the rounded card is the surface above it');
   assert.match(drawerPanel, /borderRadius: 12, borderCurve: 'continuous'/, 'rows highlight as inset continuous-curve pills');
   assert.match(drawerPanel, /process\.env\.EXPO_OS === 'ios'.*Haptics\.selectionAsync/, 'menu taps tick on iOS');
 });
@@ -44,7 +66,8 @@ test('the header is X-anatomy in our identity: avatar opens the drawer, the word
   const headerAvatar = await readFile(new URL('../mobile/components/HeaderAvatar.tsx', import.meta.url), 'utf8');
   const timeline = await readFile(new URL('../mobile/components/Timeline.tsx', import.meta.url), 'utf8');
   assert.match(tabsLayout, /headerLeft: \(\) => <HeaderAvatar \/>/);
-  assert.match(headerAvatar, /drawer\.openDrawer\(\)/);
+  assert.match(headerAvatar, /use\(SwipeMenuContext\)/, 'the avatar opens the swipe menu through its context');
+  assert.match(headerAvatar, /onPress=\{open\}/);
   assert.match(timeline, /<HeaderAvatar \/>/, 'the timeline draws its own chrome');
   assert.match(timeline, /<BrandMark \/>/, 'Home leads with the wordmark');
   assert.match(brandMark, /annotated<Text style=\{\{ color: accent \}\}>\.<\/Text>/, 'the terracotta dot is the one accent in chrome');
@@ -98,7 +121,7 @@ test('the native shell follows the system light/dark setting', async () => {
 });
 
 test('the drawer carries account, library, and the public pages — session action at the bottom', () => {
-  assert.match(drawerPanel, /navigation\.closeDrawer\(\)/);
+  assert.match(drawerPanel, /use\(SwipeMenuContext\)/, 'the panel closes the menu through its context');
   assert.match(drawerPanel, /'\/web\/library'/);
   assert.match(drawerPanel, /'\/web\/transparency'/);
   assert.match(drawerPanel, /'\/web\/about'/);

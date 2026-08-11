@@ -1,21 +1,20 @@
-// Your avatar, top-left — the drawer's handle, X-style. Shared by the
+// Your avatar, top-left — the menu's handle, X-style. Shared by the
 // navigator headers and the timeline's own collapsing chrome.
 
-import { useContext } from 'react';
+import { use } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from 'expo-router';
 import Icon from './Icon';
 import { AccountContext } from './AccountContext';
+import { SwipeMenuContext } from './SwipeMenuShell';
 import { avatarColor, avatarInitial } from '../lib/core/avatar';
 import { meta, tokens } from '../lib/tokens';
 
 export default function HeaderAvatar() {
-  // The drawer lives one layout up; expo-router addresses it by route path.
-  const drawer = useNavigation('/(drawer)') as unknown as { openDrawer(): void };
-  const { me } = useContext(AccountContext);
+  const { open } = use(SwipeMenuContext);
+  const { me } = use(AccountContext);
   return (
     <Pressable
-      onPress={() => drawer.openDrawer()}
+      onPress={open}
       hitSlop={10}
       style={styles.slot}
       accessibilityLabel="Open menu"
