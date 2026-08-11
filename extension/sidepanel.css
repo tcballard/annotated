@@ -56,6 +56,9 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 320px;
+  /* One scrollbar: .scroll owns vertical scrolling; the document never
+     grows past the viewport, so the host cannot add a second bar. */
+  overflow: hidden;
 }
 
 a { color: var(--link); text-decoration: none; }
@@ -256,7 +259,10 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 
 .signin-cancel:hover { color: var(--ink-soft); }
 
-.scroll { overflow-y: auto; flex: 1; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+/* min-height: 0 lets the flex column actually clamp this pane — without it
+   the pane's min-content height pushes the document taller than 100% and
+   the panel grows a second scrollbar. */
+.scroll { overflow-y: auto; flex: 1; min-height: 0; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
 /* the scrollbar matches the paper it slides on */
 ::-webkit-scrollbar { width: 8px; height: 8px; }

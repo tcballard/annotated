@@ -117,6 +117,21 @@ test('one terracotta, one dark paper — the palette matches across surfaces', (
   }
 });
 
+test('the feed tabs speak one language on web and panel', () => {
+  // The desktop web rail wears the panel's tab anatomy: meta text, ink when
+  // active, the short terracotta underline naming the pane. The mobile
+  // thumb dock and the native shell's segmented pill are different
+  // components with different jobs, and keep their own anatomy — inside
+  // their media/shell scopes only.
+  for (const [surface, css] of [['web', webCss], ['panel', panelCss]]) {
+    const active = css.match(/\.tab\.is-active::after \{[\s\S]*?\}/)?.[0] || '';
+    for (const rule of ['left: 34%', 'right: 34%', 'height: 2px', 'background: var(--accent)']) {
+      assert.ok(active.includes(rule), `${surface} active-tab underline must carry ${rule}`);
+    }
+    assert.match(css, /\.tab\.is-active \{ color: var\(--ink\); font-weight: 700; \}/, `${surface} active tab is ink and bold`);
+  }
+});
+
 test('the moment chip is the same component on every surface', () => {
   // Law 1's first entry: the chip marks the moment — mono type, accent-ink
   // on accent-soft, 3px radius. The native timeline wore grey here while
