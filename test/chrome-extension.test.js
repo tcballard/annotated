@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +8,17 @@ import { createHash } from 'node:crypto';
 const projectRoot = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 const extensionRoot = path.join(projectRoot, 'extension');
 const read = (file) => readFile(path.join(extensionRoot, file), 'utf8');
+const extensionFiles = async (directory = extensionRoot, prefix = '') => {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    if (entry.name === '.DS_Store') continue;
+    const relative = path.posix.join(prefix, entry.name);
+    if (entry.isDirectory()) files.push(...await extensionFiles(path.join(directory, entry.name), relative));
+    if (entry.isFile()) files.push(relative);
+  }
+  return files.sort();
+};
 const pngDimensions = async (file) => {
   const bytes = await readFile(path.join(extensionRoot, file));
   assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
@@ -47,6 +58,14 @@ test('Manifest V3 extension has a reachable side-panel trigger and local files',
   assert.match(background, /chrome\.runtime\.onMessage/);
   assert.match(background, /annotatedRetryLock/);
   assert.match(background, /runBackgroundTask/);
+});
+
+test('CI validates the extension package by path, never by a magic file count', async () => {
+  const workflow = await readFile(path.join(projectRoot, '.github/workflows/ci.yml'), 'utf8');
+  const packageFiles = await readFile(path.join(projectRoot, 'config/extension-package-files.txt'), 'utf8');
+  assert.match(workflow, /diff -u config\/extension-package-files\.txt "\$actual_manifest"/);
+  assert.doesNotMatch(workflow, /unzip -Z1[^\n]*grep -vc/);
+  assert.deepEqual(packageFiles.trim().split('\n'), await extensionFiles());
 });
 
 test('extension runtime source avoids remote-code and service-worker timer patterns', async () => {

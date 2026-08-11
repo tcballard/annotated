@@ -92,11 +92,14 @@ jobs:
         run: |
           package_version="$(node -p 'require("./extension/manifest.json").version')"
           package_path="annotated-extension-v${package_version}.zip"
-          test "$(unzip -Z1 "$package_path" | grep -vc '/$')" = 26
-          test "$(unzip -Z1 "$package_path" | grep -c '^clip-range.js$')" = 1
-          test "$(unzip -Z1 "$package_path" | grep -c '^capture-state.js$')" = 1
-          test "$(unzip -Z1 "$package_path" | grep -c '^share-kit.js$')" = 1
-          if unzip -Z1 "$package_path" | grep -E '(^|/)(\.env|data/|node_modules/|dist/)'; then
+          actual_manifest="$(mktemp)"
+          trap 'rm -f "$actual_manifest"' EXIT
+          unzip -Z1 "$package_path" | grep -v '/$' | LC_ALL=C sort > "$actual_manifest"
+          if ! diff -u config/extension-package-files.txt "$actual_manifest"; then
+            echo "extension package does not match config/extension-package-files.txt" >&2
+            exit 1
+          fi
+          if grep -E '(^|/)(\.env|data/|node_modules/|dist/)' "$actual_manifest"; then
             echo "runtime extension package contains development files" >&2
             exit 1
           fi
