@@ -1,37 +1,77 @@
-// Explore settings: the small set of choices that change what the
-// Search tab shows, reachable from the gear beside the search field —
-// the shape X uses, in our vocabulary. Only honest levers live here:
-// which order explore ranks in, and whether the seeded demo accounts are
-// part of the picture. Both apply immediately and last for the session.
+// The reader's choices, in one place and kept on the device: how explore
+// ranks, whether the seeded demo accounts are in the picture, which
+// themes Recent puts aside, and how Following is ordered. Read once at
+// boot, written whenever one changes — a preference that forgets itself
+// is not a preference.
+//
+// The gear's sheet lives here too: it is the Explore half of this record,
+// in the shape X gives it.
 
-import { createContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from './Icon';
+import {
+  DEFAULT_PREFERENCES,
+  readPreferences,
+  writePreferences,
+  type ExploreSort,
+  type FollowingOrder,
+  type Preferences,
+} from '../lib/prefs';
 import { card, ink, meta, tokens } from '../lib/tokens';
 
-export type ExploreSort = 'trending' | 'recent';
+export type { ExploreSort, FollowingOrder };
 
-type ExploreSettings = {
-  sort: ExploreSort;
-  setSort(next: ExploreSort): void;
-  hideDemo: boolean;
+type PreferencesApi = Preferences & {
+  setExploreSort(next: ExploreSort): void;
   setHideDemo(next: boolean): void;
+  setMutedTopics(next: string[]): void;
+  setFollowingOrder(next: FollowingOrder): void;
 };
 
-export const ExploreSettingsContext = createContext<ExploreSettings>({
-  sort: 'trending',
-  setSort() {},
-  hideDemo: false,
+export const PreferencesContext = createContext<PreferencesApi>({
+  ...DEFAULT_PREFERENCES,
+  setExploreSort() {},
   setHideDemo() {},
+  setMutedTopics() {},
+  setFollowingOrder() {},
 });
 
-export const ExploreSettingsProvider = ({ children }: { children: ReactNode }) => {
-  const [sort, setSort] = useState<ExploreSort>('trending');
-  const [hideDemo, setHideDemo] = useState(false);
-  const value = useMemo(() => ({ sort, setSort, hideDemo, setHideDemo }), [sort, hideDemo]);
-  return <ExploreSettingsContext.Provider value={value}>{children}</ExploreSettingsContext.Provider>;
+export const PreferencesProvider = ({ children }: { children: ReactNode }) => {
+  const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
+  // Nothing is written before the stored record has been read, or the
+  // defaults would overwrite the reader's choices on every cold start.
+  const hydrated = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void readPreferences().then((stored) => {
+      if (cancelled) return;
+      setPreferences(stored);
+      hydrated.current = true;
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const update = useCallback((patch: Partial<Preferences>) => {
+    setPreferences((current) => {
+      const next = { ...current, ...patch };
+      if (hydrated.current) void writePreferences(next);
+      return next;
+    });
+  }, []);
+
+  const value = useMemo<PreferencesApi>(() => ({
+    ...preferences,
+    setExploreSort: (exploreSort) => update({ exploreSort }),
+    setHideDemo: (hideDemo) => update({ hideDemo }),
+    setMutedTopics: (mutedTopics) => update({ mutedTopics }),
+    setFollowingOrder: (followingOrder) => update({ followingOrder }),
+  }), [preferences, update]);
+
+  return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
 };
 
 const SORTS: { id: ExploreSort; label: string; blurb: string }[] = [
@@ -46,7 +86,7 @@ export const ExploreSettingsSheet = ({
 }: {
   visible: boolean;
   onClose(): void;
-  settings: ExploreSettings;
+  settings: PreferencesApi;
 }) => {
   const insets = useSafeAreaInsets();
   const tick = () => { if (process.env.EXPO_OS === 'ios') void Haptics.selectionAsync(); };
@@ -63,14 +103,14 @@ export const ExploreSettingsSheet = ({
 
         <Text style={styles.section}>Rank explore by</Text>
         {SORTS.map((entry) => {
-          const active = settings.sort === entry.id;
+          const active = settings.exploreSort === entry.id;
           return (
             <Pressable
               key={entry.id}
               accessibilityRole="radio"
               accessibilityState={{ selected: active }}
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-              onPress={() => { tick(); settings.setSort(entry.id); }}
+              onPress={() => { tick(); settings.setExploreSort(entry.id); }}
             >
               <View style={styles.rowText}>
                 <Text style={styles.rowLabel}>{entry.label}</Text>
@@ -94,7 +134,7 @@ export const ExploreSettingsSheet = ({
             trackColor={{ true: tokens.chrome, false: tokens.border }}
           />
         </View>
-        <Text style={styles.foot}>Choices last for this session.</Text>
+        <Text style={styles.foot}>Kept on this device.</Text>
       </View>
     </Modal>
   );

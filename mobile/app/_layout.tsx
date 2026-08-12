@@ -16,7 +16,7 @@ import { useShareIntent } from '../lib/share-intent';
 import { SessionEpochContext } from '../components/WebScreen';
 import { AccountContext, type Me } from '../components/AccountContext';
 import { AuthProvider } from '../components/AuthProviderContext';
-import { ExploreSettingsProvider } from '../components/ExploreSettings';
+import { PreferencesProvider } from '../components/Preferences';
 import { api } from '../lib/api';
 import { card, ink, paper } from '../lib/tokens';
 
@@ -108,7 +108,7 @@ export default function RootLayout() {
       <SessionEpochContext.Provider value={session}>
         <AccountContext.Provider value={account}>
           <AuthProvider>
-            <ExploreSettingsProvider>
+            <PreferencesProvider>
             <StatusBar style="auto" />
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: paper } }}>
               <Stack.Screen name="(drawer)" />
@@ -121,7 +121,7 @@ export default function RootLayout() {
               <Stack.Screen name="web/[...path]" options={webHeader} />
               <Stack.Screen name="settings" options={{ ...webHeader, title: 'Settings' }} />
             </Stack>
-            </ExploreSettingsProvider>
+            </PreferencesProvider>
           </AuthProvider>
         </AccountContext.Provider>
       </SessionEpochContext.Provider>

@@ -17,7 +17,7 @@ import { api } from '../lib/api';
 import { AccountContext } from './AccountContext';
 import { FeedCard, useFeedActions } from './Timeline';
 import HeaderAvatar from './HeaderAvatar';
-import { ExploreSettingsContext, ExploreSettingsSheet } from './ExploreSettings';
+import { ExploreSettingsSheet, PreferencesContext } from './Preferences';
 import { card, ink, meta, paper, tokens } from '../lib/tokens';
 
 type Person = { id: string; handle: string; displayName?: string; avatarUrl?: string | null };
@@ -57,7 +57,7 @@ export default function SearchScreen() {
   const requestSeq = useRef(0);
   // The gear's small menu, X's Explore-settings shape: how explore ranks,
   // and whether the seeded demo accounts are part of the picture.
-  const settings = use(ExploreSettingsContext);
+  const settings = use(PreferencesContext);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const visible = (list: FeedItem[]) => (settings.hideDemo ? list.filter((item) => !item.isDemo) : list);
 
@@ -67,7 +67,7 @@ export default function SearchScreen() {
     setExploring(true);
     // Explore ranks by trending unless the gear says otherwise.
     const params = new URLSearchParams({ limit: '30' });
-    if (settings.sort === 'trending') params.set('sort', 'trending');
+    if (settings.exploreSort === 'trending') params.set('sort', 'trending');
     if (topic) params.set('topic', topic);
     api.feed(params.toString())
       .then((feed) => {
@@ -77,7 +77,7 @@ export default function SearchScreen() {
       })
       .catch(() => { if (!cancelled) { setStories([]); setExploring(false); } });
     return () => { cancelled = true; };
-  }, [topic, settings.sort, settings.hideDemo]);
+  }, [topic, settings.exploreSort, settings.hideDemo]);
 
   useEffect(() => {
     const text = query.trim();
@@ -163,7 +163,7 @@ export default function SearchScreen() {
           );
         })}
       </ScrollView>
-      <Text style={styles.sectionTitle}>{settings.sort === 'recent'
+      <Text style={styles.sectionTitle}>{settings.exploreSort === 'recent'
         ? (topic ? `Latest in ${topicLabel(topic)}` : 'Latest annotations')
         : (topic ? `Trending in ${topicLabel(topic)}` : 'Trending now')}</Text>
       {exploring && !stories.length ? <ActivityIndicator color={ink} style={styles.spinner} /> : null}

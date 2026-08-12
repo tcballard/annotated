@@ -11,7 +11,7 @@ import Icon, { type ProductIconName } from '../components/Icon';
 import { AccountContext } from '../components/AccountContext';
 import { AuthProviderContext } from '../components/AuthProviderContext';
 import { SessionEpochContext } from '../components/WebScreen';
-import { ExploreSettingsContext } from '../components/ExploreSettings';
+import { PreferencesContext } from '../components/Preferences';
 import { api } from '../lib/api';
 import { ORIGIN } from '../lib/origin';
 import { card, ink, meta, paper, tokens } from '../lib/tokens';
@@ -21,7 +21,7 @@ export default function SettingsScreen() {
   const { me } = use(AccountContext);
   const { bump } = use(SessionEpochContext);
   const { signIn } = use(AuthProviderContext);
-  const { hideDemo, setHideDemo } = use(ExploreSettingsContext);
+  const { hideDemo, setHideDemo } = use(PreferencesContext);
   const [busy, setBusy] = useState(false);
   const tick = () => { if (process.env.EXPO_OS === 'ios') void Haptics.selectionAsync(); };
 
@@ -60,7 +60,7 @@ export default function SettingsScreen() {
             trackColor={{ true: tokens.chrome, false: tokens.border }}
           />
         </View>
-        <Text style={styles.note}>This build ships seeded demo annotations so the feed is never empty. Hiding them shows only real activity. The choice lasts for this session.</Text>
+        <Text style={styles.note}>This build ships seeded demo annotations so the feed is never empty. Hiding them shows only real activity. The choice is kept on this device.</Text>
       </View>
 
       <Text style={styles.section}>Notifications</Text>

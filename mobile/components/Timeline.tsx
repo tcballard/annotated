@@ -43,7 +43,8 @@ import HeaderAvatar from './HeaderAvatar';
 import BrandMark from './BrandMark';
 import { InlineAudio, InlineClip } from './InlineMedia';
 import { cardChrome } from './CardSurface';
-import { FollowingOrderSheet, TopicMuteSheet, type FollowingOrder } from './FeedMenus';
+import { FollowingOrderSheet, TopicMuteSheet } from './FeedMenus';
+import { PreferencesContext } from './Preferences';
 import { card, ink, meta, paper, tokens } from '../lib/tokens';
 
 const serif = Platform.select({ ios: 'Georgia', default: 'serif' });
@@ -382,8 +383,7 @@ export default function Timeline() {
   // The rail's own menus: Recent can put themes aside, Following can be
   // ordered by time or by attention. Tapping the active tab opens its
   // menu — the chevron says which tabs have one.
-  const [mutedTopics, setMutedTopics] = useState<string[]>([]);
-  const [followingOrder, setFollowingOrder] = useState<FollowingOrder>('recent');
+  const { mutedTopics, setMutedTopics, followingOrder, setFollowingOrder } = useContext(PreferencesContext);
   const [menu, setMenu] = useState<null | 'themes' | 'order'>(null);
   const MENUS: Record<string, 'themes' | 'order'> = { recent: 'themes', following: 'order' };
 
