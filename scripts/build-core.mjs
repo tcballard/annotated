@@ -33,6 +33,7 @@ export const CORE_MODULES = {
   'avatar': ['src/avatar.js', 'extension/avatar.js'],
   'capture-state': ['src/capture-state.js', 'extension/capture-state.js'],
   'share-kit': ['src/share-kit.js', 'extension/share-kit.js'],
+  'preferences': ['src/preferences.js', 'server/preferences.js', 'extension/preferences.js'],
   'icons': ['src/icons.js', 'extension/icons.js'],
 };
 

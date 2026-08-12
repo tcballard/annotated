@@ -21,6 +21,7 @@ media-draft-store.js
 options.css
 options.html
 options.js
+preferences.js
 share-kit.js
 share-links.js
 sidepanel.css

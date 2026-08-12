@@ -60,7 +60,7 @@ export default function SettingsScreen() {
             trackColor={{ true: tokens.chrome, false: tokens.border }}
           />
         </View>
-        <Text style={styles.note}>This build ships seeded demo annotations so the feed is never empty. Hiding them shows only real activity. The choice is kept on this device.</Text>
+        <Text style={styles.note}>This build ships seeded demo annotations so the feed is never empty. Hiding them shows only real activity. The choice follows your account, so the web app and the extension read it too.</Text>
       </View>
 
       <Text style={styles.section}>Notifications</Text>

@@ -182,7 +182,7 @@ test('explore wears the chrome X gives it, and the gear holds its settings', asy
   assert.match(exploreSettings, /Hide demo accounts/);
 });
 
-test('reader choices are kept on the device, and validated on the way back in', async () => {
+test('reader choices are cached on the device and validated on the way back in', async () => {
   const { readFile } = await import('node:fs/promises');
   const prefs = await readFile(new URL('../mobile/lib/prefs.ts', import.meta.url), 'utf8');
   const provider = await readFile(new URL('../mobile/components/Preferences.tsx', import.meta.url), 'utf8');
@@ -194,11 +194,8 @@ test('reader choices are kept on the device, and validated on the way back in', 
   assert.match(prefs, /const KEY = 'annotated:preferences:v1'/, 'the record is versioned');
   // a stored blob is input like any other: unknown values fall back to
   // the defaults rather than reaching a query string
-  assert.match(prefs, /value\.exploreSort === 'recent' \? 'recent' : 'trending'/);
-  assert.match(prefs, /value\.followingOrder === 'popular' \? 'popular' : 'recent'/);
-  assert.match(prefs, /typeof topic === 'string'/, 'muted topics are strings or nothing');
-  assert.match(prefs, /slice\(0, MAX_MUTED\)/, 'the muted list is bounded');
-  assert.match(prefs, /return DEFAULT_PREFERENCES;/, 'an unreadable record degrades to the defaults');
+  assert.match(prefs, /from '\.\/core\/preferences'/, 'the shape is the product-wide definition, not a second copy');
+  assert.match(prefs, /return DEFAULT_PREFERENCES;/, 'an unreadable cache degrades to the defaults');
   // nothing is written before the stored record has been read, or a cold
   // start would overwrite the reader's choices with the defaults
   assert.match(provider, /const hydrated = useRef\(false\);/);

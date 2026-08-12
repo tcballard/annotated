@@ -4,6 +4,7 @@ import { deleteMediaDraft, readMediaDraft, stageMediaDraft } from './media-draft
 import { mediaPresentation } from './media-presentation.js';
 import { publicAnnotationUrl } from './share-links.js';
 import { shareDescriptor, shareTargets } from './share-kit.js';
+import { DEFAULT_PREFERENCES, parsePreferences } from './preferences.js';
 import { authNoticeFromSearch, enabledProviders, oauthStartUrl, providerLabel } from './auth-ui.js';
 import { MAX_CLIP_SECONDS } from './clip-range.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
@@ -148,6 +149,7 @@ const initialState = {
   topic: '',
   feedCursor: null,
   feedQuery: '',
+  preferences: DEFAULT_PREFERENCES,
   moderationClaims: [],
   moderationLoading: false,
   transparencyData: null,
@@ -344,6 +346,7 @@ const meMenu = () => `<div class="me-menu" role="menu" aria-label="Account">
   <div class="me-name">@${escapeHTML(state.user?.handle || '')}</div>
   <button role="menuitem" data-action="me-view-profile">View profile</button>
   <button role="menuitem" data-action="me-view-library">Your library</button>
+  <button role="menuitem" data-action="set-view" data-view="settings">Settings</button>
   <button role="menuitem" data-action="logout">Sign out</button>
 </div>`;
 
@@ -401,7 +404,7 @@ const recoverAuthError = (error, message = 'Your session has expired. Sign in ag
 /* ── routing ───────────────────────────────────────────────────────── */
 
 // transparency is routed like a doc page but loads live data via navigate().
-const DOC_VIEWS = { about: '/about', extension: '/extension', panelDemo: '/extension/demo', app: '/app', audit: '/audit', help: '/help', rights: '/rights', terms: '/terms', transparency: '/transparency' };
+const DOC_VIEWS = { about: '/about', extension: '/extension', panelDemo: '/extension/demo', app: '/app', audit: '/audit', help: '/help', rights: '/rights', settings: '/settings', terms: '/terms', transparency: '/transparency' };
 
 // The feed's three panes are real places: /  /trending  /following (and
 // /trending?topic=… for a chip). A refresh or a shared link lands on the
@@ -544,6 +547,9 @@ const bootstrap = async () => {
     state.authRequired = Boolean(providers.required);
     state.capabilities = capabilities;
     state.user = await api.me().then((result) => result.user).catch(() => null);
+    // Preferences follow the account: the same record the app and the
+    // panel read, applied to this feed.
+    state.preferences = parsePreferences(state.user?.preferences);
     if (state.authNotice === 'success') recordProductEvent('auth_completed', { surface: 'web' });
     if (state.authNotice === 'cancelled' || state.authNotice === 'error') recordProductEvent('auth_cancelled', { surface: 'web', result: state.authNotice });
     if (canModerate() && state.activeView === 'moderation') await loadModerationClaims();
@@ -754,7 +760,13 @@ const railView = () => {
 };
 
 const feedView = () => {
-  const items = state.feedAnnotations.map(annotationToFeedItem);
+  // Demo accounts and muted themes are the reader's choice, kept on the
+  // account — the same filter the app applies to the same list.
+  const visibleAnnotations = state.feedAnnotations.filter((annotation) => {
+    if (state.preferences.hideDemo && annotation.isDemo) return false;
+    return !(annotation.topic && state.preferences.mutedTopics.includes(annotation.topic));
+  });
+  const items = visibleAnnotations.map(annotationToFeedItem);
   const trendingEmpty = !state.feedFollowing && state.feedSort === 'trending';
   const emptyTitle = state.feedQuery ? `Nothing matches “${escapeHTML(state.feedQuery)}”.` : state.feedFollowing ? 'No annotations from people you follow yet.' : trendingEmpty ? 'Nothing is trending yet.' : 'No public annotations yet.';
   const emptyBody = state.feedQuery ? 'Try a different source, author, or phrase.' : state.feedFollowing ? 'Follow someone whose context you want to keep up with.' : trendingEmpty ? 'Annotations trend as readers open their originals and respond.' : 'Capture the first source-backed moment and it will appear here.';
@@ -1182,6 +1194,41 @@ const docPage = (title, lead, body) => `
     <div class="docbody">${body}</div>
   </div>`;
 
+// Settings: the same record the app's Settings screen and the panel
+// read. Signed out there is nothing to save — the page says so rather
+// than pretending the controls work.
+const settingsView = () => {
+  const preferences = state.preferences;
+  const topicRow = (topic) => {
+    const muted = preferences.mutedTopics.includes(topic.slug);
+    return `<label class="pref-row"><span>${escapeHTML(topic.label)}</span><input type="checkbox" data-action="pref-topic" data-topic="${escapeHTML(topic.slug)}" ${muted ? '' : 'checked'} ${state.user ? '' : 'disabled'}></label>`;
+  };
+  return docPage('Settings', 'your account, your feed', `
+    ${state.user ? '' : '<div class="card"><h2>Sign in to keep these</h2><p>Preferences follow your account, so the choices you make here apply in the extension and the mobile app too. <button class="btn" data-action="open-signin">Sign in</button></p></div>'}
+    <div class="card"><h2>Explore</h2>
+      <p>How the explore feed ranks what it shows you.</p>
+      <div class="pref-choice">
+        <label class="pref-row"><span>Trending<small>Ranked by opens of the original.</small></span><input type="radio" name="exploreSort" data-action="pref-sort" data-value="trending" ${preferences.exploreSort === 'trending' ? 'checked' : ''} ${state.user ? '' : 'disabled'}></label>
+        <label class="pref-row"><span>Recent<small>Newest annotations first.</small></span><input type="radio" name="exploreSort" data-action="pref-sort" data-value="recent" ${preferences.exploreSort === 'recent' ? 'checked' : ''} ${state.user ? '' : 'disabled'}></label>
+      </div>
+    </div>
+    <div class="card"><h2>Following</h2>
+      <p>How your Following timeline is ordered.</p>
+      <div class="pref-choice">
+        <label class="pref-row"><span>Most recent<small>Newest annotations from people you follow.</small></span><input type="radio" name="followingOrder" data-action="pref-order" data-value="recent" ${preferences.followingOrder === 'recent' ? 'checked' : ''} ${state.user ? '' : 'disabled'}></label>
+        <label class="pref-row"><span>Popular<small>Ranked by opens of the original.</small></span><input type="radio" name="followingOrder" data-action="pref-order" data-value="popular" ${preferences.followingOrder === 'popular' ? 'checked' : ''} ${state.user ? '' : 'disabled'}></label>
+      </div>
+    </div>
+    <div class="card"><h2>Themes</h2>
+      <p>Turn a theme off to keep it out of your timeline, on every surface.</p>
+      <div class="pref-choice">${TOPICS.map(topicRow).join('')}</div>
+    </div>
+    <div class="card"><h2>Demo content</h2>
+      <label class="pref-row"><span>Hide demo accounts<small>This build seeds demo annotations so the feed is never empty.</small></span><input type="checkbox" data-action="pref-demo" ${preferences.hideDemo ? 'checked' : ''} ${state.user ? '' : 'disabled'}></label>
+    </div>
+  `);
+};
+
 const helpView = () => docPage('Help centre', 'how the margin works', `
   <div class="card"><h2>Getting started</h2>
     <ol class="doc-steps">
@@ -1541,6 +1588,7 @@ const render = () => {
     : state.activeView === 'sourceGraph' ? sourceGraphView()
     : state.activeView === 'publisher' ? publisherView()
     : state.activeView === 'moderation' ? moderationView()
+    : state.activeView === 'settings' ? settingsView()
     : state.activeView === 'help' ? helpView()
     : state.activeView === 'about' ? aboutView()
     : state.activeView === 'extension' ? extensionView()
@@ -1833,7 +1881,10 @@ const loadFeed = async ({ append = false } = {}) => {
       params.set('sort', 'trending');
       if (state.feedTopic) params.set('topic', state.feedTopic);
     }
-    if (state.feedFollowing) params.set('following', 'true');
+    if (state.feedFollowing) {
+      params.set('following', 'true');
+      if (state.preferences.followingOrder === 'popular') params.set('sort', 'trending');
+    }
     if (state.feedQuery.trim()) params.set('q', state.feedQuery.trim());
     if (append && state.feedCursor) params.set('cursor', state.feedCursor);
     const result = await api.feed(params.toString());
@@ -2412,6 +2463,25 @@ app.addEventListener('click', (event) => {
     render(); return;
   }
   if (action === 'share-close') { state.shareModal = null; render(); return; }
+  if (action === 'pref-sort' || action === 'pref-order' || action === 'pref-demo' || action === 'pref-topic') {
+    const next = { ...state.preferences };
+    if (action === 'pref-sort') next.exploreSort = target.dataset.value === 'recent' ? 'recent' : 'trending';
+    if (action === 'pref-order') next.followingOrder = target.dataset.value === 'popular' ? 'popular' : 'recent';
+    if (action === 'pref-demo') next.hideDemo = Boolean(target.checked);
+    if (action === 'pref-topic') {
+      const topic = target.dataset.topic || '';
+      // checked means "show me this theme"
+      next.mutedTopics = target.checked
+        ? next.mutedTopics.filter((slug) => slug !== topic)
+        : [...new Set([...next.mutedTopics, topic])];
+    }
+    state.preferences = parsePreferences(next);
+    render();
+    api.savePreferences(state.preferences)
+      .then((result) => { state.preferences = parsePreferences(result.preferences); })
+      .catch(() => notify('That preference could not be saved.'));
+    return;
+  }
   if (action === 'share-target') {
     // the anchor itself opens the door — this only records the walk-through
     const annotation = state.shareModal?.annotation || {};

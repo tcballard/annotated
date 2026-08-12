@@ -1,7 +1,7 @@
 // The two small menus the Home rail carries, in X's shape and our
 // vocabulary: Recent can put topics aside, and Following can be ordered
 // by time or by attention. Both hang off the active tab's chevron, both
-// apply immediately, and both are kept on the device (lib/prefs).
+// apply immediately, and both follow the account (components/Preferences).
 
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -68,7 +68,7 @@ export const TopicMuteSheet = ({
     title="Themes"
     action={muted.length ? { label: 'Show every theme', onPress: () => { tick(); setMuted([]); } } : undefined}
   >
-    <Text style={styles.blurb}>Turn a theme off to keep it out of Recent. Kept on this device.</Text>
+    <Text style={styles.blurb}>Turn a theme off to keep it out of Recent, here and on every other surface.</Text>
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollBody}>
       {TOPICS.map((entry) => {
         const on = !muted.includes(entry.slug);

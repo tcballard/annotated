@@ -1,13 +1,14 @@
-// The reader's choices, in one place and kept on the device: how explore
-// ranks, whether the seeded demo accounts are in the picture, which
-// themes Recent puts aside, and how Following is ordered. Read once at
-// boot, written whenever one changes — a preference that forgets itself
-// is not a preference.
+// The reader's choices, in one place: how explore ranks, whether the
+// seeded demo accounts are in the picture, which themes Recent puts
+// aside, and how Following is ordered.
 //
-// The gear's sheet lives here too: it is the Explore half of this record,
-// in the shape X gives it.
+// They follow the account, not the device. The device cache paints the
+// first frame; when the session resolves, the account's record wins and
+// replaces it, and every change is written to both — so the same choices
+// apply in the web app and the extension panel. Signed out, the device
+// copy is the whole story.
 
-import { createContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +21,9 @@ import {
   type FollowingOrder,
   type Preferences,
 } from '../lib/prefs';
+import { parsePreferences, samePreferences } from '../lib/core/preferences';
+import { api } from '../lib/api';
+import { AccountContext } from './AccountContext';
 import { card, ink, meta, tokens } from '../lib/tokens';
 
 export type { ExploreSort, FollowingOrder };
@@ -40,8 +44,9 @@ export const PreferencesContext = createContext<PreferencesApi>({
 });
 
 export const PreferencesProvider = ({ children }: { children: ReactNode }) => {
+  const { me } = use(AccountContext);
   const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
-  // Nothing is written before the stored record has been read, or the
+  // Nothing is written before the cached record has been read, or the
   // defaults would overwrite the reader's choices on every cold start.
   const hydrated = useRef(false);
 
@@ -55,10 +60,35 @@ export const PreferencesProvider = ({ children }: { children: ReactNode }) => {
     return () => { cancelled = true; };
   }, []);
 
+  // The account is the authority: when a session resolves, its record
+  // replaces whatever this device was holding, and the cache follows so
+  // the next cold start opens on the same choices.
+  const accountPreferences = me ? parsePreferences((me as { preferences?: unknown }).preferences) : null;
+  const accountKey = accountPreferences ? JSON.stringify(accountPreferences) : '';
+  useEffect(() => {
+    if (!accountKey) return;
+    const record = parsePreferences(JSON.parse(accountKey));
+    hydrated.current = true;
+    setPreferences((current) => {
+      if (samePreferences(current, record)) return current;
+      void writePreferences(record);
+      return record;
+    });
+  }, [accountKey]);
+
+  // The writer needs to know whether there is an account without taking
+  // a dependency on it — the callback stays identity-stable.
+  const signedIn = useRef(false);
+  signedIn.current = Boolean(me);
+
   const update = useCallback((patch: Partial<Preferences>) => {
     setPreferences((current) => {
       const next = { ...current, ...patch };
       if (hydrated.current) void writePreferences(next);
+      // Signed in, the account keeps the record; the write is
+      // fire-and-forget because the device copy already carries it and
+      // the next session read will reconcile.
+      if (signedIn.current) void api.savePreferences(next).catch(() => {});
       return next;
     });
   }, []);
@@ -134,7 +164,7 @@ export const ExploreSettingsSheet = ({
             trackColor={{ true: tokens.chrome, false: tokens.border }}
           />
         </View>
-        <Text style={styles.foot}>Kept on this device.</Text>
+        <Text style={styles.foot}>Saved to your account — the web app and the extension use the same choices.</Text>
       </View>
     </Modal>
   );

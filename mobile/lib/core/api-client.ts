@@ -62,6 +62,10 @@ export const createApiClient = ({ origin = '', fetchFn }: ApiClientOptions = {})
     recordOpen: (slug: string) => apiRequest(`/api/annotations/${encodeURIComponent(slug)}/open`, { method: 'POST' }),
     notifications: () => apiRequest('/api/notifications'),
     notificationsSeen: () => apiRequest('/api/notifications/seen', { method: 'POST' }),
+    // Preferences travel whole: the record the reader now holds, not a
+    // patch, so two surfaces editing in turn cannot merge into a state
+    // neither of them chose.
+    savePreferences: (preferences: unknown) => apiRequest('/api/preferences', { method: 'PUT', body: JSON.stringify({ preferences }) }),
     profile: (handle: string) => apiRequest(`/api/profiles/${encodeURIComponent(handle)}`),
     sourceHub: (host: string, cursor?: string) => apiRequest(`/api/sources/${encodeURIComponent(host)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),
     sourceGraph: (sourceId: string, cursor?: string) => apiRequest(`/api/sources/exact/${encodeURIComponent(sourceId)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`),

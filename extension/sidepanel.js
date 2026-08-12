@@ -6,6 +6,7 @@ import { MAX_CLIP_SECONDS, moveClipBoundary, normalizeClipRange } from './clip-r
 import { isTopic, TOPICS } from './topics.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
 import { shareDescriptor, shareTargets } from './share-kit.js';
+import { DEFAULT_PREFERENCES, parsePreferences } from './preferences.js';
 import { BRAND_ICONS, PRODUCT_ICONS } from './icons.js';
 import { avatarColor, avatarInitial } from './avatar.js';
 import { normalizeCaptureDraft } from './capture-state.js';
@@ -2225,7 +2226,9 @@ const paintTimeline = () => {
     timeline.innerHTML = `<div class="state">The timeline could not be loaded. <button type="button" data-feed-retry>Try again</button></div>`;
     return;
   }
-  if (!cache.items.length) {
+  // The reader's own filters, from the account's record.
+  const items = visibleToReader(cache.items);
+  if (!items.length) {
     const mark = '<img class="mark" src="icons/icon-128.png" alt="" aria-hidden="true" />';
     // "Yours would be the first" is a lie on chrome:// — nobody's can be.
     const pageEmpty = /^https?:/.test(currentTab.url || '')
@@ -2236,7 +2239,7 @@ const paintTimeline = () => {
       : `<div class="empty">${mark}<h2>${panelMode === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${panelMode === 'following' ? 'Follow someone whose context you want to keep up with.' : 'Capture the first source-backed moment and it will appear here.'}</p>${panelMode === 'following' ? '<button type="button" data-feed-tab-jump="recent">Browse Recent</button>' : ''}</div>`;
     return;
   }
-  timeline.innerHTML = `${cache.items.map(timelinePost).join('')}${cache.nextCursor ? '<button class="load-more" type="button" data-load-more>Load more</button>' : ''}`;
+  timeline.innerHTML = `${items.map(timelinePost).join('')}${cache.nextCursor ? '<button class="load-more" type="button" data-load-more>Load more</button>' : ''}`;
   // The stagger plays only on a feed's first paint — never on the in-place
   // re-renders a like or retry causes.
   if (freshFeedTab === panelMode) {
@@ -2478,7 +2481,17 @@ const loadAuthProviders = async () => {
   return Boolean(auth);
 };
 
+// Preferences follow the account, so the panel reads the same record the
+// web app and the native app do — a theme muted on one surface stays
+// muted here.
+let panelPreferences = DEFAULT_PREFERENCES;
+const visibleToReader = (items) => items.filter((item) => {
+  if (panelPreferences.hideDemo && item.isDemo) return false;
+  return !(item.topic && panelPreferences.mutedTopics.includes(item.topic));
+});
+
 const setAuthState = (signedIn, user = panelUser) => {
+  panelPreferences = signedIn ? parsePreferences(user?.preferences) : DEFAULT_PREFERENCES;
   panelUser = signedIn ? user : null;
   meButton.hidden = !signedIn;
   if (signedIn) {

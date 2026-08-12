@@ -1592,3 +1592,27 @@ html.shell-mode .feed:has(.feedhead) { padding-bottom: 24px; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ── preference rows ────────────────────────────────────────────────── */
+
+/* The settings page is a doc page with controls: one row per choice,
+   label left, control right, the explanation beneath the label where it
+   belongs rather than in a tooltip. */
+.pref-choice { display: flex; flex-direction: column; }
+.pref-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 6px 0;
+  border-top: 1px solid var(--hair);
+  font-size: 13.5px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.pref-choice .pref-row:first-child { border-top: 0; }
+.pref-row span { display: flex; flex-direction: column; gap: 2px; }
+.pref-row small { color: var(--meta); font-size: 12.5px; line-height: 1.45; }
+.pref-row input { accent-color: var(--chrome); width: 18px; height: 18px; flex-shrink: 0; }
+.pref-row:has(input:disabled) { cursor: default; color: var(--meta); }
