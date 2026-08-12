@@ -39,7 +39,26 @@ test('the card tree carries the ink chrome, the CLIP framing, and both voices', 
   assert.match(flat, /0:48 · 240p/);
   assert.match(flat, /CardSerif/);        // the source speaks in serif
   assert.match(flat, /#B0674D/);          // terracotta on the moment
-  assert.match(flat, /THE ORIGINAL IS ONE CLICK AWAY/);
+  // The source is a line of its own, the shape a link preview is read in
+  // (BBC's shared-quote card): the title in bold, then where it lives and
+  // who kept it. No slogan crowds that row — the card's argument is the
+  // quote standing next to its source.
+  assert.match(flat, /"fontSize":31,"fontWeight":700/, 'the source title is the second voice, not a meta string');
+  assert.match(flat, /kept by @tcballard/);
+  assert.doesNotMatch(flat, /THE ORIGINAL IS ONE CLICK AWAY/, 'the slogan is retired');
+  assert.doesNotMatch(flat, /SOURCE-FIRST NOTES/, 'the chrome bar carries the lockup alone');
+});
+
+test('the source line shows a thumbnail only when the body is not already showing it', () => {
+  const shot = 'data:image/png;base64,SEVMTE8=';
+  // a screenshot capture spends the body on the shot, so the source line
+  // does not repeat it
+  const shotCard = JSON.stringify(annotationCard({ ...ogCardData({ ...annotation, sourceType: 'article' }, author), screenshot: shot }));
+  assert.equal((shotCard.match(/SEVMTE8=/g) || []).length, 1, 'the shot appears once, in the body');
+  // a clip crops its poster to a strip, so the square beside the source is
+  // the first full look at it
+  const clipCard = JSON.stringify(annotationCard({ ...ogCardData(annotation, author), poster: shot }));
+  assert.equal((clipCard.match(/SEVMTE8=/g) || []).length, 2, 'the poster rides in the band and beside the source');
 });
 
 test('the CLIP frame carries a poster when one exists, under its own overlays', () => {
