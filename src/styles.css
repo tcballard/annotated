@@ -1378,6 +1378,19 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   .chip.duration { align-self: flex-start; }
   .libhead .lib-counts { margin-left: 0; width: 100%; }
   .srcstrip { flex-wrap: wrap; }
+  /* Phone cards read like the app's: one byline line — who, then when —
+     and actions as icons with their counts. Labels are a pointer-sized
+     affordance; at this width wrapping them orphaned the primary action
+     onto a second right-aligned row, which is what read as broken. The
+     verb goes with them (the source line below already names the type);
+     "edited" stays, because provenance is not decoration. */
+  .post .byline { flex-wrap: nowrap; }
+  .post .byline .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .post .byline .verb { display: none; }
+  .post .byline .demo-badge, .post .byline .topic-tag { flex-shrink: 0; }
+  .post .actions { flex-wrap: nowrap; gap: 2px; }
+  .post .actions .act-label { display: none; }
+  .post .actions .act { min-width: 44px; min-height: 44px; justify-content: center; padding: 6px 8px; flex-shrink: 0; }
   /* The feed switcher stays a top rail at phone widths — the same rail,
      the same values, as the native app's Home. Swipes still flick the
      panes; the rail names them. */

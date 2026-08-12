@@ -620,9 +620,13 @@ const chromeBar = () => {
 
 const openOriginalAction = (item, { withLabel = true } = {}) => {
   const href = openOriginalHref(item);
-  const count = item.opens ? ` <span class="n">· ${item.opens}</span>` : '';
+  // The separator belongs to the label, not the count: where the label
+  // steps aside (phone cards read as icons and counts, like the app), an
+  // orphaned "· 15" would read as a typo.
+  const label = `<span class="act-label">${withLabel ? 'Open original' : 'Open'}${item.opens ? ' ·' : ''}</span>`;
+  const count = item.opens ? `<span class="n">${item.opens}</span>` : '';
   const opensTip = item.opens ? ` title="${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original"` : '';
-  return `<a class="act primary" href="${escapeHTML(href)}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug || '')}"${opensTip}>${icon('open')}${withLabel ? `Open original${count}` : `Open${count}`}</a>`;
+  return `<a class="act primary" href="${escapeHTML(href)}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug || '')}"${opensTip}>${icon('open')}${label}${count}</a>`;
 };
 
 const hubLink = (host) => host ? `<a href="/s/${encodeURIComponent(host)}" data-action="open-hub" data-host="${escapeHTML(host)}" title="See everything annotated from ${escapeHTML(host)}">${escapeHTML(host)}</a>` : '';
@@ -693,17 +697,17 @@ const feedPost = (item) => {
     ? `<p class="note">${escapeHTML(item.commentary)}</p>`
     : `<p class="note">${icon('mic')} Audio note${item.audioDuration ? ` · ${escapeHTML(formatTime(item.audioDuration))}` : ''} — listen below.</p>`;
   const followAct = item.authorId && item.authorId !== state.user?.id
-    ? `<button class="act ${state.followingIds[item.authorId] ? 'is-on' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${icon('follow')}${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>`
+    ? `<button class="act ${state.followingIds[item.authorId] ? 'is-on' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${icon('follow')}<span class="act-label">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</span></button>`
     : '';
   return `
   <article class="post" data-action="open-annotation" data-slug="${escapeHTML(item.slug || '')}">
     ${avatarHtml(item)}
     <div class="content">
-      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a>${item.isDemo ? '<span class="demo-badge" title="Demonstration data, not real user activity">demo</span>' : ''}<span class="meta">· ${escapeHTML(annotationVerb(item.type))}${item.editedAt ? ' · edited' : ''}</span>${item.topic ? `<button class="topic-tag" data-action="feed-topic" data-topic="${escapeHTML(item.topic)}" title="See what's trending in ${escapeHTML(topicLabel(item.topic))}">${escapeHTML(topicLabel(item.topic))}</button>` : ''}<span class="meta posttime">${escapeHTML(item.time)}</span></div>
+      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a>${item.isDemo ? '<span class="demo-badge" title="Demonstration data, not real user activity">demo</span>' : ''}<span class="meta verb">· ${escapeHTML(annotationVerb(item.type))}</span>${item.editedAt ? '<span class="meta">· edited</span>' : ''}${item.topic ? `<button class="topic-tag" data-action="feed-topic" data-topic="${escapeHTML(item.topic)}" title="See what's trending in ${escapeHTML(topicLabel(item.topic))}">${escapeHTML(topicLabel(item.topic))}</button>` : ''}<span class="meta posttime">${escapeHTML(item.time)}</span></div>
       ${note}
       ${srcCard(item)}
       <div class="actions">
-        <button class="act" data-action="open-respond" data-slug="${escapeHTML(item.slug || '')}">${icon('respond')}<span class="n">${item.comments || 'Respond'}</span></button>
+        <button class="act" data-action="open-respond" data-slug="${escapeHTML(item.slug || '')}">${icon('respond')}${item.comments ? `<span class="n">${item.comments}</span>` : '<span class="act-label">Respond</span>'}</button>
         <button class="act ${item.likedByMe ? 'is-liked' : ''}" data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">${icon('heart')}${item.likes ? `<span class="n">${item.likes}</span>` : ''}</button>
         ${followAct}
         ${openOriginalAction(item)}
