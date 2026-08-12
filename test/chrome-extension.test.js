@@ -534,6 +534,32 @@ test('sign-in is one door: a single trigger, both providers behind a modal', asy
   assert.match(runtime, /if \(signedIn\) closeSignin\(\)/, 'success closes it everywhere');
 });
 
+test('a signed-out panel always shows the door, backend reachable or not', async () => {
+  const html = await read('sidepanel.html');
+  const runtime = await read('sidepanel.js');
+  const styles = await read('sidepanel.css');
+  // The door used to hang on provider discovery, which only happens while
+  // the backend answers — a panel that booted offline showed no way in at
+  // all, in the header or the body.
+  assert.match(runtime, /signInOpen\.hidden = signedIn;/, 'the header door depends on the session, not on provider discovery');
+  assert.match(runtime, /signinPrompt\.hidden = signedIn;/, 'the body prompt follows the same fact');
+  assert.doesNotMatch(runtime, /signInOpen\.hidden = signedIn \|\| !anyProviderAvailable\(\)/, 'provider discovery must not gate the door');
+  // …and the offline branch has to set that state at all, or the panel
+  // keeps whatever the markup shipped with (both hidden).
+  assert.match(runtime, /backendOnline = false;\s*\n(?:\s*\/\/[^\n]*\n)*\s*setAuthState\(Boolean\(await extensionStorage\.getAuthToken/, 'going offline still resolves the local session');
+  assert.match(html, /id="signinPrompt" hidden/, 'the body prompt exists and starts hidden');
+  assert.match(html, /Sign in to publish, follow, and keep your library/);
+  assert.match(styles, /\.signin-prompt \{/);
+  // Opening the door with nothing known asks the backend once more, then
+  // tells the truth about which failure this is.
+  assert.match(runtime, /const loadAuthProviders = async \(\)/);
+  assert.match(runtime, /The annotated backend is unreachable\./, 'unreachable is not reported as unconfigured');
+  // The header trigger is wrapped, not passed by reference: the raw click
+  // event used to land in the modal as its context line.
+  assert.match(runtime, /signInOpen\.addEventListener\('click', \(\) => \{ void openSignin\(\); \}\)/);
+  assert.match(runtime, /signinPromptBtn\.addEventListener\('click', \(\) => \{ void openSignin\(\); \}\)/);
+});
+
 test('the screenshot is a snip: draw the region on the page, crop in the panel', async () => {
   const html = await read('sidepanel.html');
   const runtime = await read('sidepanel.js');

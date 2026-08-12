@@ -63,6 +63,8 @@ const error = $('#error');
 const backendStatus = $('#backendStatus');
 const authActions = $('#authActions');
 const signInOpen = $('#signInOpen');
+const signinPrompt = $('#signinPrompt');
+const signinPromptBtn = $('#signinPromptBtn');
 const signinVeil = $('#signinVeil');
 const signinCancel = $('#signinCancel');
 const signinTerms = $('#signinTerms');
@@ -2462,6 +2464,20 @@ chrome.storage?.onChanged?.addListener((changes, areaName) => {
 // behind it in a modal.
 const anyProviderAvailable = () => Object.keys(availableProviders).some((provider) => availableProviders[provider]);
 
+const syncProviderButtons = () => {
+  signinVeil.querySelectorAll('[data-auth]').forEach((button) => { button.hidden = !availableProviders[button.dataset.auth]; });
+};
+
+// Which providers exist is the backend's answer, and it only arrives when
+// the backend is reachable. Ask again on demand so a panel that booted
+// offline can still open the door once the network returns.
+const loadAuthProviders = async () => {
+  const auth = await apiRequest('/api/auth/providers').catch(() => null);
+  if (auth) availableProviders = auth.providers || {};
+  syncProviderButtons();
+  return Boolean(auth);
+};
+
 const setAuthState = (signedIn, user = panelUser) => {
   panelUser = signedIn ? user : null;
   meButton.hidden = !signedIn;
@@ -2472,15 +2488,31 @@ const setAuthState = (signedIn, user = panelUser) => {
     meMenu.hidden = true;
     meButton.setAttribute('aria-expanded', 'false');
   }
-  signInOpen.hidden = signedIn || !anyProviderAvailable();
-  signinVeil.querySelectorAll('[data-auth]').forEach((button) => { button.hidden = !availableProviders[button.dataset.auth]; });
+  // The door does not depend on having reached the backend yet: a signed
+  // out reader always sees it, in the header and in the panel body. What
+  // an unreachable backend changes is the message behind it, not whether
+  // the way in exists.
+  signInOpen.hidden = signedIn;
+  signinPrompt.hidden = signedIn;
+  syncProviderButtons();
   if (signedIn) closeSignin();
 };
 
 let signinReturnFocus = null;
 const signinContext = $('#signinContext');
-const openSignin = (context = '') => {
-  if (!anyProviderAvailable()) { showError('Sign-in is not configured on this backend.'); return; }
+const openSignin = async (context = '') => {
+  // Nothing known yet usually means the panel booted while the backend
+  // was unreachable — ask once more before deciding which honest answer
+  // this is: nothing configured, or nothing reachable.
+  if (!anyProviderAvailable()) {
+    const reached = await loadAuthProviders();
+    if (!anyProviderAvailable()) {
+      showError(reached
+        ? 'Sign-in is not configured on this backend.'
+        : 'The annotated backend is unreachable. Sign in once the connection is back — your captures stay queued here.');
+      return;
+    }
+  }
   signinVeil.classList.remove('is-closing');
   signinContext.textContent = context;
   signinContext.hidden = !context;
@@ -2503,7 +2535,10 @@ const closeSignin = () => {
   setTimeout(finish, 140);
 };
 
-signInOpen.addEventListener('click', openSignin);
+// Wrapped, not passed by reference: the listener's own event object would
+// arrive as the modal's context line and render as "[object PointerEvent]".
+signInOpen.addEventListener('click', () => { void openSignin(); });
+signinPromptBtn.addEventListener('click', () => { void openSignin(); });
 signinCancel.addEventListener('click', closeSignin);
 signinVeil.addEventListener('click', (event) => { if (event.target === signinVeil) closeSignin(); });
 
@@ -2621,6 +2656,10 @@ const checkBackend = async () => {
     }
   } catch {
     backendOnline = false;
+    // Being unreachable says nothing about who you are. The locally stored
+    // token still decides whether this panel shows your account or the
+    // door — without this, a panel that boots offline showed neither.
+    setAuthState(Boolean(await extensionStorage.getAuthToken().catch(() => null)));
     backendStatus.classList.remove('is-live');
     backendStatus.querySelector('.backend-label').textContent = 'offline';
     if (wasOnline !== false) backendState.textContent = 'Offline — captures queue locally and retry.';

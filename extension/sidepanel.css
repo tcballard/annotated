@@ -1133,3 +1133,36 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 .share-copy { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; color: var(--ink); background: var(--paper); }
 .share-copy:hover { background: var(--soft); }
 .share-copy svg { width: 15px; height: 15px; }
+
+/* ── the signed-out door ────────────────────────────────────────────── */
+
+/* A signed-out reader sees the door while reading, not only when a
+   publish is already in flight — and it stays put when the backend is
+   unreachable, because being offline is not the same as being anonymous.
+   Chrome, not the moment: ink fill, no accent. */
+.signin-prompt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 14px 0;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.signin-prompt p { flex: 1; color: var(--ink-soft); font-size: 12px; line-height: 16px; }
+
+.signin-prompt-btn {
+  flex-shrink: 0;
+  background: var(--chrome);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 99px;
+  padding: 0 14px;
+  min-height: 32px;
+  transition: background .12s ease;
+}
+
+.signin-prompt-btn:hover { background: var(--chrome-dark); }
