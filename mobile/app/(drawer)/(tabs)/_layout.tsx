@@ -69,8 +69,9 @@ export default function TabsLayout() {
         name="search"
         options={{
           title: 'Search',
-          headerTitle: 'Search',
-          headerTitleStyle: styles.headerTitle,
+          // Explore draws its own chrome — avatar, field, gear — so the
+          // navigator header would only duplicate the top-left avatar.
+          headerShown: false,
           tabBarIcon: ({ color, size }) => <Icon name="search" color={color} size={size} />,
         }}
       />
@@ -81,6 +82,10 @@ export default function TabsLayout() {
           headerTitle: 'Capture',
           headerTitleStyle: styles.headerTitle,
           sceneStyle: webSceneStyle,
+          // The capture desk is a web surface: mounting it with the
+          // navigator instead of on first press means the WebView has
+          // already booted by the time the pen is tapped.
+          lazy: false,
           tabBarIcon: ({ color, size }) => <Icon name="edit-3" color={color} size={size} />,
         }}
         listeners={{

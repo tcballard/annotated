@@ -9,6 +9,7 @@ import { useCallback, useContext, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import Icon from './Icon';
+import { CardSurface } from './CardSurface';
 import { relTime } from '../lib/core/feed-item';
 import { avatarColor, avatarInitial } from '../lib/core/avatar';
 import { api } from '../lib/api';
@@ -136,8 +137,8 @@ export default function NotificationsScreen() {
       contentContainerStyle={[styles.list, { paddingBottom: 24 }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} tintColor={meta} />}
       renderItem={({ item: group }) => (
-        <Pressable
-          style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+        <CardSurface
+          style={styles.row}
           onPress={() => {
             if (group.annotation?.slug) router.push(`/web/a/${encodeURIComponent(group.annotation.slug)}`);
             else if (group.actors[0]?.handle) router.push(`/web/u/${encodeURIComponent(group.actors[0].handle)}`);
@@ -149,7 +150,7 @@ export default function NotificationsScreen() {
             {sentence(group)}
             {group.type === 'response' && group.body ? <Text style={styles.quoteText} numberOfLines={2}>&ldquo;{group.body}&rdquo;</Text> : null}
           </View>
-        </Pressable>
+        </CardSurface>
       )}
       ListEmptyComponent={(
         <View style={styles.cardBox}>
@@ -165,15 +166,10 @@ const styles = StyleSheet.create({
   frame: { flex: 1 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   list: { padding: 14, paddingTop: 6 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    paddingVertical: 13,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.border,
-  },
-  rowPressed: { opacity: 0.92 },
+  // The card chrome itself comes from CardSurface — this only says how
+  // the row lays out inside it, so notifications and the feed cannot
+  // drift apart again.
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   typeIcon: { marginTop: 2, width: 22 },
   main: { flex: 1, minWidth: 0 },
   facepile: { flexDirection: 'row', marginBottom: 7 },

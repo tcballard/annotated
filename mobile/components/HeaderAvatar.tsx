@@ -1,5 +1,6 @@
-// Your avatar, top-left — the menu's handle, X-style. Shared by the
-// navigator headers and the timeline's own collapsing chrome.
+// Your avatar, top-left — the menu's handle, X-style, and the same
+// affordance on every screen. Signed out it wears the person glyph
+// rather than a burger: the control is your identity, not a list.
 
 import { use } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -25,7 +26,7 @@ export default function HeaderAvatar() {
           <View style={[styles.circle, { backgroundColor: me ? avatarColor(me.handle || me.displayName) : tokens.soft }]}>
             {me
               ? <Text style={styles.initial}>{avatarInitial(me)}</Text>
-              : <Icon name="menu" size={16} color={meta} />}
+              : <Icon name="user" size={16} color={meta} />}
           </View>
         )}
     </Pressable>

@@ -4,7 +4,7 @@
 // pills that used to crowd the home menu. Typing swaps to people and
 // annotation results from the same endpoints the web uses, debounced.
 
-import { useContext, useEffect, useRef, useState } from 'react';
+import { use, useContext, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Icon from './Icon';
@@ -16,6 +16,8 @@ import { TOPICS, topicLabel } from '../lib/core/topics';
 import { api } from '../lib/api';
 import { AccountContext } from './AccountContext';
 import { FeedCard, useFeedActions } from './Timeline';
+import HeaderAvatar from './HeaderAvatar';
+import { ExploreSettingsContext, ExploreSettingsSheet } from './ExploreSettings';
 import { card, ink, meta, paper, tokens } from '../lib/tokens';
 
 type Person = { id: string; handle: string; displayName?: string; avatarUrl?: string | null };
@@ -53,22 +55,29 @@ export default function SearchScreen() {
   const [stories, setStories] = useState<Story[]>([]);
   const [exploring, setExploring] = useState(true);
   const requestSeq = useRef(0);
+  // The gear's small menu, X's Explore-settings shape: how explore ranks,
+  // and whether the seeded demo accounts are part of the picture.
+  const settings = use(ExploreSettingsContext);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const visible = (list: FeedItem[]) => (settings.hideDemo ? list.filter((item) => !item.isDemo) : list);
 
   // The explore state: trending for the selected topic, grouped by source.
   useEffect(() => {
     let cancelled = false;
     setExploring(true);
-    const params = new URLSearchParams({ sort: 'trending', limit: '30' });
+    // Explore ranks by trending unless the gear says otherwise.
+    const params = new URLSearchParams({ limit: '30' });
+    if (settings.sort === 'trending') params.set('sort', 'trending');
     if (topic) params.set('topic', topic);
     api.feed(params.toString())
       .then((feed) => {
         if (cancelled) return;
-        setStories(groupStories((feed.annotations || []).map(annotationToFeedItem)));
+        setStories(groupStories(visible((feed.annotations || []).map(annotationToFeedItem))));
         setExploring(false);
       })
       .catch(() => { if (!cancelled) { setStories([]); setExploring(false); } });
     return () => { cancelled = true; };
-  }, [topic]);
+  }, [topic, settings.sort, settings.hideDemo]);
 
   useEffect(() => {
     const text = query.trim();
@@ -82,7 +91,7 @@ export default function SearchScreen() {
       ]);
       if (seq !== requestSeq.current) return;
       setPeople((found.people || []).slice(0, 5));
-      setItems((feed.annotations || []).map(annotationToFeedItem));
+      setItems(visible((feed.annotations || []).map(annotationToFeedItem)));
       setSearching(false);
     }, 300);
     return () => clearTimeout(timer);
@@ -143,17 +152,20 @@ export default function SearchScreen() {
 
   const explore = (
     <View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillRow} keyboardShouldPersistTaps="handled">
-        <Pressable style={[styles.pill, topic === null && styles.pillActive]} onPress={() => setTopic(null)}>
-          <Text style={topic === null ? styles.pillActiveText : styles.pillText}>Trending</Text>
-        </Pressable>
-        {TOPICS.map((entry) => (
-          <Pressable key={entry.slug} style={[styles.pill, topic === entry.slug && styles.pillActive]} onPress={() => setTopic(entry.slug)}>
-            <Text style={topic === entry.slug ? styles.pillActiveText : styles.pillText}>{entry.label}</Text>
-          </Pressable>
-        ))}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.railRow} keyboardShouldPersistTaps="handled" style={styles.rail}>
+        {[{ slug: null as string | null, label: 'All' }, ...TOPICS.map((entry) => ({ slug: entry.slug as string | null, label: entry.label }))].map((entry) => {
+          const active = topic === entry.slug;
+          return (
+            <Pressable key={entry.slug ?? 'all'} style={styles.railTab} onPress={() => setTopic(entry.slug)}>
+              <Text style={active ? styles.tabTextActive : styles.tabText}>{entry.label}</Text>
+              {active ? <View style={styles.tabUnderline} /> : null}
+            </Pressable>
+          );
+        })}
       </ScrollView>
-      <Text style={styles.sectionTitle}>{topic ? `Trending in ${topicLabel(topic)}` : 'Trending now'}</Text>
+      <Text style={styles.sectionTitle}>{settings.sort === 'recent'
+        ? (topic ? `Latest in ${topicLabel(topic)}` : 'Latest annotations')
+        : (topic ? `Trending in ${topicLabel(topic)}` : 'Trending now')}</Text>
       {exploring && !stories.length ? <ActivityIndicator color={ink} style={styles.spinner} /> : null}
       {!exploring && !stories.length ? (
         <View style={styles.empty}>
@@ -167,6 +179,8 @@ export default function SearchScreen() {
 
   return (
     <View style={styles.frame}>
+      <View style={styles.chrome}>
+      <HeaderAvatar />
       <View style={styles.searchBox}>
         <Icon name="search" size={16} color={meta} />
         <TextInput
@@ -185,6 +199,15 @@ export default function SearchScreen() {
             <Icon name="close" size={16} color={meta} />
           </Pressable>
         ) : null}
+      </View>
+      <Pressable
+        onPress={() => setSettingsOpen(true)}
+        style={({ pressed }) => [styles.gear, pressed && styles.pressed]}
+        accessibilityLabel="Explore settings"
+        accessibilityRole="button"
+      >
+        <Icon name="settings" size={20} color={ink} />
+      </Pressable>
       </View>
       {searching ? <ActivityIndicator color={ink} style={styles.spinner} /> : null}
       <FlatList
@@ -220,12 +243,17 @@ export default function SearchScreen() {
           </View>
         ) : null}
       />
+      <ExploreSettingsSheet visible={settingsOpen} onClose={() => setSettingsOpen(false)} settings={settings} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   frame: { flex: 1 },
+  // Explore's chrome, X's arrangement in our identity: your avatar opens
+  // the menu, the field takes the middle, the gear holds the settings.
+  chrome: { flexDirection: 'row', alignItems: 'center', paddingRight: 10, backgroundColor: card },
+  gear: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22 },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -235,19 +263,22 @@ const styles = StyleSheet.create({
     borderColor: tokens.border,
     borderRadius: 99,
     paddingHorizontal: 14,
-    marginHorizontal: 14,
-    marginTop: 10,
-    marginBottom: 4,
+    marginVertical: 8,
+    marginLeft: 4,
+    flex: 1,
     height: 42,
   },
   input: { flex: 1, color: ink, fontSize: 14.5, paddingVertical: 0 },
   spinner: { marginTop: 14 },
   list: { padding: 14, paddingTop: 10 },
-  pillRow: { gap: 8, paddingVertical: 8, paddingRight: 14 },
-  pill: { borderWidth: 1, borderColor: tokens.border, borderRadius: 99, paddingHorizontal: 14, paddingVertical: 7, backgroundColor: card },
-  pillActive: { backgroundColor: ink, borderColor: ink },
-  pillText: { color: ink, fontSize: 13.5, fontWeight: '600' },
-  pillActiveText: { color: paper, fontSize: 13.5, fontWeight: '700' },
+  // Explore's topics wear the product's one tab anatomy — the same rail
+  // Home switches feeds with, scrolling because the topic list is long.
+  rail: { backgroundColor: card, borderBottomWidth: 1, borderBottomColor: tokens.hair, flexGrow: 0 },
+  railRow: { paddingHorizontal: 4 },
+  railTab: { minHeight: 44, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+  tabText: { fontSize: 14, color: meta },
+  tabTextActive: { fontSize: 14, color: ink, fontWeight: '700' },
+  tabUnderline: { position: 'absolute', bottom: 0, left: '18%', right: '18%', height: 2, backgroundColor: tokens.accent, borderRadius: 99 },
   sectionTitle: { color: ink, fontSize: 19, fontWeight: '800', marginTop: 8, marginBottom: 2 },
   stories: { marginTop: 4 },
   story: { paddingVertical: 13, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: tokens.border },
