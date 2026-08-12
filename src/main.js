@@ -401,7 +401,7 @@ const recoverAuthError = (error, message = 'Your session has expired. Sign in ag
 /* ── routing ───────────────────────────────────────────────────────── */
 
 // transparency is routed like a doc page but loads live data via navigate().
-const DOC_VIEWS = { about: '/about', extension: '/extension', panelDemo: '/extension/demo', app: '/app', audit: '/audit', rights: '/rights', terms: '/terms', transparency: '/transparency' };
+const DOC_VIEWS = { about: '/about', extension: '/extension', panelDemo: '/extension/demo', app: '/app', audit: '/audit', help: '/help', rights: '/rights', terms: '/terms', transparency: '/transparency' };
 
 // The feed's three panes are real places: /  /trending  /following (and
 // /trending?topic=… for a chip). A refresh or a shared link lands on the
@@ -1182,6 +1182,41 @@ const docPage = (title, lead, body) => `
     <div class="docbody">${body}</div>
   </div>`;
 
+const helpView = () => docPage('Help centre', 'how the margin works', `
+  <div class="card"><h2>Getting started</h2>
+    <ol class="doc-steps">
+      <li><strong>Install the Chrome extension.</strong> It puts the capture panel beside the page you are reading — <a href="/extension" data-action="set-view" data-view="extension">how it works</a>.</li>
+      <li><strong>Or capture from anywhere.</strong> Share a link into the mobile app, or paste one into the <a href="/capture" data-action="set-view" data-view="capture">capture desk</a> on the web.</li>
+      <li><strong>Sign in when you are ready to publish.</strong> Reading needs no account. One account covers the extension, the web, and the app.</li>
+    </ol>
+  </div>
+  <div class="card"><h2>Capturing a moment</h2>
+    <ul class="doc-list">
+      <li><strong>Passage.</strong> Select text on the page; the panel keeps the quote and the paragraph it came from.</li>
+      <li><strong>Clip.</strong> Mark in and out on the page&rsquo;s own player, up to 90 seconds. The excerpt is transcoded and hosted here so it plays in the feed.</li>
+      <li><strong>Snip.</strong> Draw a box over part of the page, or keep the visible tab, when the moment is a picture.</li>
+      <li><strong>Your note.</strong> Written or recorded, up to 90 seconds of audio.</li>
+    </ul>
+  </div>
+  <div class="card"><h2>Who can see it</h2>
+    <p>Every annotation publishes as <strong>public</strong>, <strong>unlisted</strong> (anyone with the link), or <strong>private</strong> (only you). You can change it later from your library, and deleting an annotation removes its public page.</p>
+  </div>
+  <div class="card"><h2>If a source objects</h2>
+    <p>Every public annotation carries a <strong>Dispute fair use</strong> action, open to anyone — no account needed. Disputes are logged, reviewed, and counted in the <a href="/transparency" data-action="set-view" data-view="transparency">transparency report</a>; upheld ones leave a public tombstone in place of the moment. Sources can also claim their domain and reply in their own name from the <a href="/rights" data-action="set-view" data-view="rights">rights desk</a>.</p>
+  </div>
+  <div class="card"><h2>Troubleshooting</h2>
+    <ul class="doc-list">
+      <li><strong>The panel says offline.</strong> Captures queue locally and publish themselves when the connection returns; nothing is lost.</li>
+      <li><strong>A page will not capture.</strong> Browser-internal pages (settings, the extension store) cannot be read by any extension. Open the article, video, or podcast itself.</li>
+      <li><strong>&ldquo;This page&rdquo; is empty.</strong> That tab has no public annotations yet — yours would be the first.</li>
+      <li><strong>A clip will not publish.</strong> Clips are capped at 90 seconds and verified before publishing; shorten the range and try again.</li>
+    </ul>
+  </div>
+  <div class="card"><h2>Still stuck</h2>
+    <p>Write to <a href="mailto:help@annotated.app">help@annotated.app</a>. For what we keep and why, read the <a href="/terms" data-action="set-view" data-view="terms">terms</a>.</p>
+  </div>
+`);
+
 const aboutView = () => docPage('What this is', 'source-first notes', `
   <div class="card"><h2>The rule</h2>
     <p class="rulequote">&ldquo;A clip without its source is just a rumour.&rdquo;</p>
@@ -1476,6 +1511,7 @@ const footerView = () => `
         <a href="/about" data-action="set-view" data-view="about">About</a>
         <a href="/extension" data-action="set-view" data-view="extension">Extension</a>
         <a href="/app" data-action="set-view" data-view="app">Mobile app</a>
+        <a href="/help" data-action="set-view" data-view="help">Help centre</a>
         <a href="/audit" data-action="set-view" data-view="audit">Brief audit</a>
       </nav>
       <nav class="foot-col" aria-label="For sources">
@@ -1505,6 +1541,7 @@ const render = () => {
     : state.activeView === 'sourceGraph' ? sourceGraphView()
     : state.activeView === 'publisher' ? publisherView()
     : state.activeView === 'moderation' ? moderationView()
+    : state.activeView === 'help' ? helpView()
     : state.activeView === 'about' ? aboutView()
     : state.activeView === 'extension' ? extensionView()
     : state.activeView === 'app' ? appView()

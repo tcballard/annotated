@@ -419,13 +419,17 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 /* ── page grid ──────────────────────────────────────────────────────── */
 
+/* The column pair breathes: the feed keeps its 600px measure, the rail
+   its 300px, and the alley between them is wide enough to read as two
+   surfaces rather than one crowded sheet. The top padding starts both
+   columns below the chrome bar instead of against it. */
 .page {
-  max-width: 940px;
+  max-width: 972px;
   margin: 0 auto;
-  padding: 0 16px;
+  padding: 14px 16px 0;
   display: grid;
   grid-template-columns: minmax(0, 600px) 300px;
-  gap: 24px;
+  gap: 32px;
   align-items: start;
 }
 
@@ -463,7 +467,9 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
   top: 48px;
   background: color-mix(in srgb, var(--paper) 95%, transparent);
   backdrop-filter: blur(4px);
-  padding: 6px 0 0;
+  /* the filters keep their own air under the chrome bar, at rest and
+     when they park against it */
+  padding: 10px 0 0;
   z-index: 5;
   border-bottom: 1px solid var(--hair);
 }
@@ -683,7 +689,9 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 
 /* The rail shares the feed's top line: same sticky offset, same first-pixel
    spacing, so the first card and the tab bar sit level. */
-.rail { padding-top: 6px; position: sticky; top: 48px; }
+/* The rail sits below the search bar, not beside it: 14px of daylight
+   under the 48px chrome, and it parks at the same line when stuck. */
+.rail { padding-top: 8px; position: sticky; top: 62px; }
 
 .card {
   background: var(--card);
