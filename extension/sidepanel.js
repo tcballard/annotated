@@ -5,6 +5,9 @@ import { deleteAudioDraft, readAudioDraft, stageAudioDraft } from './media-draft
 import { MAX_CLIP_SECONDS, moveClipBoundary, normalizeClipRange } from './clip-range.js';
 import { isTopic, TOPICS } from './topics.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
+import { shareDescriptor, shareTargets } from './share-kit.js';
+import { DEFAULT_PREFERENCES, parsePreferences } from './preferences.js';
+import { BRAND_ICONS, PRODUCT_ICONS } from './icons.js';
 import { avatarColor, avatarInitial } from './avatar.js';
 import { normalizeCaptureDraft } from './capture-state.js';
 
@@ -61,6 +64,8 @@ const error = $('#error');
 const backendStatus = $('#backendStatus');
 const authActions = $('#authActions');
 const signInOpen = $('#signInOpen');
+const signinPrompt = $('#signinPrompt');
+const signinPromptBtn = $('#signinPromptBtn');
 const signinVeil = $('#signinVeil');
 const signinCancel = $('#signinCancel');
 const signinTerms = $('#signinTerms');
@@ -229,6 +234,50 @@ const showToast = (message, link = null) => {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toast.hidden = true; }, link ? 6000 : 2800);
 };
+
+// The share sheet, panel-sized: the same doors as the web and the app —
+// X, WhatsApp, Bluesky, Email from core's shareTargets — plus the link
+// itself. Rendered on demand; backdrop or Escape dismisses.
+const sharePop = document.getElementById('sharePop');
+const onSharePopKey = (event) => {
+  if (event.key === 'Escape') { event.preventDefault(); closeSharePop(); }
+};
+const closeSharePop = () => {
+  sharePop.hidden = true;
+  sharePop.innerHTML = '';
+  document.removeEventListener('keydown', onSharePopKey, true);
+};
+const openSharePop = async (annotation) => {
+  const origin = await apiOrigin().catch(() => '');
+  const descriptor = shareDescriptor(annotation, origin);
+  const doors = shareTargets(descriptor).map((door) => `
+    <a class="share-door" href="${escapeHTML(door.href)}" target="_blank" rel="noreferrer" data-share-target="${door.id}"><span class="glyph">${BRAND_ICONS[door.id] || PRODUCT_ICONS.mail}</span>${escapeHTML(door.label)}</a>`).join('');
+  sharePop.innerHTML = `
+    <div class="share-pop-backdrop" data-share-dismiss="true"></div>
+    <div class="share-pop-card" role="dialog" aria-modal="true" aria-label="Share annotation">
+      <div class="share-doors">${doors}</div>
+      <button class="share-copy" type="button" data-share-copy="${escapeHTML(descriptor.url)}">${PRODUCT_ICONS.link}Copy link</button>
+    </div>`;
+  sharePop.hidden = false;
+  document.addEventListener('keydown', onSharePopKey, true);
+};
+sharePop.addEventListener('click', async (event) => {
+  if (event.target.closest('[data-share-dismiss]')) { closeSharePop(); return; }
+  const door = event.target.closest('[data-share-target]');
+  if (door) {
+    void recordProductEvent('shared', { surface: 'panel', shareType: door.dataset.shareTarget });
+    // let the anchor open its tab before the sheet unmounts under it
+    setTimeout(closeSharePop, 0);
+    return;
+  }
+  const copy = event.target.closest('[data-share-copy]');
+  if (copy) {
+    try { await navigator.clipboard.writeText(copy.dataset.shareCopy); showToast('Link copied'); }
+    catch { showToast(copy.dataset.shareCopy); }
+    void recordProductEvent('shared', { surface: 'panel', shareType: 'copy' });
+    closeSharePop();
+  }
+});
 
 // The panel is where desktop publishing happens — it gets the full moment,
 // same anatomy as the web: the ring draws closed over the panel while the
@@ -2101,7 +2150,7 @@ const timelinePost = (item) => {
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 5h5v5M19 5l-8 8M19 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4"/></svg>
           ${item.opens ? `<span class="n">${item.opens}</span>` : ''}
         </a>
-        <button class="act share" type="button" data-share-url="${escapeHTML(item.url)}" title="Copy the page link" aria-label="Copy the page link">
+        <button class="act share" type="button" data-share-url="${escapeHTML(item.url)}" data-share-slug="${escapeHTML(item.slug || '')}" data-share-title="${escapeHTML(item.sourceTitle || '')}" data-share-quote="${escapeHTML(String(item.quote || item.commentary || '').slice(0, 240))}" data-share-handle="${escapeHTML(item.handle || '')}" title="Share this annotation" aria-haspopup="dialog" aria-label="Share this annotation">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v12M8 7l4-4 4 4M5 14v5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-5"/></svg>
         </button>
       </div>
@@ -2177,7 +2226,9 @@ const paintTimeline = () => {
     timeline.innerHTML = `<div class="state">The timeline could not be loaded. <button type="button" data-feed-retry>Try again</button></div>`;
     return;
   }
-  if (!cache.items.length) {
+  // The reader's own filters, from the account's record.
+  const items = visibleToReader(cache.items);
+  if (!items.length) {
     const mark = '<img class="mark" src="icons/icon-128.png" alt="" aria-hidden="true" />';
     // "Yours would be the first" is a lie on chrome:// — nobody's can be.
     const pageEmpty = /^https?:/.test(currentTab.url || '')
@@ -2188,7 +2239,7 @@ const paintTimeline = () => {
       : `<div class="empty">${mark}<h2>${panelMode === 'following' ? 'No annotations from people you follow yet.' : 'No public annotations yet.'}</h2><p>${panelMode === 'following' ? 'Follow someone whose context you want to keep up with.' : 'Capture the first source-backed moment and it will appear here.'}</p>${panelMode === 'following' ? '<button type="button" data-feed-tab-jump="recent">Browse Recent</button>' : ''}</div>`;
     return;
   }
-  timeline.innerHTML = `${cache.items.map(timelinePost).join('')}${cache.nextCursor ? '<button class="load-more" type="button" data-load-more>Load more</button>' : ''}`;
+  timeline.innerHTML = `${items.map(timelinePost).join('')}${cache.nextCursor ? '<button class="load-more" type="button" data-load-more>Load more</button>' : ''}`;
   // The stagger plays only on a feed's first paint — never on the in-place
   // re-renders a like or retry causes.
   if (freshFeedTab === panelMode) {
@@ -2290,12 +2341,13 @@ timeline.addEventListener('click', async (event) => {
   }
   const share = event.target.closest('[data-share-url]');
   if (share) {
-    try {
-      await navigator.clipboard.writeText(share.dataset.shareUrl);
-      showToast('Link copied');
-    } catch {
-      showToast(share.dataset.shareUrl);
-    }
+    void openSharePop({
+      url: share.dataset.shareUrl,
+      slug: share.dataset.shareSlug || '',
+      sourceTitle: share.dataset.shareTitle || '',
+      sourceExcerpt: share.dataset.shareQuote || '',
+      handle: share.dataset.shareHandle || '',
+    });
     return;
   }
   const open = event.target.closest('[data-open-slug]');
@@ -2415,7 +2467,31 @@ chrome.storage?.onChanged?.addListener((changes, areaName) => {
 // behind it in a modal.
 const anyProviderAvailable = () => Object.keys(availableProviders).some((provider) => availableProviders[provider]);
 
+const syncProviderButtons = () => {
+  signinVeil.querySelectorAll('[data-auth]').forEach((button) => { button.hidden = !availableProviders[button.dataset.auth]; });
+};
+
+// Which providers exist is the backend's answer, and it only arrives when
+// the backend is reachable. Ask again on demand so a panel that booted
+// offline can still open the door once the network returns.
+const loadAuthProviders = async () => {
+  const auth = await apiRequest('/api/auth/providers').catch(() => null);
+  if (auth) availableProviders = auth.providers || {};
+  syncProviderButtons();
+  return Boolean(auth);
+};
+
+// Preferences follow the account, so the panel reads the same record the
+// web app and the native app do — a theme muted on one surface stays
+// muted here.
+let panelPreferences = DEFAULT_PREFERENCES;
+const visibleToReader = (items) => items.filter((item) => {
+  if (panelPreferences.hideDemo && item.isDemo) return false;
+  return !(item.topic && panelPreferences.mutedTopics.includes(item.topic));
+});
+
 const setAuthState = (signedIn, user = panelUser) => {
+  panelPreferences = signedIn ? parsePreferences(user?.preferences) : DEFAULT_PREFERENCES;
   panelUser = signedIn ? user : null;
   meButton.hidden = !signedIn;
   if (signedIn) {
@@ -2425,15 +2501,31 @@ const setAuthState = (signedIn, user = panelUser) => {
     meMenu.hidden = true;
     meButton.setAttribute('aria-expanded', 'false');
   }
-  signInOpen.hidden = signedIn || !anyProviderAvailable();
-  signinVeil.querySelectorAll('[data-auth]').forEach((button) => { button.hidden = !availableProviders[button.dataset.auth]; });
+  // The door does not depend on having reached the backend yet: a signed
+  // out reader always sees it, in the header and in the panel body. What
+  // an unreachable backend changes is the message behind it, not whether
+  // the way in exists.
+  signInOpen.hidden = signedIn;
+  signinPrompt.hidden = signedIn;
+  syncProviderButtons();
   if (signedIn) closeSignin();
 };
 
 let signinReturnFocus = null;
 const signinContext = $('#signinContext');
-const openSignin = (context = '') => {
-  if (!anyProviderAvailable()) { showError('Sign-in is not configured on this backend.'); return; }
+const openSignin = async (context = '') => {
+  // Nothing known yet usually means the panel booted while the backend
+  // was unreachable — ask once more before deciding which honest answer
+  // this is: nothing configured, or nothing reachable.
+  if (!anyProviderAvailable()) {
+    const reached = await loadAuthProviders();
+    if (!anyProviderAvailable()) {
+      showError(reached
+        ? 'Sign-in is not configured on this backend.'
+        : 'The annotated backend is unreachable. Sign in once the connection is back — your captures stay queued here.');
+      return;
+    }
+  }
   signinVeil.classList.remove('is-closing');
   signinContext.textContent = context;
   signinContext.hidden = !context;
@@ -2456,7 +2548,10 @@ const closeSignin = () => {
   setTimeout(finish, 140);
 };
 
-signInOpen.addEventListener('click', openSignin);
+// Wrapped, not passed by reference: the listener's own event object would
+// arrive as the modal's context line and render as "[object PointerEvent]".
+signInOpen.addEventListener('click', () => { void openSignin(); });
+signinPromptBtn.addEventListener('click', () => { void openSignin(); });
 signinCancel.addEventListener('click', closeSignin);
 signinVeil.addEventListener('click', (event) => { if (event.target === signinVeil) closeSignin(); });
 
@@ -2574,6 +2669,10 @@ const checkBackend = async () => {
     }
   } catch {
     backendOnline = false;
+    // Being unreachable says nothing about who you are. The locally stored
+    // token still decides whether this panel shows your account or the
+    // door — without this, a panel that boots offline showed neither.
+    setAuthState(Boolean(await extensionStorage.getAuthToken().catch(() => null)));
     backendStatus.classList.remove('is-live');
     backendStatus.querySelector('.backend-label').textContent = 'offline';
     if (wasOnline !== false) backendState.textContent = 'Offline — captures queue locally and retry.';

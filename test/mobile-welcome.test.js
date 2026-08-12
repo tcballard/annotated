@@ -45,21 +45,37 @@ test('the canvas is the 640×1385 reference, scaled as one piece', async () => {
 });
 
 test('autoplay, replay, and reduced motion each have defined behaviour', () => {
-  // autoplay=false composes the final frame; autoplay runs the clock
+  // autoplay=false composes the final frame; autoplay parks the clock at
+  // zero and plays one authored segment per tap
   assert.match(timeline, /useSharedValue\(autoplay \? 0 : durationMs\)/);
   assert.match(timeline, /easing: Easing\.linear/);
-  // reduced motion parks at the end — nothing is left waiting invisibly
-  assert.match(timeline, /if \(!autoplay \|\| reducedMotion\) \{\s*\n\s*time\.value = durationMs;/);
+  // reduced motion lands each segment at its end — nothing is left
+  // waiting invisibly
+  assert.match(timeline, /if \(!autoplay \|\| reducedMotion\) \{ time\.value = end; return; \}/);
   // replayKey re-runs the effect from zero
   assert.match(timeline, /\[autoplay, durationMs, reducedMotion, replayKey, time\]/);
   assert.match(screen, /replayKey = 0/);
 });
 
+test('the sequence advances on taps, never on a timer', () => {
+  // one authored stretch per step; the clock plays that stretch and stops
+  assert.match(timeline, /const playSegment = useCallback/);
+  assert.doesNotMatch(timeline, /const seekTo = useCallback/, 'the auto-running seek is gone');
+  assert.doesNotMatch(timeline, /withTiming\(durationMs, \{ duration: durationMs/, 'the clock no longer runs the whole sequence by itself');
+  assert.match(screen, /const STEPS = \[/);
+  assert.match(screen, /playSegment\(STEPS\[next\]\.from, STEPS\[next\]\.to\)/, 'a tap plays the next transition');
+  assert.match(screen, /if \(onLastStep\) return;/, 'the last page has nowhere to advance to');
+  // the gates read the step, not a wall clock: nothing expires while the
+  // reader is still reading
+  assert.match(screen, /disabled=\{!contentReady \|\| onLastStep\}/);
+  assert.match(screen, /disabled=\{!onLastStep\}/, 'the primary action arrives with the last page');
+  assert.doesNotMatch(screen, /delayMs: 3400/, 'the tap affordance no longer times out');
+  assert.doesNotMatch(screen, /delayMs: 4400/, 'the CTA no longer unlocks on a timer');
+});
+
 test('controls stay inert — to touch and to screen readers — until they arrive', () => {
   // the three gates match the moments their surfaces land
   assert.match(screen, /useInteractionGate\(\{ autoplay, delayMs: 333, replayKey \}\)/);
-  assert.match(screen, /useInteractionGate\(\{ autoplay, delayMs: 4400, replayKey \}\)/);
-  assert.match(screen, /useInteractionGate\(\{ autoplay, delayMs: 3400, replayKey \}\)/);
   // reduced motion opens every gate immediately, because nothing animates
   assert.match(gate, /const shouldWait = autoplay && !reducedMotion;/);
   // a gated control leaves the accessibility tree entirely
@@ -82,9 +98,8 @@ test('every semantic action is declared and wired to a real destination', () => 
   assert.match(route, /await openSignIn\(\)/);
   assert.match(route, /speak-language\.sign-in/);
   assert.match(route, /speak-language\.start-speaking-today/);
-  // tap-to-continue advances the authored sequence rather than skipping it
-  assert.match(screen, /const next = PAGE_STOPS\.find\(\(stop\) => stop > now \+ 1\)/);
-  assert.match(timeline, /const seekTo = useCallback/);
+  // tap-to-continue plays the next authored transition
+  assert.match(screen, /const next = step \+ 1;/);
 });
 
 test('the first frame waits for its fonts, its artwork, and the account', () => {

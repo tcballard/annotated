@@ -112,6 +112,9 @@ test('shell mode strips web chrome and returns the feed switcher to the top', ()
   assert.match(main, /\$\{SHELL_MODE \? '' : '<a class="skip-link"[^`]*' \+ chromeBar\(\)\}/, 'no web nav — and no skip link to it — inside the native app');
   assert.match(main, /\$\{SHELL_MODE \? '' : footerView\(\)\}/, 'no web footer inside the native app');
   assert.match(main, /SHELL_MODE \? `<button class="ghost" data-action="logout">Sign out<\/button>` : ''/, 'sign-out lives on the Library surface when the chrome bar is gone');
-  assert.match(webCss, /html\.shell-mode \.feedhead \{\s*position: sticky;\s*top: 0;/, 'the switcher docks top — the bottom belongs to the native tab bar');
-  assert.match(webCss, /html\.shell-mode \.feed:has\(\.feedhead\)/, 'the dock padding is released in shell mode');
+  // The rail inherits the one base anatomy; shell mode only moves its
+  // sticky seat to the very top, since there is no chrome bar above it.
+  assert.match(webCss, /html\.shell-mode \.feedhead \{ top: 0; \}/, 'the rail sticks to the top edge inside the native app');
+  assert.match(webCss, /html\.shell-mode \.feed:has\(\.feedhead\)/, 'shell mode keeps its own feed padding');
+  assert.doesNotMatch(webCss, /html\.shell-mode \.feedhead \.tabs/, 'no shell-scoped pill anatomy survives');
 });

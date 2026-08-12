@@ -7,6 +7,7 @@ import {
   transactDatabase,
   updateStore,
 } from './store.js';
+import { DEFAULT_PREFERENCES, parsePreferences } from './preferences.js';
 import { afterKeysetCursor, keysetCursorFor, matchesFeedQuery, matchesFeedUrl, parseKeysetCursor } from './feed.js';
 import { publicAnnotationsForHost, rankAnnotators } from './discovery.js';
 import { rankTrendingSources, sortByTrending } from './trending.js';
@@ -40,6 +41,7 @@ const mapUser = (row) => row ? {
   role: row.role,
   isDemo: boolean(row.is_demo),
   lastNotificationsSeenAt: iso(row.last_notifications_seen_at),
+  preferences: parsePreferences(row.preferences),
   createdAt: iso(row.created_at),
 } : null;
 
@@ -620,6 +622,32 @@ export async function markNotificationsSeen(userId, seenAt = new Date().toISOStr
     await writeLegacy(client, 'users', userId, mapUser(result.rows[0]));
   });
   return seenAt;
+}
+
+// Preferences follow the account: one validated record per user, written
+// whole (the client sends the record it wants, not a patch) so a stale
+// surface can never resurrect a choice the reader has since changed.
+export async function saveUserPreferences(userId, preferences) {
+  const record = parsePreferences(preferences);
+  if (!queryNative) {
+    await updateStore((store) => ({ ...store, users: (store.users || []).map((user) => user.id === userId ? { ...user, preferences: record } : user) }));
+    return record;
+  }
+  await transactDatabase(async (client) => {
+    const result = await client.query('UPDATE annotated_users SET preferences=$2::jsonb, updated_at=now() WHERE id=$1 RETURNING *', [userId, JSON.stringify(record)]);
+    if (!result.rows[0]) throw new Error('That account no longer exists.');
+    await writeLegacy(client, 'users', userId, mapUser(result.rows[0]));
+  });
+  return record;
+}
+
+export async function readUserPreferences(userId) {
+  if (!queryNative) {
+    const store = await readStore();
+    return parsePreferences((store.users || []).find((user) => user.id === userId)?.preferences);
+  }
+  const result = await queryDatabase('SELECT preferences FROM annotated_users WHERE id=$1', [userId]);
+  return result.rows[0] ? parsePreferences(result.rows[0].preferences) : DEFAULT_PREFERENCES;
 }
 
 export async function toggleFollow(followerId, followingId, on) {

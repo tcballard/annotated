@@ -1,0 +1,194 @@
+// The reader's choices, in one place: how explore ranks, whether the
+// seeded demo accounts are in the picture, which themes Recent puts
+// aside, and how Following is ordered.
+//
+// They follow the account, not the device. The device cache paints the
+// first frame; when the session resolves, the account's record wins and
+// replaces it, and every change is written to both — so the same choices
+// apply in the web app and the extension panel. Signed out, the device
+// copy is the whole story.
+
+import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Icon from './Icon';
+import {
+  DEFAULT_PREFERENCES,
+  readPreferences,
+  writePreferences,
+  type ExploreSort,
+  type FollowingOrder,
+  type Preferences,
+} from '../lib/prefs';
+import { parsePreferences, samePreferences } from '../lib/core/preferences';
+import { api } from '../lib/api';
+import { AccountContext } from './AccountContext';
+import { card, ink, meta, tokens } from '../lib/tokens';
+
+export type { ExploreSort, FollowingOrder };
+
+type PreferencesApi = Preferences & {
+  setExploreSort(next: ExploreSort): void;
+  setHideDemo(next: boolean): void;
+  setMutedTopics(next: string[]): void;
+  setFollowingOrder(next: FollowingOrder): void;
+};
+
+export const PreferencesContext = createContext<PreferencesApi>({
+  ...DEFAULT_PREFERENCES,
+  setExploreSort() {},
+  setHideDemo() {},
+  setMutedTopics() {},
+  setFollowingOrder() {},
+});
+
+export const PreferencesProvider = ({ children }: { children: ReactNode }) => {
+  const { me } = use(AccountContext);
+  const [preferences, setPreferences] = useState<Preferences>(DEFAULT_PREFERENCES);
+  // Nothing is written before the cached record has been read, or the
+  // defaults would overwrite the reader's choices on every cold start.
+  const hydrated = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void readPreferences().then((stored) => {
+      if (cancelled) return;
+      setPreferences(stored);
+      hydrated.current = true;
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // The account is the authority: when a session resolves, its record
+  // replaces whatever this device was holding, and the cache follows so
+  // the next cold start opens on the same choices.
+  const accountPreferences = me ? parsePreferences((me as { preferences?: unknown }).preferences) : null;
+  const accountKey = accountPreferences ? JSON.stringify(accountPreferences) : '';
+  useEffect(() => {
+    if (!accountKey) return;
+    const record = parsePreferences(JSON.parse(accountKey));
+    hydrated.current = true;
+    setPreferences((current) => {
+      if (samePreferences(current, record)) return current;
+      void writePreferences(record);
+      return record;
+    });
+  }, [accountKey]);
+
+  // The writer needs to know whether there is an account without taking
+  // a dependency on it — the callback stays identity-stable.
+  const signedIn = useRef(false);
+  signedIn.current = Boolean(me);
+
+  const update = useCallback((patch: Partial<Preferences>) => {
+    setPreferences((current) => {
+      const next = { ...current, ...patch };
+      if (hydrated.current) void writePreferences(next);
+      // Signed in, the account keeps the record; the write is
+      // fire-and-forget because the device copy already carries it and
+      // the next session read will reconcile.
+      if (signedIn.current) void api.savePreferences(next).catch(() => {});
+      return next;
+    });
+  }, []);
+
+  const value = useMemo<PreferencesApi>(() => ({
+    ...preferences,
+    setExploreSort: (exploreSort) => update({ exploreSort }),
+    setHideDemo: (hideDemo) => update({ hideDemo }),
+    setMutedTopics: (mutedTopics) => update({ mutedTopics }),
+    setFollowingOrder: (followingOrder) => update({ followingOrder }),
+  }), [preferences, update]);
+
+  return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
+};
+
+const SORTS: { id: ExploreSort; label: string; blurb: string }[] = [
+  { id: 'trending', label: 'Trending', blurb: 'Ranked by opens of the original.' },
+  { id: 'recent', label: 'Recent', blurb: 'Newest annotations first.' },
+];
+
+export const ExploreSettingsSheet = ({
+  visible,
+  onClose,
+  settings,
+}: {
+  visible: boolean;
+  onClose(): void;
+  settings: PreferencesApi;
+}) => {
+  const insets = useSafeAreaInsets();
+  const tick = () => { if (process.env.EXPO_OS === 'ios') void Haptics.selectionAsync(); };
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable accessibilityLabel="Close explore settings" style={styles.backdrop} onPress={onClose} />
+      <View style={[styles.card, { paddingBottom: 14 + insets.bottom }]}>
+        <View style={styles.head}>
+          <Text style={styles.title}>Explore settings</Text>
+          <Pressable onPress={onClose} accessibilityLabel="Close" style={styles.close}>
+            <Icon name="close" size={18} color={meta} />
+          </Pressable>
+        </View>
+
+        <Text style={styles.section}>Rank explore by</Text>
+        {SORTS.map((entry) => {
+          const active = settings.exploreSort === entry.id;
+          return (
+            <Pressable
+              key={entry.id}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: active }}
+              style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+              onPress={() => { tick(); settings.setExploreSort(entry.id); }}
+            >
+              <View style={styles.rowText}>
+                <Text style={styles.rowLabel}>{entry.label}</Text>
+                <Text style={styles.rowBlurb}>{entry.blurb}</Text>
+              </View>
+              {active ? <Icon name="check" size={19} color={ink} /> : null}
+            </Pressable>
+          );
+        })}
+
+        <View style={styles.divider} />
+
+        <View style={styles.row}>
+          <View style={styles.rowText}>
+            <Text style={styles.rowLabel}>Hide demo accounts</Text>
+            <Text style={styles.rowBlurb}>This build seeds demo annotations so the feed is never empty.</Text>
+          </View>
+          <Switch
+            value={settings.hideDemo}
+            onValueChange={(next) => { tick(); settings.setHideDemo(next); }}
+            trackColor={{ true: tokens.chrome, false: tokens.border }}
+          />
+        </View>
+        <Text style={styles.foot}>Saved to your account — the web app and the extension use the same choices.</Text>
+      </View>
+    </Modal>
+  );
+};
+
+const styles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(38, 41, 47, 0.45)' },
+  card: {
+    backgroundColor: card,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderCurve: 'continuous',
+    paddingHorizontal: 14,
+    paddingTop: 10,
+  },
+  head: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
+  title: { flex: 1, color: ink, fontSize: 17, fontWeight: '800' },
+  close: { minWidth: 44, minHeight: 44, alignItems: 'flex-end', justifyContent: 'center' },
+  section: { color: meta, fontSize: 12, fontWeight: '700', letterSpacing: 0.3, textTransform: 'uppercase', marginTop: 6, marginBottom: 2 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56, paddingHorizontal: 4 },
+  rowText: { flex: 1 },
+  rowLabel: { color: ink, fontSize: 15.5, fontWeight: '700' },
+  rowBlurb: { color: meta, fontSize: 12.5, marginTop: 2, lineHeight: 17 },
+  pressed: { backgroundColor: tokens.soft },
+  divider: { height: 1, backgroundColor: tokens.hair, marginVertical: 6 },
+  foot: { color: meta, fontSize: 12, paddingHorizontal: 4, paddingTop: 6 },
+});

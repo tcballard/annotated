@@ -3,7 +3,8 @@ import { api } from './api.js';
 import { deleteMediaDraft, readMediaDraft, stageMediaDraft } from './media-draft-store.js';
 import { mediaPresentation } from './media-presentation.js';
 import { publicAnnotationUrl } from './share-links.js';
-import { shareDescriptor } from './share-kit.js';
+import { shareDescriptor, shareTargets } from './share-kit.js';
+import { DEFAULT_PREFERENCES, parsePreferences } from './preferences.js';
 import { authNoticeFromSearch, enabledProviders, oauthStartUrl, providerLabel } from './auth-ui.js';
 import { MAX_CLIP_SECONDS } from './clip-range.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
@@ -11,7 +12,7 @@ import { sharedUrlFromParams } from './share-capture.js';
 import { isTopic, TOPICS, topicLabel } from './topics.js';
 import { annotationToFeedItem, annotationVerb, chipFor, formatTime, hostOf, parseTimeInput, relTime, sourceLabels, VISIBILITIES } from './feed-item.js';
 import { avatarColor, avatarInitial } from './avatar.js';
-import { PRODUCT_ICONS as icons } from './icons.js';
+import { BRAND_ICONS, PRODUCT_ICONS as icons } from './icons.js';
 import { applyPanelDemoAction, createPanelDemoState, demoDraft, panelDemoView } from './panel-demo.js';
 import { captureDraftBlocker } from './capture-state.js';
 
@@ -82,7 +83,7 @@ const initialState = {
   publisherChallenge: null,
   publisherError: '',
   publisherReplyDrafts: {},
-  shareOpen: false,
+  shareModal: null,
   analyticsOptOut: (() => { try { return localStorage.getItem('annotated-analytics-opt-out') === '1'; } catch { return false; } })(),
   appBannerDismissed: (() => { try { return localStorage.getItem('annotated-app-banner') === '1'; } catch { return false; } })(),
   peopleResults: [],
@@ -148,6 +149,7 @@ const initialState = {
   topic: '',
   feedCursor: null,
   feedQuery: '',
+  preferences: DEFAULT_PREFERENCES,
   moderationClaims: [],
   moderationLoading: false,
   transparencyData: null,
@@ -344,6 +346,7 @@ const meMenu = () => `<div class="me-menu" role="menu" aria-label="Account">
   <div class="me-name">@${escapeHTML(state.user?.handle || '')}</div>
   <button role="menuitem" data-action="me-view-profile">View profile</button>
   <button role="menuitem" data-action="me-view-library">Your library</button>
+  <button role="menuitem" data-action="set-view" data-view="settings">Settings</button>
   <button role="menuitem" data-action="logout">Sign out</button>
 </div>`;
 
@@ -401,7 +404,7 @@ const recoverAuthError = (error, message = 'Your session has expired. Sign in ag
 /* ── routing ───────────────────────────────────────────────────────── */
 
 // transparency is routed like a doc page but loads live data via navigate().
-const DOC_VIEWS = { about: '/about', extension: '/extension', panelDemo: '/extension/demo', app: '/app', audit: '/audit', rights: '/rights', terms: '/terms', transparency: '/transparency' };
+const DOC_VIEWS = { about: '/about', extension: '/extension', panelDemo: '/extension/demo', app: '/app', audit: '/audit', help: '/help', rights: '/rights', settings: '/settings', terms: '/terms', transparency: '/transparency' };
 
 // The feed's three panes are real places: /  /trending  /following (and
 // /trending?topic=… for a chip). A refresh or a shared link lands on the
@@ -544,6 +547,9 @@ const bootstrap = async () => {
     state.authRequired = Boolean(providers.required);
     state.capabilities = capabilities;
     state.user = await api.me().then((result) => result.user).catch(() => null);
+    // Preferences follow the account: the same record the app and the
+    // panel read, applied to this feed.
+    state.preferences = parsePreferences(state.user?.preferences);
     if (state.authNotice === 'success') recordProductEvent('auth_completed', { surface: 'web' });
     if (state.authNotice === 'cancelled' || state.authNotice === 'error') recordProductEvent('auth_cancelled', { surface: 'web', result: state.authNotice });
     if (canModerate() && state.activeView === 'moderation') await loadModerationClaims();
@@ -620,9 +626,13 @@ const chromeBar = () => {
 
 const openOriginalAction = (item, { withLabel = true } = {}) => {
   const href = openOriginalHref(item);
-  const count = item.opens ? ` <span class="n">· ${item.opens}</span>` : '';
+  // The separator belongs to the label, not the count: where the label
+  // steps aside (phone cards read as icons and counts, like the app), an
+  // orphaned "· 15" would read as a typo.
+  const label = `<span class="act-label">${withLabel ? 'Open original' : 'Open'}${item.opens ? ' ·' : ''}</span>`;
+  const count = item.opens ? `<span class="n">${item.opens}</span>` : '';
   const opensTip = item.opens ? ` title="${item.opens} ${item.opens === 1 ? 'open' : 'opens'} of the original"` : '';
-  return `<a class="act primary" href="${escapeHTML(href)}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug || '')}"${opensTip}>${icon('open')}${withLabel ? `Open original${count}` : `Open${count}`}</a>`;
+  return `<a class="act primary" href="${escapeHTML(href)}" target="_blank" rel="noreferrer" data-action="open-original" data-slug="${escapeHTML(item.slug || '')}"${opensTip}>${icon('open')}${label}${count}</a>`;
 };
 
 const hubLink = (host) => host ? `<a href="/s/${encodeURIComponent(host)}" data-action="open-hub" data-host="${escapeHTML(host)}" title="See everything annotated from ${escapeHTML(host)}">${escapeHTML(host)}</a>` : '';
@@ -693,21 +703,21 @@ const feedPost = (item) => {
     ? `<p class="note">${escapeHTML(item.commentary)}</p>`
     : `<p class="note">${icon('mic')} Audio note${item.audioDuration ? ` · ${escapeHTML(formatTime(item.audioDuration))}` : ''} — listen below.</p>`;
   const followAct = item.authorId && item.authorId !== state.user?.id
-    ? `<button class="act ${state.followingIds[item.authorId] ? 'is-on' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${icon('follow')}${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</button>`
+    ? `<button class="act ${state.followingIds[item.authorId] ? 'is-on' : ''}" data-action="toggle-follow" data-user-id="${escapeHTML(item.authorId)}">${icon('follow')}<span class="act-label">${state.followingIds[item.authorId] ? 'Following' : 'Follow'}</span></button>`
     : '';
   return `
   <article class="post" data-action="open-annotation" data-slug="${escapeHTML(item.slug || '')}">
     ${avatarHtml(item)}
     <div class="content">
-      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a>${item.isDemo ? '<span class="demo-badge" title="Demonstration data, not real user activity">demo</span>' : ''}<span class="meta">· ${escapeHTML(annotationVerb(item.type))}${item.editedAt ? ' · edited' : ''}</span>${item.topic ? `<button class="topic-tag" data-action="feed-topic" data-topic="${escapeHTML(item.topic)}" title="See what's trending in ${escapeHTML(topicLabel(item.topic))}">${escapeHTML(topicLabel(item.topic))}</button>` : ''}<span class="meta posttime">${escapeHTML(item.time)}</span></div>
+      <div class="byline"><a class="name" href="/u/${encodeURIComponent(item.handle)}" data-action="open-profile" data-handle="${escapeHTML(item.handle)}">@${escapeHTML(item.handle)}</a>${item.isDemo ? '<span class="demo-badge" title="Demonstration data, not real user activity">demo</span>' : ''}<span class="meta verb">· ${escapeHTML(annotationVerb(item.type))}</span>${item.editedAt ? '<span class="meta">· edited</span>' : ''}${item.topic ? `<button class="topic-tag" data-action="feed-topic" data-topic="${escapeHTML(item.topic)}" title="See what's trending in ${escapeHTML(topicLabel(item.topic))}">${escapeHTML(topicLabel(item.topic))}</button>` : ''}<span class="meta posttime">${escapeHTML(item.time)}</span></div>
       ${note}
       ${srcCard(item)}
       <div class="actions">
-        <button class="act" data-action="open-respond" data-slug="${escapeHTML(item.slug || '')}">${icon('respond')}<span class="n">${item.comments || 'Respond'}</span></button>
+        <button class="act" data-action="open-respond" data-slug="${escapeHTML(item.slug || '')}">${icon('respond')}${item.comments ? `<span class="n">${item.comments}</span>` : '<span class="act-label">Respond</span>'}</button>
         <button class="act ${item.likedByMe ? 'is-liked' : ''}" data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">${icon('heart')}${item.likes ? `<span class="n">${item.likes}</span>` : ''}</button>
         ${followAct}
         ${openOriginalAction(item)}
-        <button class="act share" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(item, window.location.origin))}" aria-label="Share annotation">${icon('share')}</button>
+        <button class="act share" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(item, window.location.origin))}" data-share-slug="${escapeHTML(item.slug || '')}" data-share-title="${escapeHTML(item.sourceTitle || '')}" data-share-quote="${escapeHTML(String(item.sourceExcerpt || item.quote || item.commentary || '').slice(0, 240))}" data-share-handle="${escapeHTML(item.handle || '')}" aria-haspopup="dialog" aria-label="Share annotation">${icon('share')}</button>
       </div>
     </div>
   </article>`;
@@ -750,7 +760,13 @@ const railView = () => {
 };
 
 const feedView = () => {
-  const items = state.feedAnnotations.map(annotationToFeedItem);
+  // Demo accounts and muted themes are the reader's choice, kept on the
+  // account — the same filter the app applies to the same list.
+  const visibleAnnotations = state.feedAnnotations.filter((annotation) => {
+    if (state.preferences.hideDemo && annotation.isDemo) return false;
+    return !(annotation.topic && state.preferences.mutedTopics.includes(annotation.topic));
+  });
+  const items = visibleAnnotations.map(annotationToFeedItem);
   const trendingEmpty = !state.feedFollowing && state.feedSort === 'trending';
   const emptyTitle = state.feedQuery ? `Nothing matches “${escapeHTML(state.feedQuery)}”.` : state.feedFollowing ? 'No annotations from people you follow yet.' : trendingEmpty ? 'Nothing is trending yet.' : 'No public annotations yet.';
   const emptyBody = state.feedQuery ? 'Try a different source, author, or phrase.' : state.feedFollowing ? 'Follow someone whose context you want to keep up with.' : trendingEmpty ? 'Annotations trend as readers open their originals and respond.' : 'Capture the first source-backed moment and it will appear here.';
@@ -841,7 +857,6 @@ const permalinkView = () => {
   const clip = `<div class="clip">${isMedia ? playerBlock(annotation) : screenshot}${srcstrip}</div>`;
   const pull = item.quote ? `<blockquote class="pull">&ldquo;${escapeHTML(item.quote)}&rdquo;</blockquote>` : '';
   const receipt = annotation.receipt ? `<details class="evidence-receipt permalink-receipt"><summary>Evidence receipt</summary><code>${escapeHTML(annotation.receipt.sourceId || annotation.sourceId || '')}</code><span>${annotation.sourceType === 'article' ? `paragraph ${annotation.receipt.range?.paragraph || '—'} · exact text anchor` : `${formatTime(annotation.receipt.range?.start)}–${formatTime(annotation.receipt.range?.end)} · ${formatTime(annotation.receipt.range?.duration)}`}</span><span>${annotation.receipt.artifact ? `${escapeHTML(annotation.receipt.artifact.mimeType)} · ${Number(annotation.receipt.artifact.bytes || 0)} bytes · ${annotation.receipt.artifact.sha256 ? `sha256 ${escapeHTML(annotation.receipt.artifact.sha256)}` : 'digest pending'} · ${escapeHTML(annotation.receipt.artifact.rightsState)}` : 'No hosted artifact; source anchor only.'}</span></details>` : '';
-  const sharing = state.shareOpen ? (() => { const descriptor = shareDescriptor(annotation, window.location.origin); return `<div class="share-tray" role="group" aria-label="Share annotation"><button data-action="share-choice" data-share-type="copy">Copy link</button>${navigator.share ? '<button data-action="share-choice" data-share-type="native">Share…</button>' : ''}<button data-action="share-choice" data-share-type="excerpt">Copy attributed excerpt</button><a href="${escapeHTML(descriptor.imageUrl)}?download=1" download>Save image</a><button data-action="share-choice" data-share-type="embed">Copy embed</button><a href="${escapeHTML(descriptor.url)}/qr.svg?v=1" target="_blank" rel="noreferrer">QR</a></div>`; })() : '';
   const respondArea = state.user || !state.authRequired
     ? `<form class="respform" data-action="comment-form"><input aria-label="Add a response" placeholder="Add a considered response…" value="${escapeHTML(state.commentDraft)}" data-action="comment-draft" maxlength="500" /><button class="btn" aria-label="Post response">Respond</button></form>`
     : `<div class="respprompt">${enabledProviders(state.authProviders).length ? '<button class="linklike" data-action="open-signin"><b>Sign in</b></button> to add a response.' : 'Sign-in is unavailable right now.'}</div>`;
@@ -869,14 +884,13 @@ const permalinkView = () => {
       <div class="actions">
         <button class="act" data-action="focus-comment">${icon('respond')}Respond${comments.length ? ` <span class="n">· ${comments.length}</span>` : ''}</button>
         <button class="act ${item.likedByMe ? 'is-liked' : ''}" data-action="toggle-like" data-slug="${escapeHTML(item.slug || '')}" aria-label="${item.likedByMe ? 'Unlike' : 'Like'} this annotation">${icon('heart')}${item.likes ? `<span class="n">${item.likes}</span>` : 'Like'}</button>
-        <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(annotation, window.location.origin))}" aria-expanded="${state.shareOpen}">${icon('share')}Share</button>
+        <button class="act" data-action="share" data-share-url="${escapeHTML(publicAnnotationUrl(annotation, window.location.origin))}" aria-haspopup="dialog">${icon('share')}Share</button>
         ${item.visibility !== 'private' ? `<a class="act" href="/og/${encodeURIComponent(item.slug)}.png?download=1" download="annotated-${escapeHTML(item.slug)}.png" title="Download this annotation's share card as an image">Save card</a>` : ''}
         ${isMine && annotation.commentaryMode === 'text' && withinEditWindow(annotation) && !state.editingNote ? `<button class="act" data-action="edit-note">Edit note</button>` : ''}
         ${isMine ? `<button class="act" data-action="delete-annotation" data-slug="${escapeHTML(item.slug)}">Delete</button>` : ''}
         ${openOriginalAction(item)}
         <button class="act claim" data-action="toggle-claim" data-claim-slug="${escapeHTML(item.slug)}" data-claim-title="${escapeHTML(item.sourceTitle)}" title="Dispute a fair-use breach on this annotation">${icon('claim')}Dispute fair use</button>
       </div>
-      ${sharing}
     </article>
     <section class="responses">
       <h2>Responses</h2>
@@ -1124,6 +1138,33 @@ const moderationView = () => {
 
 // A screenshot enlarged in place — the moment at full size, the original one
 // click away. Backdrop or Esc closes.
+// The share sheet: one set of doors on every surface — X, WhatsApp,
+// Bluesky, Email from core's shareTargets — plus the link itself, the
+// system sheet where the browser has one, and (on a permalink) the
+// receipt extras. The preview IS the card that will land in the timeline.
+const shareModalView = () => {
+  if (!state.shareModal) return '';
+  const { annotation, extras } = state.shareModal;
+  const descriptor = shareDescriptor(annotation, window.location.origin);
+  const doors = shareTargets(descriptor).map((door) =>
+    `<a class="share-door" href="${escapeHTML(door.href)}" target="_blank" rel="noreferrer" data-action="share-target" data-target="${door.id}"><span class="icon">${BRAND_ICONS[door.id] || icons.mail}</span>${escapeHTML(door.label)}</a>`).join('');
+  return `<div class="share-modal" data-action="share-close" role="dialog" aria-modal="true" aria-label="Share annotation">
+    <div class="share-card" data-action="stop-modal">
+      <button class="share-close" data-action="share-close" aria-label="Close share sheet">${icon('close')}</button>
+      ${descriptor.imageUrl ? `<img class="share-preview" src="${escapeHTML(descriptor.imageUrl)}" alt="Preview of the share card" loading="lazy" />` : ''}
+      <div class="share-doors">${doors}</div>
+      <div class="share-rows">
+        <button data-action="share-choice" data-share-type="copy">${icon('link')}Copy link</button>
+        ${navigator.share ? `<button data-action="share-choice" data-share-type="native">${icon('share')}More options…</button>` : ''}
+        ${extras ? `<button data-action="share-choice" data-share-type="excerpt">${icon('respond')}Copy attributed excerpt</button>
+        <button data-action="share-choice" data-share-type="embed">${icon('file-text')}Copy embed</button>
+        <a href="${escapeHTML(descriptor.imageUrl)}?download=1" download>${icon('bookmark')}Save image</a>
+        <a href="${escapeHTML(descriptor.url)}/qr.svg?v=1" target="_blank" rel="noreferrer">${icon('open')}QR code</a>` : ''}
+      </div>
+    </div>
+  </div>`;
+};
+
 const lightboxView = () => state.lightbox ? `<div class="lightbox" data-action="close-lightbox" role="dialog" aria-modal="true" aria-label="${escapeHTML(state.lightbox.alt || 'Enlarged screenshot')}">
   <button class="modal-close" data-action="close-lightbox" aria-label="Close enlarged screenshot">${icon('close')}</button>
   <img src="${escapeHTML(state.lightbox.src)}" alt="${escapeHTML(state.lightbox.alt || '')}" data-action="stop-modal" data-stop-click="true" />
@@ -1152,6 +1193,76 @@ const docPage = (title, lead, body) => `
     <div class="libhead doc-head"><div><h1>${title}</h1><div class="lib-meta">${lead}</div></div></div>
     <div class="docbody">${body}</div>
   </div>`;
+
+// Settings: the same record the app's Settings screen and the panel
+// read. Signed out there is nothing to save — the page says so rather
+// than pretending the controls work.
+const settingsView = () => {
+  const preferences = state.preferences;
+  const topicRow = (topic) => {
+    const muted = preferences.mutedTopics.includes(topic.slug);
+    return `<label class="pref-row"><span>${escapeHTML(topic.label)}</span><input type="checkbox" data-action="pref-topic" data-topic="${escapeHTML(topic.slug)}" ${muted ? '' : 'checked'} ${state.user ? '' : 'disabled'}></label>`;
+  };
+  return docPage('Settings', 'your account, your feed', `
+    ${state.user ? '' : '<div class="card"><h2>Sign in to keep these</h2><p>Preferences follow your account, so the choices you make here apply in the extension and the mobile app too. <button class="btn" data-action="open-signin">Sign in</button></p></div>'}
+    <div class="card"><h2>Explore</h2>
+      <p>How the explore feed ranks what it shows you.</p>
+      <div class="pref-choice">
+        <label class="pref-row"><span>Trending<small>Ranked by opens of the original.</small></span><input type="radio" name="exploreSort" data-action="pref-sort" data-value="trending" ${preferences.exploreSort === 'trending' ? 'checked' : ''} ${state.user ? '' : 'disabled'}></label>
+        <label class="pref-row"><span>Recent<small>Newest annotations first.</small></span><input type="radio" name="exploreSort" data-action="pref-sort" data-value="recent" ${preferences.exploreSort === 'recent' ? 'checked' : ''} ${state.user ? '' : 'disabled'}></label>
+      </div>
+    </div>
+    <div class="card"><h2>Following</h2>
+      <p>How your Following timeline is ordered.</p>
+      <div class="pref-choice">
+        <label class="pref-row"><span>Most recent<small>Newest annotations from people you follow.</small></span><input type="radio" name="followingOrder" data-action="pref-order" data-value="recent" ${preferences.followingOrder === 'recent' ? 'checked' : ''} ${state.user ? '' : 'disabled'}></label>
+        <label class="pref-row"><span>Popular<small>Ranked by opens of the original.</small></span><input type="radio" name="followingOrder" data-action="pref-order" data-value="popular" ${preferences.followingOrder === 'popular' ? 'checked' : ''} ${state.user ? '' : 'disabled'}></label>
+      </div>
+    </div>
+    <div class="card"><h2>Themes</h2>
+      <p>Turn a theme off to keep it out of your timeline, on every surface.</p>
+      <div class="pref-choice">${TOPICS.map(topicRow).join('')}</div>
+    </div>
+    <div class="card"><h2>Demo content</h2>
+      <label class="pref-row"><span>Hide demo accounts<small>This build seeds demo annotations so the feed is never empty.</small></span><input type="checkbox" data-action="pref-demo" ${preferences.hideDemo ? 'checked' : ''} ${state.user ? '' : 'disabled'}></label>
+    </div>
+  `);
+};
+
+const helpView = () => docPage('Help centre', 'how the margin works', `
+  <div class="card"><h2>Getting started</h2>
+    <ol class="doc-steps">
+      <li><strong>Install the Chrome extension.</strong> It puts the capture panel beside the page you are reading — <a href="/extension" data-action="set-view" data-view="extension">how it works</a>.</li>
+      <li><strong>Or capture from anywhere.</strong> Share a link into the mobile app, or paste one into the <a href="/capture" data-action="set-view" data-view="capture">capture desk</a> on the web.</li>
+      <li><strong>Sign in when you are ready to publish.</strong> Reading needs no account. One account covers the extension, the web, and the app.</li>
+    </ol>
+  </div>
+  <div class="card"><h2>Capturing a moment</h2>
+    <ul class="doc-list">
+      <li><strong>Passage.</strong> Select text on the page; the panel keeps the quote and the paragraph it came from.</li>
+      <li><strong>Clip.</strong> Mark in and out on the page&rsquo;s own player, up to 90 seconds. The excerpt is transcoded and hosted here so it plays in the feed.</li>
+      <li><strong>Snip.</strong> Draw a box over part of the page, or keep the visible tab, when the moment is a picture.</li>
+      <li><strong>Your note.</strong> Written or recorded, up to 90 seconds of audio.</li>
+    </ul>
+  </div>
+  <div class="card"><h2>Who can see it</h2>
+    <p>Every annotation publishes as <strong>public</strong>, <strong>unlisted</strong> (anyone with the link), or <strong>private</strong> (only you). You can change it later from your library, and deleting an annotation removes its public page.</p>
+  </div>
+  <div class="card"><h2>If a source objects</h2>
+    <p>Every public annotation carries a <strong>Dispute fair use</strong> action, open to anyone — no account needed. Disputes are logged, reviewed, and counted in the <a href="/transparency" data-action="set-view" data-view="transparency">transparency report</a>; upheld ones leave a public tombstone in place of the moment. Sources can also claim their domain and reply in their own name from the <a href="/rights" data-action="set-view" data-view="rights">rights desk</a>.</p>
+  </div>
+  <div class="card"><h2>Troubleshooting</h2>
+    <ul class="doc-list">
+      <li><strong>The panel says offline.</strong> Captures queue locally and publish themselves when the connection returns; nothing is lost.</li>
+      <li><strong>A page will not capture.</strong> Browser-internal pages (settings, the extension store) cannot be read by any extension. Open the article, video, or podcast itself.</li>
+      <li><strong>&ldquo;This page&rdquo; is empty.</strong> That tab has no public annotations yet — yours would be the first.</li>
+      <li><strong>A clip will not publish.</strong> Clips are capped at 90 seconds and verified before publishing; shorten the range and try again.</li>
+    </ul>
+  </div>
+  <div class="card"><h2>Still stuck</h2>
+    <p>Write to <a href="mailto:help@annotated.app">help@annotated.app</a>. For what we keep and why, read the <a href="/terms" data-action="set-view" data-view="terms">terms</a>.</p>
+  </div>
+`);
 
 const aboutView = () => docPage('What this is', 'source-first notes', `
   <div class="card"><h2>The rule</h2>
@@ -1447,6 +1558,7 @@ const footerView = () => `
         <a href="/about" data-action="set-view" data-view="about">About</a>
         <a href="/extension" data-action="set-view" data-view="extension">Extension</a>
         <a href="/app" data-action="set-view" data-view="app">Mobile app</a>
+        <a href="/help" data-action="set-view" data-view="help">Help centre</a>
         <a href="/audit" data-action="set-view" data-view="audit">Brief audit</a>
       </nav>
       <nav class="foot-col" aria-label="For sources">
@@ -1476,6 +1588,8 @@ const render = () => {
     : state.activeView === 'sourceGraph' ? sourceGraphView()
     : state.activeView === 'publisher' ? publisherView()
     : state.activeView === 'moderation' ? moderationView()
+    : state.activeView === 'settings' ? settingsView()
+    : state.activeView === 'help' ? helpView()
     : state.activeView === 'about' ? aboutView()
     : state.activeView === 'extension' ? extensionView()
     : state.activeView === 'app' ? appView()
@@ -1488,7 +1602,7 @@ const render = () => {
     : feedView();
   const offline = state.serverStatus === 'offline' ? `<div class="offline-note" role="alert">The annotated backend is unreachable. Reading and drafting still work; publishing will resume when it returns.</div>` : '';
   const restoreFocus = captureFocus();
-  app.innerHTML = `${SHELL_MODE ? '' : '<a class="skip-link" href="#main" data-action="skip-to-content">Skip to content</a>' + chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${SHELL_MODE ? '' : appBannerView()}${state.claimOpen ? claimModal() : ''}${state.signinOpen ? signinModal() : ''}${lightboxView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
+  app.innerHTML = `${SHELL_MODE ? '' : '<a class="skip-link" href="#main" data-action="skip-to-content">Skip to content</a>' + chromeBar()}${offline}${authStateView()}${view}${SHELL_MODE ? '' : footerView()}${SHELL_MODE ? '' : appBannerView()}${state.claimOpen ? claimModal() : ''}${state.signinOpen ? signinModal() : ''}${lightboxView()}${shareModalView()}${state.publishMoment ? publishMomentView() : ''}${toast()}`;
   restoreFocus();
   document.documentElement.classList.toggle('app-banner-open', !SHELL_MODE && !state.appBannerDismissed);
   const overlayOpen = state.claimOpen || state.signinOpen || Boolean(state.lightbox);
@@ -1767,7 +1881,10 @@ const loadFeed = async ({ append = false } = {}) => {
       params.set('sort', 'trending');
       if (state.feedTopic) params.set('topic', state.feedTopic);
     }
-    if (state.feedFollowing) params.set('following', 'true');
+    if (state.feedFollowing) {
+      params.set('following', 'true');
+      if (state.preferences.followingOrder === 'popular') params.set('sort', 'trending');
+    }
     if (state.feedQuery.trim()) params.set('q', state.feedQuery.trim());
     if (append && state.feedCursor) params.set('cursor', state.feedCursor);
     const result = await api.feed(params.toString());
@@ -2332,11 +2449,47 @@ app.addEventListener('click', (event) => {
   }
   if (action === 'focus-comment') { document.querySelector('[data-action="comment-draft"]')?.focus(); return; }
   if (action === 'share') {
-    if (state.activeView !== 'published') { copyPublicLink(target.dataset.shareUrl || ''); return; }
-    state.shareOpen = !state.shareOpen; render(); return;
+    const published = state.activeView === 'published' && state.publishedAnnotation;
+    state.shareModal = {
+      annotation: published || {
+        url: target.dataset.shareUrl || '',
+        slug: target.dataset.shareSlug || '',
+        sourceTitle: target.dataset.shareTitle || '',
+        sourceExcerpt: target.dataset.shareQuote || '',
+        handle: target.dataset.shareHandle || '',
+      },
+      extras: Boolean(published),
+    };
+    render(); return;
+  }
+  if (action === 'share-close') { state.shareModal = null; render(); return; }
+  if (action === 'pref-sort' || action === 'pref-order' || action === 'pref-demo' || action === 'pref-topic') {
+    const next = { ...state.preferences };
+    if (action === 'pref-sort') next.exploreSort = target.dataset.value === 'recent' ? 'recent' : 'trending';
+    if (action === 'pref-order') next.followingOrder = target.dataset.value === 'popular' ? 'popular' : 'recent';
+    if (action === 'pref-demo') next.hideDemo = Boolean(target.checked);
+    if (action === 'pref-topic') {
+      const topic = target.dataset.topic || '';
+      // checked means "show me this theme"
+      next.mutedTopics = target.checked
+        ? next.mutedTopics.filter((slug) => slug !== topic)
+        : [...new Set([...next.mutedTopics, topic])];
+    }
+    state.preferences = parsePreferences(next);
+    render();
+    api.savePreferences(state.preferences)
+      .then((result) => { state.preferences = parsePreferences(result.preferences); })
+      .catch(() => notify('That preference could not be saved.'));
+    return;
+  }
+  if (action === 'share-target') {
+    // the anchor itself opens the door — this only records the walk-through
+    const annotation = state.shareModal?.annotation || {};
+    recordProductEvent('shared', { surface: 'web', shareType: target.dataset.target }, annotation.id ? { annotationId: annotation.id, sourceId: annotation.sourceId } : {});
+    return;
   }
   if (action === 'share-choice') {
-    const annotation = state.publishedAnnotation;
+    const annotation = state.shareModal?.annotation;
     if (!annotation) return;
     const descriptor = shareDescriptor(annotation, window.location.origin);
     const type = target.dataset.shareType;
@@ -2344,7 +2497,8 @@ app.addEventListener('click', (event) => {
       try {
         if (type === 'native' && navigator.share) await navigator.share({ title: descriptor.title, text: descriptor.text, url: descriptor.url });
         else await navigator.clipboard.writeText(type === 'excerpt' ? descriptor.text : type === 'embed' ? descriptor.embed : descriptor.url);
-        recordProductEvent('shared', { surface: 'web', shareType: type }, { annotationId: annotation.id, sourceId: annotation.sourceId });
+        recordProductEvent('shared', { surface: 'web', shareType: type }, annotation.id ? { annotationId: annotation.id, sourceId: annotation.sourceId } : {});
+        state.shareModal = null;
         notify(type === 'embed' ? 'Embed copied.' : type === 'excerpt' ? 'Attributed excerpt copied.' : 'Share ready.');
       } catch (error) { if (error?.name !== 'AbortError') notify('Sharing was blocked; copy the public link instead.'); }
     })();
@@ -2464,6 +2618,12 @@ app.addEventListener('timeupdate', (event) => {
 }, true);
 
 app.addEventListener('keydown', (event) => {
+  if (state.shareModal && event.key === 'Escape') {
+    event.preventDefault();
+    state.shareModal = null;
+    render();
+    return;
+  }
   if (state.publishMoment && event.key === 'Escape') {
     event.preventDefault();
     dismissPublishMoment();

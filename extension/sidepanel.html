@@ -43,6 +43,13 @@
         </div>
       </div>
 
+      <!-- signed out: the door is visible while reading, not only once a
+           publish is already in flight -->
+      <div class="signin-prompt" id="signinPrompt" hidden>
+        <p>You are reading as a guest. Sign in to publish, follow, and keep your library.</p>
+        <button type="button" class="signin-prompt-btn" id="signinPromptBtn">Sign in</button>
+      </div>
+
       <!-- capture: the source is the live tab -->
       <section class="capture" id="captureSection" role="tabpanel" aria-labelledby="tab-capture" tabindex="0">
         <!-- first run only: frame the loop once, then get out of the way -->
@@ -216,6 +223,8 @@
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" /></svg>
       </button>
     </div>
+
+    <div class="share-pop" id="sharePop" hidden></div>
 
     <div class="toast" id="toast" role="status" hidden><span id="toastText"></span><a id="toastLink" target="_blank" rel="noreferrer" hidden></a></div>
 

@@ -11,7 +11,7 @@ test('the native timeline renders through the shared core, not a private model',
   assert.match(timeline, /from '\.\.\/lib\/core\/feed-item'/);
   assert.match(timeline, /annotationToFeedItem/);
   assert.match(timeline, /from '\.\.\/lib\/core\/deep-link'/);
-  assert.match(timeline, /publicAnnotationUrl/);
+  assert.match(timeline, /ShareSheetContext/, 'sharing routes through the one core-backed sheet');
   assert.match(nativeApi, /createApiClient\(\{ origin: ORIGIN \}\)/, 'the native client is the shared one, aimed at the deployment');
 });
 

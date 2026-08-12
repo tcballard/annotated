@@ -118,11 +118,12 @@ test('one terracotta, one dark paper — the palette matches across surfaces', (
 });
 
 test('the feed tabs speak one language on web, panel, and the native app', () => {
-  // Every top switcher wears the panel's tab anatomy: meta text at rest,
+  // Every feed switcher wears the panel's tab anatomy: meta text at rest,
   // ink 700 when active, the short rounded terracotta underline at 34%
-  // insets naming the pane. Only the mobile web thumb dock keeps its own
-  // pill anatomy — it is a dock, not a top switcher, and lives inside its
-  // media scope only.
+  // insets naming the pane. No exemptions any more — the phone dock and
+  // the shell's segmented pills died when the native app started
+  // switching feeds from this exact rail; both phone experiences must
+  // read as one.
   for (const [surface, css] of [['web', webCss], ['panel', panelCss]]) {
     const active = css.match(/\.tab\.is-active::after \{[\s\S]*?\}/)?.[0] || '';
     for (const rule of ['left: 34%', 'right: 34%', 'height: 2px', 'background: var(--accent)', 'border-radius: 99px']) {
@@ -134,6 +135,11 @@ test('the feed tabs speak one language on web, panel, and the native app', () =>
   assert.match(timeline, /tabUnderline: \{ position: 'absolute', bottom: 0, left: '34%', right: '34%', height: 2, backgroundColor: tokens\.accent, borderRadius: 99 \}/, 'the native underline is the same rounded 34% rule');
   assert.match(timeline, /tabTextActive: \{ fontSize: 14, color: ink, fontWeight: '700' \}/, 'the native active tab is ink and bold');
   assert.match(timeline, /tabText: \{ fontSize: 14, color: meta \}/, 'the native resting tab is quiet meta at regular weight');
+  // And no pill switcher survives anywhere on the web: the rail never
+  // re-docks to the bottom, and no scope repaints the active tab as a
+  // filled chrome pill.
+  assert.doesNotMatch(webCss, /\.feedhead \{ position: fixed/, 'the feed rail must never dock to the bottom again');
+  assert.doesNotMatch(webCss, /\.feedhead \.tabs \.tab\.is-active \{ color: #fff/, 'no scope repaints the active tab as a filled pill');
 });
 
 test('the moment chip is the same component on every surface', () => {
@@ -160,7 +166,7 @@ test('one icon vocabulary: the same drawings, sourced from core, on every surfac
     read('mobile/components/SystemIcon.tsx'),
     read('mobile/package.json'),
   ]);
-  assert.match(web, /import \{ PRODUCT_ICONS as icons \} from '\.\/icons\.js';/, 'the web renders the core set');
+  assert.match(web, /import \{ BRAND_ICONS, PRODUCT_ICONS as icons \} from '\.\/icons\.js';/, 'the web renders the core set');
   assert.match(nativeIcon, /from '\.\.\/lib\/core\/icons'/, 'native renders the same core set');
   for (const name of ['open', 'respond', 'share', 'claim', 'follow', 'mic', 'bell', 'heart']) {
     assert.ok(coreIcons.includes(`'${name}':`), `the core vocabulary carries ${name}`);
@@ -170,6 +176,31 @@ test('one icon vocabulary: the same drawings, sourced from core, on every surfac
   const allowlist = systemIcon.match(/const SYSTEM_ICONS = \{[\s\S]*?\} satisfies/)?.[0] || '';
   assert.deepEqual([...allowlist.matchAll(/^  (\w+): \{ sf:/gm)].map((match) => match[1]).sort(), ['back', 'forward', 'share'], 'the platform-glyph allowlist is exactly share/back/forward');
   assert.ok(!mobilePkg.includes('@expo/vector-icons'), 'the icon-font dependency is retired');
+});
+
+test('sharing offers the same doors on every surface', async () => {
+  // One contract from core: X, WhatsApp, Bluesky, Email via shareTargets,
+  // the link itself, and the system sheet where the platform has one.
+  // Each surface renders its own sheet, but the doors — and the brand
+  // marks on them — come from the same bytes.
+  const [shareKit, panelJs, shareSheet, tabsShell, timelineSrc] = await Promise.all([
+    read('packages/core/src/share-kit.ts'),
+    read('extension/sidepanel.js'),
+    read('mobile/components/ShareSheet.tsx'),
+    read('mobile/app/(drawer)/(tabs)/_layout.tsx'),
+    read('mobile/components/Timeline.tsx'),
+  ]);
+  assert.match(shareKit, /'x'.*x\.com\/intent\/post/, 'core owns the X door');
+  assert.match(shareKit, /'whatsapp'.*wa\.me/, 'core owns the WhatsApp door');
+  assert.match(web, /shareTargets\(descriptor\)/, 'the web sheet renders the core doors');
+  assert.match(web, /class="share-modal"/, 'the web share is a sheet, not a silent copy');
+  assert.match(panelJs, /shareTargets\(descriptor\)/, 'the panel sheet renders the core doors');
+  assert.match(panelJs, /openSharePop/, 'the panel share is a sheet, not a silent copy');
+  assert.match(shareSheet, /shareTargets\(descriptor\)/, 'the native sheet renders the core doors');
+  assert.match(shareSheet, /Share\.share\(/, 'the system sheet stays one row away on native');
+  assert.match(shareSheet, /Clipboard\.setStringAsync/, 'copy link is a first-class door on native');
+  assert.match(tabsShell, /<ShareSheetHost>/, 'the native sheet is hosted above the tabs');
+  assert.match(timelineSrc, /openShare\(item\)/, 'the timeline share glyph summons the sheet');
 });
 
 test('one lockup: the wordmark is the same drawing everywhere', async () => {

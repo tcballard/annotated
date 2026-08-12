@@ -38,12 +38,20 @@ const clip = (value, max) => {
 };
 
 const quoteSize = (quote, hasClipFrame) => {
-  const budget = hasClipFrame ? 0 : 8;
-  if (quote.length <= 70) return 54 + budget;
-  if (quote.length <= 120) return 44 + budget;
-  if (quote.length <= 180) return 37 + budget;
-  return 31 + budget;
+  const budget = hasClipFrame ? 0 : 10;
+  if (quote.length <= 70) return 56 + budget;
+  if (quote.length <= 120) return 46 + budget;
+  if (quote.length <= 180) return 38 + budget;
+  return 32 + budget;
 };
+
+// The thumbnail beside the source: the visual the card is not already
+// spending its body on. A screenshot shown large upstairs is not repeated
+// here; a clip's poster is, because the band crops it to a strip.
+const sourceThumb = (dataUri) => el('div', {
+  display: 'flex', width: 96, height: 96, borderRadius: 12, overflow: 'hidden',
+  backgroundColor: T.player, border: `2px solid ${T.hair}`, marginRight: 22, flexShrink: 0,
+}, [{ type: 'img', props: { src: dataUri, width: 96, height: 96, style: { objectFit: 'cover' } } }]);
 
 export const formatClipTime = (seconds) => {
   const total = Math.max(0, Math.round(Number(seconds) || 0));
@@ -141,6 +149,9 @@ export function annotationCard(data) {
   // For screenshot captures the source speaks visually: the shot replaces the
   // serif quote block. Hosted media keeps its CLIP framing either way.
   const hasShotFrame = Boolean(data.screenshot) && !hasClipFrame;
+  // What the source line can show beside itself: never the image the body
+  // is already spending its space on.
+  const thumb = hasShotFrame ? null : (data.screenshot || data.poster || null);
 
   return el('div', {
     width: 1200, height: 630, display: 'flex', flexDirection: 'column',
@@ -151,10 +162,7 @@ export function annotationCard(data) {
       height: 84, backgroundColor: T.inkPanel, display: 'flex', alignItems: 'center',
       justifyContent: 'space-between', padding: '0 56px', flexShrink: 0,
     }, [
-      el('div', { display: 'flex', alignItems: 'center' }, [
-        wordmark(32),
-        txt({ fontSize: 17, color: T.soft, marginLeft: 22, letterSpacing: 3 }, 'SOURCE-FIRST NOTES'),
-      ]),
+      el('div', { display: 'flex', alignItems: 'center' }, [wordmark(32)]),
       txt({
         fontFamily: 'CardMono', fontSize: 25, fontWeight: 700, color: '#FFFFFF',
         backgroundColor: T.accent, borderRadius: 8, padding: '6px 18px',
@@ -164,7 +172,7 @@ export function annotationCard(data) {
     // body: the source speaks first — huge serif, a clip frame, or the shot
     el('div', {
       display: 'flex', flexDirection: 'column', flexGrow: 1, overflow: 'hidden',
-      padding: '42px 56px 0',
+      padding: '42px 56px 14px',
     }, [
       ...(hasClipFrame ? [clipFrame(data.clipBadge, data.poster || null)] : []),
       hasShotFrame
@@ -177,23 +185,25 @@ export function annotationCard(data) {
           }, quote),
         ]),
       // the annotator answers in sans, softer
-      txt({ fontSize: 27, lineHeight: 1.45, marginTop: 28, color: T.soft }, note),
+      txt({ fontSize: 26, lineHeight: 1.45, marginTop: 24, color: T.soft }, note),
     ]),
 
-    // footer: who kept it, from where — and the product's whole argument.
-    // Both sides are pre-clipped strings so they can never collide.
+    // the source, given its own line rather than a clipped meta string:
+    // what was read, where it lives, and who kept it — the shape a link
+    // preview is read in. No slogan sits here: the card's argument is the
+    // quote standing next to its source, and a marketing line in this row
+    // both crowded the title and risked colliding with it.
     el('div', {
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      borderTop: `2px solid ${T.hair}`, margin: '0 56px', padding: '22px 0',
+      display: 'flex', alignItems: 'center',
+      borderTop: `2px solid ${T.hair}`, margin: '0 56px', padding: '24px 0 26px',
       flexShrink: 0,
     }, [
-      el('div', { display: 'flex', alignItems: 'center', fontSize: 22 }, [
-        txt({ fontWeight: 700, color: '#FFFFFF' }, clip(`@${data.author}`, 20)),
-        txt({ color: T.meta, marginLeft: 12 },
-          clip(`· ${data.sourceName} · ${data.sourceType}${data.sourceDomain ? ` · ${data.sourceDomain}` : ''}`, 40)),
+      ...(thumb ? [sourceThumb(thumb)] : []),
+      el('div', { display: 'flex', flexDirection: 'column', flexGrow: 1, overflow: 'hidden' }, [
+        txt({ fontSize: 31, fontWeight: 700, color: '#FFFFFF', lineHeight: 1.2 }, clip(data.sourceName, 54)),
+        txt({ fontSize: 22, color: T.meta, marginTop: 8 },
+          clip(`${data.sourceDomain || data.sourceType} · kept by @${data.author}`, 48)),
       ]),
-      txt({ fontFamily: 'CardMono', fontSize: 15, color: T.accentBright, letterSpacing: 1.5, flexShrink: 0, marginLeft: 28 },
-        'THE ORIGINAL IS ONE CLICK AWAY'),
     ]),
   ]);
 }

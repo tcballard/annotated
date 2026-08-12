@@ -19,7 +19,7 @@ import {
 
 export type WelcomeTimeline = {
   time: ReturnType<typeof useSharedValue<number>>;
-  seekTo: (ms: number) => void;
+  playSegment: (fromMs: number, toMs: number) => void;
 };
 
 export function useWelcomeTimeline(
@@ -30,30 +30,25 @@ export function useWelcomeTimeline(
   const time = useSharedValue(autoplay ? 0 : durationMs);
   const reducedMotion = useReducedMotion();
 
+  // The clock no longer runs the whole sequence on its own: it is parked
+  // at the start and the screen plays one authored segment per tap.
   useEffect(() => {
     cancelAnimation(time);
-    if (!autoplay || reducedMotion) {
-      time.value = durationMs;
-      return;
-    }
-    time.value = 0;
-    time.value = withTiming(durationMs, { duration: durationMs, easing: Easing.linear });
+    time.value = autoplay && !reducedMotion ? 0 : durationMs;
   }, [autoplay, durationMs, reducedMotion, replayKey, time]);
 
-  // Tapping through is a seek, not a separate animation path: the clock
-  // jumps to the next page's stop and keeps running from there, so the
-  // rest of the sequence stays exactly as authored.
-  const seekTo = useCallback((ms: number) => {
+  // Play exactly one stretch of the authored timeline. The still stretches
+  // between transitions are skipped by setting the clock to the segment's
+  // start — nothing is visibly moving there — so each tap costs only the
+  // transition it asked for, at its authored duration.
+  const playSegment = useCallback((fromMs: number, toMs: number) => {
     cancelAnimation(time);
-    const target = Math.min(Math.max(ms, 0), durationMs);
-    time.value = target;
-    if (autoplay && !reducedMotion && target < durationMs) {
-      time.value = withTiming(durationMs, {
-        duration: durationMs - target,
-        easing: Easing.linear,
-      });
-    }
+    const start = Math.min(Math.max(fromMs, 0), durationMs);
+    const end = Math.min(Math.max(toMs, 0), durationMs);
+    if (!autoplay || reducedMotion) { time.value = end; return; }
+    time.value = start;
+    time.value = withTiming(end, { duration: Math.max(0, end - start), easing: Easing.linear });
   }, [autoplay, durationMs, reducedMotion, time]);
 
-  return { time, seekTo };
+  return { time, playSegment };
 }

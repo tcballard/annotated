@@ -80,7 +80,7 @@ test('the header is X-anatomy in our identity: avatar opens the drawer, the word
   assert.match(timeline, /tab: \{ flex: 1, minHeight: 44/, 'switcher tabs meet the touch floor');
   assert.doesNotMatch(timeline, /menuPill/, 'the pill switcher is gone');
   assert.doesNotMatch(timeline, /shadowColor|elevation:/, 'legacy shadow*/elevation props are banned (expo-native-ui)');
-  assert.match(timeline, /boxShadow: '0 2px 10px rgba\(38, 41, 47, 0\.06\)'/, 'the card shadow is the web --shadow token');
+  assert.match(timeline, /\.\.\.cardChrome/, 'the feed card sits on the shared card surface');
 });
 
 test('the home chrome hides on scroll down and returns on scroll up', async () => {
@@ -145,13 +145,93 @@ test('the drawer carries account, library, and the public pages — session acti
   assert.ok(drawerPanel.indexOf('styles.spacer') < drawerPanel.indexOf('styles.signIn'), 'sign in renders below the spacer');
 });
 
+test('the menu is X-anatomy: identity, the places you act, then the quiet pages', () => {
+  // Identity block first, with the counts X puts there — and tapping it
+  // opens your profile.
+  assert.match(drawerPanel, /Following<\/Text>/);
+  assert.match(drawerPanel, /Followers<\/Text>/);
+  assert.match(drawerPanel, /value\.toLocaleString\(\)/, 'counts are grouped, not raw');
+  assert.match(drawerPanel, /accessibilityLabel="Open your profile"/);
+  // Primary group: the places you act. Secondary group: reference pages,
+  // set smaller and quieter, exactly like X's lower list.
+  const primary = drawerPanel.match(/<View style=\{styles\.items\}>[\s\S]*?<\/View>/)?.[0] || '';
+  for (const label of ['Profile', 'Library', 'Disputes']) {
+    assert.ok(primary.includes(`'${label}'`), `the primary group carries ${label}`);
+  }
+  const secondary = drawerPanel.match(/<View style=\{styles\.minorItems\}>[\s\S]*?<\/View>/)?.[0] || '';
+  for (const label of ['Transparency', 'About', 'Settings', 'Help Centre']) {
+    assert.ok(secondary.includes(`'${label}'`), `the secondary group carries ${label}`);
+  }
+  assert.match(drawerPanel, /minorLabel: \{ color: tokens\['ink-soft'\], fontSize: 14\.5/, 'the secondary group is set smaller');
+  assert.match(drawerPanel, /itemLabel: \{ color: ink, fontSize: 16\.5, fontWeight: '700' \}/);
+});
+
+test('explore wears the chrome X gives it, and the gear holds its settings', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const exploreSettings = await readFile(new URL('../mobile/components/Preferences.tsx', import.meta.url), 'utf8');
+  // avatar, field, gear — one row, and the navigator header steps aside
+  assert.match(search, /<HeaderAvatar \/>/, 'the avatar is the same top-left affordance here');
+  assert.match(search, /accessibilityLabel="Explore settings"/);
+  assert.match(search, /<Icon name="settings"/);
+  assert.match(tabsLayout, /\/\/ Explore draws its own chrome[\s\S]*?headerShown: false/, 'the navigator header yields to explore chrome');
+  // topics wear the same rail as Home, not the old pills
+  assert.doesNotMatch(search, /styles\.pill\b/, 'the pill topics are gone');
+  assert.match(search, /tabUnderline: \{ position: 'absolute', bottom: 0/, 'topics use the product tab rail');
+  // the sheet's levers are real ones
+  assert.match(exploreSettings, /Rank explore by/);
+  assert.match(exploreSettings, /Hide demo accounts/);
+});
+
+test('reader choices are cached on the device and validated on the way back in', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const prefs = await readFile(new URL('../mobile/lib/prefs.ts', import.meta.url), 'utf8');
+  const provider = await readFile(new URL('../mobile/components/Preferences.tsx', import.meta.url), 'utf8');
+  const timeline = await readFile(new URL('../mobile/components/Timeline.tsx', import.meta.url), 'utf8');
+  const settingsScreen = await readFile(new URL('../mobile/app/settings.tsx', import.meta.url), 'utf8');
+  const rootLayout = await readFile(new URL('../mobile/app/_layout.tsx', import.meta.url), 'utf8');
+  // one record, one key, in on-device storage
+  assert.match(prefs, /from '@react-native-async-storage\/async-storage'/);
+  assert.match(prefs, /const KEY = 'annotated:preferences:v1'/, 'the record is versioned');
+  // a stored blob is input like any other: unknown values fall back to
+  // the defaults rather than reaching a query string
+  assert.match(prefs, /from '\.\/core\/preferences'/, 'the shape is the product-wide definition, not a second copy');
+  assert.match(prefs, /return DEFAULT_PREFERENCES;/, 'an unreadable cache degrades to the defaults');
+  // nothing is written before the stored record has been read, or a cold
+  // start would overwrite the reader's choices with the defaults
+  assert.match(provider, /const hydrated = useRef\(false\);/);
+  assert.match(provider, /if \(hydrated\.current\) void writePreferences\(next\);/);
+  // and every choice reads from that one record
+  assert.match(rootLayout, /<PreferencesProvider>/);
+  assert.match(timeline, /const \{ mutedTopics, setMutedTopics, followingOrder, setFollowingOrder \} = useContext\(PreferencesContext\);/);
+  assert.match(settingsScreen, /use\(PreferencesContext\)/);
+  assert.doesNotMatch(provider, /last for this session/i, 'the sheets no longer promise to forget');
+});
+
+test('the home rail carries its own menus: themes on Recent, ordering on Following', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const timeline = await readFile(new URL('../mobile/components/Timeline.tsx', import.meta.url), 'utf8');
+  const menus = await readFile(new URL('../mobile/components/FeedMenus.tsx', import.meta.url), 'utf8');
+  assert.match(timeline, /MENUS: Record<string, 'themes' \| 'order'> = \{ recent: 'themes', following: 'order' \}/);
+  assert.match(timeline, /if \(active && MENUS\[entry\.key\]\)/, 'a second tap on the active tab opens its menu');
+  assert.match(timeline, /<TopicMuteSheet/);
+  assert.match(timeline, /<FollowingOrderSheet/);
+  // muting is a real filter, and Popular is the ranking the product means
+  assert.match(timeline, /mutedTopics\.includes\(item\.topic\)/);
+  assert.match(timeline, /if \(order === 'popular'\) params\.set\('sort', 'trending'\)/);
+  assert.match(menus, /Most recent/);
+  assert.match(menus, /Popular/);
+});
+
 test('notifications aggregate X-style and the personas can aim at a real account', async () => {
   // same event on the same annotation collapses into one row with a
   // facepile; the people and the source are the bold parts
   assert.match(notifications, /export const groupNotifications = /);
   assert.match(notifications, /and \{group\.count - 1\} others/);
   assert.match(notifications, /styles\.facepile/);
-  assert.match(notifications, /borderBottomWidth: StyleSheet\.hairlineWidth/, 'flat rows, not cards');
+  // One card component under every list: the notification row and the
+  // feed card are the same surface, so moving between tabs never changes
+  // the shape of what you are reading.
+  assert.match(notifications, /<CardSurface/, 'notifications sit on the shared card surface');
   // the seeder can turn the personas toward a target account so the
   // screen is recordable: follows always, likes and responses once the
   // target has published
@@ -178,7 +258,7 @@ test('search doubles as explore: topic pills scope summarized trending stories',
   // before a query: trending annotations grouped by source into X-style
   // story rows — title, annotator facepile, counts — behind topic pills
   assert.match(search, /export const groupStories = /);
-  assert.match(search, /sort: 'trending'/);
+  assert.match(search, /params\.set\('sort', 'trending'\)/, 'explore ranks by trending unless the gear says otherwise');
   assert.match(search, /params\.set\('topic', topic\)/);
   assert.match(search, /TOPICS\.map\(\(entry\)/, 'the topic pills live here now');
   assert.match(search, /Trending in \$\{topicLabel\(topic\)\}/);

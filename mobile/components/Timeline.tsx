@@ -17,7 +17,6 @@ import {
   Platform,
   Pressable,
   RefreshControl,
-  Share,
   StyleSheet,
   Text,
   View,
@@ -33,7 +32,7 @@ import type { FeedItem } from '../lib/core/feed-item';
 import { avatarColor } from '../lib/core/avatar';
 import { topicLabel } from '../lib/core/topics';
 import { openOriginalHref } from '../lib/core/deep-link';
-import { publicAnnotationUrl } from '../lib/core/share-links';
+import { ShareSheetContext } from './ShareSheet';
 import { api } from '../lib/api';
 import { ORIGIN } from '../lib/origin';
 import { AccountContext } from './AccountContext';
@@ -43,6 +42,9 @@ import FeedPager from './FeedPager';
 import HeaderAvatar from './HeaderAvatar';
 import BrandMark from './BrandMark';
 import { InlineAudio, InlineClip } from './InlineMedia';
+import { cardChrome } from './CardSurface';
+import { FollowingOrderSheet, TopicMuteSheet } from './FeedMenus';
+import { PreferencesContext } from './Preferences';
 import { card, ink, meta, paper, tokens } from '../lib/tokens';
 
 const serif = Platform.select({ ios: 'Georgia', default: 'serif' });
@@ -55,19 +57,25 @@ const absolute = (url: string): string => (/^https?:\/\//.test(url) ? url : `${O
 // Topic feeds moved to Search's explore pills, X-style: Home is who and
 // when, Search is what about.
 type Selection = { pane: 'recent' | 'trending' | 'following'; topic: string | null };
+type PaneOrder = 'recent' | 'popular';
 const MENU: { key: string; label: string; selection: Selection }[] = [
   { key: 'recent', label: 'Recent', selection: { pane: 'recent', topic: null } },
   { key: 'trending', label: 'Trending', selection: { pane: 'trending', topic: null } },
   { key: 'following', label: 'Following', selection: { pane: 'following', topic: null } },
 ];
 
-const feedQuery = (selection: Selection, cursor: string | null): string => {
+const feedQuery = (selection: Selection, cursor: string | null, order: PaneOrder = 'recent'): string => {
   const params = new URLSearchParams({ limit: '20' });
   if (selection.pane === 'trending') {
     params.set('sort', 'trending');
     if (selection.topic) params.set('topic', selection.topic);
   }
-  if (selection.pane === 'following') params.set('following', 'true');
+  if (selection.pane === 'following') {
+    params.set('following', 'true');
+    // Popular is the same ranking the rest of the product means by it:
+    // opens of the original.
+    if (order === 'popular') params.set('sort', 'trending');
+  }
   if (cursor) params.set('cursor', cursor);
   return params.toString();
 };
@@ -106,6 +114,7 @@ export const useFeedActions = () => {
   const router = useRouter();
   const { bump } = useContext(SessionEpochContext);
   const { signIn } = useContext(AuthProviderContext);
+  const { openShare } = useContext(ShareSheetContext);
   const [followingIds, setFollowingIds] = useState<Record<string, boolean>>({});
 
   const openAnnotation = (item: FeedItem) => {
@@ -118,10 +127,9 @@ export const useFeedActions = () => {
     if (item.slug) api.recordOpen(item.slug).catch(() => {});
     void WebBrowser.openBrowserAsync(openOriginalHref(item));
   };
-  const share = (item: FeedItem) => {
-    const url = publicAnnotationUrl(item, ORIGIN);
-    if (url) void Share.share(Platform.OS === 'ios' ? { url } : { message: url });
-  };
+  // The branded sheet first — X, WhatsApp, Bluesky, Email, Copy, and the
+  // system sheet behind "More options…" — same doors as web and panel.
+  const share = (item: FeedItem) => openShare(item);
   const toggleFollow = async (item: FeedItem) => {
     const next = !followingIds[item.authorId];
     setFollowingIds((current) => ({ ...current, [item.authorId]: next }));
@@ -235,9 +243,11 @@ type FeedPaneProps = {
   ownId: string;
   chromePad: number;
   onChromeIntent: (intent: 'show' | 'hide') => void;
+  order?: PaneOrder;
+  mutedTopics?: string[];
 };
 
-const FeedPane = ({ selection, active, actions, ownId, chromePad, onChromeIntent }: FeedPaneProps) => {
+const FeedPane = ({ selection, active, actions, ownId, chromePad, onChromeIntent, order = 'recent', mutedTopics }: FeedPaneProps) => {
   const { epoch } = useContext(SessionEpochContext);
   const insets = useSafeAreaInsets();
   const lastY = useRef(0);
@@ -258,11 +268,15 @@ const FeedPane = ({ selection, active, actions, ownId, chromePad, onChromeIntent
   const [offline, setOffline] = useState(false);
   const loadedRef = useRef(false);
   const requestSeq = useRef(0);
+  // The load callback is deliberately identity-stable (it must not
+  // re-fire on every render), so the ordering reaches it through a ref
+  // and a change re-runs it explicitly.
+  const orderRef = useRef(order);
 
   const load = useCallback(async ({ append = false, cursorAt = null as string | null } = {}) => {
     const seq = ++requestSeq.current;
     try {
-      const result = await api.feed(feedQuery(selection, append ? cursorAt : null));
+      const result = await api.feed(feedQuery(selection, append ? cursorAt : null, orderRef.current));
       if (seq !== requestSeq.current) return;
       const mapped = (result.annotations || []).map(annotationToFeedItem);
       setItems((current) => append ? [...current, ...mapped] : mapped);
@@ -286,6 +300,15 @@ const FeedPane = ({ selection, active, actions, ownId, chromePad, onChromeIntent
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [epoch]);
+
+  useEffect(() => {
+    if (orderRef.current === order) return;
+    orderRef.current = order;
+    if (!loadedRef.current) return;
+    setLoading(true);
+    void load().then(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order]);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -317,7 +340,7 @@ const FeedPane = ({ selection, active, actions, ownId, chromePad, onChromeIntent
         <View style={[styles.offline, { marginTop: chromePad }]}><Text style={styles.offlineText}>The annotated backend is unreachable. Pull to retry.</Text></View>
       ) : null}
       <FlatList
-        data={items}
+        data={mutedTopics?.length ? items.filter((item) => !item.topic || !mutedTopics.includes(item.topic)) : items}
         keyExtractor={(item, index) => item.slug || String(index)}
         renderItem={({ item }) => (
           <FeedCard
@@ -357,6 +380,12 @@ export default function Timeline() {
   const actions = useFeedActions();
   const insets = useSafeAreaInsets();
   const [index, setIndex] = useState(0);
+  // The rail's own menus: Recent can put themes aside, Following can be
+  // ordered by time or by attention. Tapping the active tab opens its
+  // menu — the chevron says which tabs have one.
+  const { mutedTopics, setMutedTopics, followingOrder, setFollowingOrder } = useContext(PreferencesContext);
+  const [menu, setMenu] = useState<null | 'themes' | 'order'>(null);
+  const MENUS: Record<string, 'themes' | 'order'> = { recent: 'themes', following: 'order' };
 
   // The chrome (avatar + wordmark + feed menu) hides when the feed scrolls
   // down and returns on any scroll up — it should never cost reading room.
@@ -392,6 +421,8 @@ export default function Timeline() {
               ownId={me?.id || ''}
               chromePad={chromeHeight}
               onChromeIntent={setChrome}
+              order={entry.key === 'following' ? followingOrder : 'recent'}
+              mutedTopics={entry.key === 'recent' ? mutedTopics : undefined}
             />
           </View>
         ))}
@@ -417,15 +448,23 @@ export default function Timeline() {
               <Pressable
                 key={entry.key}
                 style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
-                onPress={() => select(position)}
+                accessibilityLabel={active && MENUS[entry.key] ? `${entry.label} options` : entry.label}
+                onPress={() => { if (active && MENUS[entry.key]) { void Haptics.selectionAsync(); setMenu(MENUS[entry.key]); } else select(position); }}
               >
-                <Text style={active ? styles.tabTextActive : styles.tabText}>{entry.label}</Text>
+                <View style={styles.tabRow}>
+                  <Text style={active ? styles.tabTextActive : styles.tabText}>{entry.label}</Text>
+                  {active && MENUS[entry.key] ? (
+                    <View style={styles.chevron}><Icon name="chevron-right" size={14} color={ink} /></View>
+                  ) : null}
+                </View>
                 {active ? <View style={styles.tabUnderline} /> : null}
               </Pressable>
             );
           })}
         </View>
       </Animated.View>
+      <TopicMuteSheet visible={menu === 'themes'} onClose={() => setMenu(null)} muted={mutedTopics} setMuted={setMutedTopics} />
+      <FollowingOrderSheet visible={menu === 'order'} onClose={() => setMenu(null)} order={followingOrder} setOrder={setFollowingOrder} />
     </View>
   );
 }
@@ -446,6 +485,9 @@ const styles = StyleSheet.create({
   // 44pt target (the touch floor — the pointer surfaces run shorter).
   switcher: { flexDirection: 'row', backgroundColor: card, borderBottomWidth: 1, borderBottomColor: tokens.hair },
   tab: { flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  tabRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  // the canon carries one chevron; a quarter turn points it down
+  chevron: { transform: [{ rotate: '90deg' }] },
   tabPressed: { backgroundColor: tokens.soft },
   tabText: { fontSize: 14, color: meta },
   tabTextActive: { fontSize: 14, color: ink, fontWeight: '700' },
@@ -457,17 +499,8 @@ const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   list: { padding: 14, paddingTop: 10 },
   footer: { paddingVertical: 16 },
-  post: {
-    flexDirection: 'row',
-    gap: 10,
-    backgroundColor: card,
-    borderRadius: radiusCard,
-    padding: 12,
-    marginBottom: 10,
-    // The web's --shadow token, spelled as the modern cross-platform
-    // boxShadow (expo-native-ui bans the legacy shadow*/elevation props).
-    boxShadow: '0 2px 10px rgba(38, 41, 47, 0.06)',
-  },
+  // One card surface for every list in the app (CardSurface).
+  post: { ...cardChrome, flexDirection: 'row', gap: 10 },
   postPressed: { opacity: 0.92 },
   avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   avatarImage: { width: 40, height: 40, borderRadius: 20, backgroundColor: tokens.soft },

@@ -21,6 +21,7 @@
 // The composition, palette, wordmark, and copy are annotated's own; the
 // terracotta full stop is the single sanctioned accent in chrome.
 
+import { useEffect, useState } from 'react';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
@@ -54,10 +55,16 @@ const PAGES = [
   'Publish a page that keeps the source attached.',
 ] as const;
 
-// Where each page settles on the clock. Tapping through seeks to the
-// next one; past the last, it seeks to the primary action's entrance.
-const PAGE_STOPS = [0, 2833, 3267] as const;
-const CTA_STOP = 3800;
+// The sequence advances on taps, never on a timer: each step names the
+// stretch of the authored clock that plays when you ask for it. Step 0 is
+// the entrance; the last one carries page three in and brings the primary
+// action with it, so the screen ends composed and waiting.
+const STEPS = [
+  { from: 0, to: 1000 },
+  { from: 2833, to: 3100 },
+  { from: 3267, to: SPEAK_LANGUAGE_DURATION_MS },
+] as const;
+const LAST_STEP = STEPS.length - 1;
 
 const lowerWash = require('../../assets/welcome/lower-wash.png');
 
@@ -121,10 +128,16 @@ export function SpeakLanguageWelcome({
   onSecondaryPress,
   replayKey = 0,
 }: WelcomeScreenProps) {
-  const { time, seekTo } = useWelcomeTimeline(SPEAK_LANGUAGE_DURATION_MS, autoplay, replayKey);
+  const { time, playSegment } = useWelcomeTimeline(SPEAK_LANGUAGE_DURATION_MS, autoplay, replayKey);
   const contentReady = useInteractionGate({ autoplay, delayMs: 333, replayKey });
-  const ctaReady = useInteractionGate({ autoplay, delayMs: 4400, replayKey });
-  const tapExpired = useInteractionGate({ autoplay, delayMs: 3400, replayKey });
+  // Reading pace is the reader's: the step advances on a tap, and the
+  // gates read the step rather than a wall clock.
+  const [step, setStep] = useState(0);
+  const onLastStep = step >= LAST_STEP;
+  useEffect(() => {
+    setStep(0);
+    playSegment(STEPS[0].from, STEPS[0].to);
+  }, [playSegment, replayKey]);
 
   const contentStyle = useAnimatedStyle(() => ({ opacity: segment(time.value, 300, 333) }));
   const splashStyle = useAnimatedStyle(() => ({
@@ -142,12 +155,12 @@ export function SpeakLanguageWelcome({
     opacity: Easing.inOut(Easing.quad)(segment(time.value, 3800, 4400)),
   }));
 
-  // Tapping through advances the authored sequence rather than skipping
-  // it: the clock lands on the next page's stop and keeps running.
+  // Tapping plays the next authored transition and then stops there.
   const advance = () => {
-    const now = time.value;
-    const next = PAGE_STOPS.find((stop) => stop > now + 1);
-    seekTo(next ?? CTA_STOP);
+    if (onLastStep) return;
+    const next = step + 1;
+    setStep(next);
+    playSegment(STEPS[next].from, STEPS[next].to);
     onActionPress?.('speak-language.tap-to-continue');
   };
 
@@ -188,7 +201,7 @@ export function SpeakLanguageWelcome({
         <Animated.View style={[styles.tap, tapStyle]}>
           <GatedPressable
             accessibilityLabel="Tap to continue"
-            disabled={!contentReady || tapExpired}
+            disabled={!contentReady || onLastStep}
             onPress={advance}
             style={styles.tapPressable}
           >
@@ -199,7 +212,7 @@ export function SpeakLanguageWelcome({
         <Animated.View style={[styles.ctaWrap, buttonStyle]}>
           <GatedPressable
             accessibilityLabel="Start keeping moments"
-            disabled={!ctaReady}
+            disabled={!onLastStep}
             onPress={resolveActionPress('speak-language.start-speaking-today', onActionPress, onPrimaryPress)}
             style={styles.cta}
           >

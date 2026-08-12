@@ -1,1 +1,1 @@
-export const latestMigrationVersion = '008_url_identity';
+export const latestMigrationVersion = '009_user_preferences';

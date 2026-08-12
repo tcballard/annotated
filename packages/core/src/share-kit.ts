@@ -21,3 +21,19 @@ export const shareDescriptor = (annotation: Record<string, any>, origin?: string
   imageUrl: annotation.slug ? `${String(origin || '').replace(/\/$/, '')}/og/${encodeURIComponent(annotation.slug)}.png` : '',
   embed: citationEmbed(annotation, origin),
 });
+
+// The doors a share can walk through, one list for every surface. The
+// descriptor's text already ends with the public URL (the attributed
+// excerpt carries its own receipt), so intents that take a separate url
+// parameter get the text without it.
+export type ShareTarget = { id: 'x' | 'whatsapp' | 'bluesky' | 'email'; label: string; href: string };
+
+export const shareTargets = (descriptor: { url: string; title: string; text: string }): ShareTarget[] => {
+  const summary = descriptor.text.replace(descriptor.url, '').trim();
+  return [
+    { id: 'x', label: 'Post to X', href: `https://x.com/intent/post?text=${encodeURIComponent(summary)}&url=${encodeURIComponent(descriptor.url)}` },
+    { id: 'whatsapp', label: 'WhatsApp', href: `https://wa.me/?text=${encodeURIComponent(descriptor.text)}` },
+    { id: 'bluesky', label: 'Bluesky', href: `https://bsky.app/intent/compose?text=${encodeURIComponent(descriptor.text)}` },
+    { id: 'email', label: 'Email', href: `mailto:?subject=${encodeURIComponent(descriptor.title)}&body=${encodeURIComponent(descriptor.text)}` },
+  ];
+};

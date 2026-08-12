@@ -27,13 +27,14 @@ export const CORE_MODULES = {
   'api-client': ['src/api-client.js'],
   'deep-link': ['src/deep-link.js', 'extension/deep-link.js'],
   'clip-range': ['src/clip-range.js', 'extension/clip-range.js'],
-  'share-links': ['src/share-links.js'],
+  'share-links': ['src/share-links.js', 'extension/share-links.js'],
   'share-capture': ['src/share-capture.js'],
   'auth-ui': ['src/auth-ui.js'],
   'avatar': ['src/avatar.js', 'extension/avatar.js'],
   'capture-state': ['src/capture-state.js', 'extension/capture-state.js'],
   'share-kit': ['src/share-kit.js', 'extension/share-kit.js'],
-  'icons': ['src/icons.js'],
+  'preferences': ['src/preferences.js', 'server/preferences.js', 'extension/preferences.js'],
+  'icons': ['src/icons.js', 'extension/icons.js'],
 };
 
 export const MOBILE_CORE_DIR = 'mobile/lib/core';

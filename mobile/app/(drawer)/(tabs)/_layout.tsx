@@ -13,6 +13,7 @@ import Icon from '../../../components/Icon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HeaderAvatar from '../../../components/HeaderAvatar';
 import CaptureSheet from '../../../components/CaptureSheet';
+import { ShareSheetHost } from '../../../components/ShareSheet';
 import { AccountContext } from '../../../components/AccountContext';
 import { card, ink, meta, paper, tokens } from '../../../lib/tokens';
 
@@ -26,7 +27,7 @@ export default function TabsLayout() {
   // icons over the home indicator. No pill, no shadow, no float.
   const webSceneStyle = { backgroundColor: paper };
   return (
-    <>
+    <ShareSheetHost>
     <Tabs
       screenOptions={{
         headerShown: true,
@@ -68,8 +69,9 @@ export default function TabsLayout() {
         name="search"
         options={{
           title: 'Search',
-          headerTitle: 'Search',
-          headerTitleStyle: styles.headerTitle,
+          // Explore draws its own chrome — avatar, field, gear — so the
+          // navigator header would only duplicate the top-left avatar.
+          headerShown: false,
           tabBarIcon: ({ color, size }) => <Icon name="search" color={color} size={size} />,
         }}
       />
@@ -80,6 +82,10 @@ export default function TabsLayout() {
           headerTitle: 'Capture',
           headerTitleStyle: styles.headerTitle,
           sceneStyle: webSceneStyle,
+          // The capture desk is a web surface: mounting it with the
+          // navigator instead of on first press means the WebView has
+          // already booted by the time the pen is tapped.
+          lazy: false,
           tabBarIcon: ({ color, size }) => <Icon name="edit-3" color={color} size={size} />,
         }}
         listeners={{
@@ -113,7 +119,7 @@ export default function TabsLayout() {
       />
     </Tabs>
     <CaptureSheet visible={captureOpen} onClose={() => setCaptureOpen(false)} />
-    </>
+    </ShareSheetHost>
   );
 }
 

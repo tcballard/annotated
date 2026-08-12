@@ -49,6 +49,7 @@ import {
   listPeople,
   listClaims,
   markNotificationsSeen,
+  saveUserPreferences,
   moderateClaim,
   putMedia,
   proofWorldStore,
@@ -200,6 +201,19 @@ const handleApi = async (request, response, pathname) => {
   if (request.method === 'GET' && pathname === '/api/me') {
     const user = await currentUser(request);
     return send(response, 200, { user: user || null, authenticated: Boolean(user) });
+  }
+
+  // Preferences follow the account. The record arrives whole and is
+  // validated by the same parser every surface uses, so a surface running
+  // an older build can neither widen the shape nor smuggle a value past
+  // the readers of it.
+  if (request.method === 'PUT' && pathname === '/api/preferences') {
+    const viewer = await currentUser(request);
+    if (!viewer) return send(response, 401, { error: 'Sign in to save your preferences.' });
+    const body = await readJson(request).catch(() => null);
+    if (!body || typeof body !== 'object') return send(response, 400, { error: 'Send a preferences record.' });
+    const preferences = await saveUserPreferences(viewer.id, body.preferences ?? body);
+    return send(response, 200, { preferences });
   }
 
   // Notifications, derived on read — responses, likes, and follows aimed at

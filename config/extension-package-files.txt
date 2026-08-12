@@ -7,6 +7,7 @@ capture-state.js
 clip-range.js
 config.js
 deep-link.js
+icons.js
 icons/icon-1024.png
 icons/icon-128.png
 icons/icon-16.png
@@ -20,7 +21,9 @@ media-draft-store.js
 options.css
 options.html
 options.js
+preferences.js
 share-kit.js
+share-links.js
 sidepanel.css
 sidepanel.html
 sidepanel.js

@@ -1116,3 +1116,53 @@ svg { stroke: currentColor; stroke-width: 1.8; fill: none; stroke-linecap: round
 }
 
 .pub-moment .pub-hint { color: var(--meta); font-size: 12.5px; text-align: center; }
+
+/* ── the share sheet ────────────────────────────────────────────────── */
+
+/* The same doors as the web and the app, panel-sized: brand tiles over a
+   copy row, rising from the panel's foot. No accent — sharing is chrome,
+   not the moment. */
+.share-pop { position: fixed; inset: 0; z-index: 80; }
+.share-pop-backdrop { position: absolute; inset: 0; background: rgba(38, 41, 47, .45); }
+.share-pop-card { position: absolute; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 6px 24px rgba(38, 41, 47, .18); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.share-doors { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.share-door { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 2px 7px; border: 1px solid var(--hair); border-radius: 8px; font-size: 10.5px; color: var(--ink-soft); text-decoration: none; }
+.share-door:hover { background: var(--soft); text-decoration: none; }
+.share-door .glyph { color: var(--ink); display: block; }
+.share-door .glyph svg { width: 18px; height: 18px; display: block; }
+.share-copy { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; border: 1px solid var(--border); border-radius: 8px; font-size: 12.5px; color: var(--ink); background: var(--paper); }
+.share-copy:hover { background: var(--soft); }
+.share-copy svg { width: 15px; height: 15px; }
+
+/* ── the signed-out door ────────────────────────────────────────────── */
+
+/* A signed-out reader sees the door while reading, not only when a
+   publish is already in flight — and it stays put when the backend is
+   unreachable, because being offline is not the same as being anonymous.
+   Chrome, not the moment: ink fill, no accent. */
+.signin-prompt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 14px 0;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.signin-prompt p { flex: 1; color: var(--ink-soft); font-size: 12px; line-height: 16px; }
+
+.signin-prompt-btn {
+  flex-shrink: 0;
+  background: var(--chrome);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 99px;
+  padding: 0 14px;
+  min-height: 32px;
+  transition: background .12s ease;
+}
+
+.signin-prompt-btn:hover { background: var(--chrome-dark); }
