@@ -13,6 +13,7 @@ const annotation = {
   commentary: 'The whole segment is really about incentive design, not curiosity.',
   clipStart: 14,
   clipEnd: 62,
+  mediaStatus: 'ready',
 };
 
 const author = { handle: 'tcballard' };
@@ -29,6 +30,41 @@ test('OG card data maps the annotation onto the miniature-permalink fields', () 
   const podcast = ogCardData({ ...annotation, sourceType: 'podcast' }, author);
   assert.equal(podcast.clipBadge, '0:48 · audio');
   assert.equal(formatClipTime(75), '1:15');
+});
+
+test('a capture with no excerpt and no range claims nothing it does not have', () => {
+  // The share that looked wrong on X: a YouTube tab kept from the panel with
+  // no selection and no marked clip. The tab title is not a quote, the
+  // counter is not a title, and 0:00–0:00 is not a moment.
+  const bare = {
+    slug: 'kept-tab-abc123', sourceType: 'video', sourceTitle: '(47) YouTube',
+    sourceHost: 'youtube.com', sourceExcerpt: '',
+    commentary: 'Watch the first two minutes — the framing is the whole argument.',
+    clipStart: 0, clipEnd: 0, mediaStatus: 'queued',
+  };
+  const data = ogCardData(bare, author);
+  assert.equal(data.quote, '', 'a tab title is not a quotation');
+  assert.equal(data.sourceName, 'YouTube', 'the notification counter is tab furniture');
+  assert.equal(data.momentLabel, '', 'no marked range, no 0:00–0:00 chip');
+  assert.equal(data.clipBadge, '', 'no range, no player frame');
+  const flat = JSON.stringify(annotationCard(data));
+  assert.doesNotMatch(flat, /“/, 'nothing is dressed in quote marks');
+  assert.doesNotMatch(flat, /"CLIP"/, 'no phantom player');
+  assert.doesNotMatch(flat, /CardSerif/, 'the serif voice belongs to the source alone');
+  // the annotator's note leads the card instead — paper, sized like a quote
+  assert.match(flat, /"fontSize":60,"lineHeight":1.34,"color":"#F5F4F0"\},"children":"Watch the first two minutes/);
+  // a wordless capture still names the work rather than shipping a blank card
+  assert.equal(ogCardData({ ...bare, commentary: '' }, author).note, 'YouTube');
+});
+
+test('the 240p badge waits for the transcode; a pending clip shows only its span', () => {
+  const pending = ogCardData({ ...annotation, mediaStatus: 'queued' }, author);
+  assert.equal(pending.clipBadge, '0:48', 'no hosted copy yet, no 240p claim');
+  assert.equal(ogCardData({ ...annotation, mediaStatus: 'failed' }, author).clipBadge, '0:48');
+  // the frame itself still renders — the marked range is real
+  const flat = JSON.stringify(annotationCard(pending));
+  assert.match(flat, /"CLIP"/);
+  assert.doesNotMatch(flat, /240p/);
 });
 
 test('the card tree carries the ink chrome, the CLIP framing, and both voices', () => {
@@ -123,6 +159,9 @@ test('permalink meta injection escapes values and fills every required tag', () 
   assert.match(injected, /&lt;script&gt;/);
   const meta = permalinkMeta(annotation, author, 'https://annotated.example.com');
   assert.match(meta.title, /^“The future is built by people who keep asking why\.” — @tcballard on annotated$/);
+  // no excerpt: the unfurl names the work, and puts nothing in quote marks
+  const bare = permalinkMeta({ ...annotation, sourceExcerpt: '', sourceTitle: '(47) YouTube' }, author, 'https://annotated.example.com');
+  assert.equal(bare.title, 'YouTube — kept by @tcballard on annotated');
   assert.equal(escapeHtml('<&"\'>'), '&lt;&amp;&quot;&#39;&gt;');
 });
 

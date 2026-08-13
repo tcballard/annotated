@@ -1,6 +1,7 @@
 const allowedTypes = new Set(['video', 'article', 'podcast']);
 const allowedModes = new Set(['text', 'audio']);
 import { parseSourceUrl } from './source-resolver.js';
+import { cleanSourceTitle } from './source-title.js';
 import { normalizeSourceRelation, sourceIdentity, sourceRelationTypes } from './source-identity.js';
 import { isTopic } from './topics.js';
 import { VISIBILITIES } from './visibility.js';
@@ -51,6 +52,9 @@ export function validateAnnotation(input) {
     errors,
     normalized: {
       ...input,
+      // The stored title is the work's name, not the tab furniture around
+      // it — "(47) YouTube" kept the unread counter forever.
+      sourceTitle: cleanSourceTitle(input.sourceTitle) || String(input.sourceTitle || '').trim(),
       sourceExcerpt,
       clientRequestId: input.clientRequestId || null,
       canonicalUrl: identity.canonicalUrl,

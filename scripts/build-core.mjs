@@ -34,6 +34,7 @@ export const CORE_MODULES = {
   'capture-state': ['src/capture-state.js', 'extension/capture-state.js'],
   'share-kit': ['src/share-kit.js', 'extension/share-kit.js'],
   'preferences': ['src/preferences.js', 'server/preferences.js', 'extension/preferences.js'],
+  'source-title': ['src/source-title.js', 'server/source-title.js', 'extension/source-title.js'],
   'icons': ['src/icons.js', 'extension/icons.js'],
 };
 
