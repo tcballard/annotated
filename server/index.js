@@ -11,7 +11,7 @@ import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, enqueueMediaJob, mediaWorkerExecution, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
 import { followingFeedRequiresAuth, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey } from './feed.js';
-import { ogCardData, renderOgCardCached, youtubeThumbnailUrl } from './og-card.js';
+import { OG_CARD_VERSION, ogCardData, renderOgCardCached, youtubeThumbnailUrl } from './og-card.js';
 import { escapeHtml, injectAnnotationMeta } from './permalink-meta.js';
 import { cleanSourceTitle } from './source-title.js';
 import { allowsIndexing, canViewAnnotation, VISIBILITIES } from './visibility.js';
@@ -816,7 +816,7 @@ const serveOgCard = async (request, response, slug, { download = false } = {}) =
   if (!found) return notFound(response);
   const { annotation, author } = found;
   try {
-    const cacheKey = [annotation.id, annotation.mediaStatus, annotation.openCount || 0, annotation.editedAt || '', annotation.visibility || 'public', annotation.screenshotAssetId || '', annotation.posterAssetId || ''].join(':');
+    const cacheKey = [OG_CARD_VERSION, annotation.id, annotation.mediaStatus, annotation.openCount || 0, annotation.editedAt || '', annotation.visibility || 'public', annotation.screenshotAssetId || '', annotation.posterAssetId || ''].join(':');
     // Crawlers refetch share cards on every unfurl. The ETag is the cache
     // key that already names everything the pixels depend on, so an
     // unchanged card answers 304 before any render happens — and s-maxage

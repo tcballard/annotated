@@ -10,6 +10,11 @@ import { OG_WORDMARK } from './og-wordmark.js';
 // Fonts are server-side only; the no-webfont rule for the browser surfaces
 // is unaffected.
 
+// Bumped whenever the drawing changes. The version rides in the render
+// cache key and the ETag it derives, so a deploy that changes how cards
+// draw never answers 304 to a crawler holding last week's pixels.
+export const OG_CARD_VERSION = 'v2';
+
 const T = {
   ink: '#26292F', inkPanel: '#33383F', player: '#141518',
   paper: '#F5F4F0', text: '#E9EAEC', soft: '#B9BEC6', meta: '#9AA0A8',

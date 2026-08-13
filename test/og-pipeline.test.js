@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { annotationCard, formatClipTime, ogCardData, renderOgCard, youtubeThumbnailUrl } from '../server/og-card.js';
+import { annotationCard, formatClipTime, OG_CARD_VERSION, ogCardData, renderOgCard, youtubeThumbnailUrl } from '../server/og-card.js';
 import { escapeHtml, injectAnnotationMeta, permalinkMeta } from '../server/permalink-meta.js';
 
 const annotation = {
@@ -55,6 +55,12 @@ test('a capture with no excerpt and no range claims nothing it does not have', (
   assert.match(flat, /"fontSize":60,"lineHeight":1.34,"color":"#F5F4F0"\},"children":"Watch the first two minutes/);
   // a wordless capture still names the work rather than shipping a blank card
   assert.equal(ogCardData({ ...bare, commentary: '' }, author).note, 'YouTube');
+});
+
+test('the renderer version rides in the cache key, so a redesign invalidates old ETags', async () => {
+  assert.ok(OG_CARD_VERSION.length > 0);
+  const server = await readFile(new URL('../server/index.js', import.meta.url), 'utf8');
+  assert.match(server, /const cacheKey = \[OG_CARD_VERSION, annotation\.id/, 'the route keys renders on the drawing version');
 });
 
 test('the 240p badge waits for the transcode; a pending clip shows only its span', () => {
