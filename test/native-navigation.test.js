@@ -174,6 +174,8 @@ test('explore wears the chrome X gives it, and the gear holds its settings', asy
   assert.match(search, /accessibilityLabel="Explore settings"/);
   assert.match(search, /<Icon name="settings"/);
   assert.match(tabsLayout, /\/\/ Explore draws its own chrome[\s\S]*?headerShown: false/, 'the navigator header yields to explore chrome');
+  assert.match(search, /const insets = useSafeAreaInsets\(\);/, 'explore reads the device safe area when it owns the header');
+  assert.match(search, /style=\{\[styles\.chrome, \{ paddingTop: insets\.top \}\]\}/, 'explore chrome clears the status bar and return-to-app indicator');
   // topics wear the same rail as Home, not the old pills
   assert.doesNotMatch(search, /styles\.pill\b/, 'the pill topics are gone');
   assert.match(search, /tabUnderline: \{ position: 'absolute', bottom: 0/, 'topics use the product tab rail');
