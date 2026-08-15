@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { cleanSourceTitle } from './source-title.js';
 import { OG_WORDMARK } from './og-wordmark.js';
 
 // OG card (1200x630) for annotation permalinks. Built for the size X
@@ -8,6 +9,11 @@ import { OG_WORDMARK } from './og-wordmark.js';
 // second to earn a stop — contrast and scale do the arguing, not chrome.
 // Fonts are server-side only; the no-webfont rule for the browser surfaces
 // is unaffected.
+
+// Bumped whenever the drawing changes. The version rides in the render
+// cache key and the ETag it derives, so a deploy that changes how cards
+// draw never answers 304 to a crawler holding last week's pixels.
+export const OG_CARD_VERSION = 'v2';
 
 const T = {
   ink: '#26292F', inkPanel: '#33383F', player: '#141518',
@@ -63,17 +69,33 @@ export const ogCardData = (annotation, author = null) => {
   const isArticle = annotation.sourceType === 'article';
   const duration = Math.max(0, Number(annotation.clipEnd) - Number(annotation.clipStart));
   const paragraph = Number(annotation.anchorParagraph);
+  const title = cleanSourceTitle(annotation.sourceTitle) || annotation.sourceHost || 'Source';
+  // Only words the source actually said go in quote marks. A capture with
+  // no excerpt has no quote — the card leads with the annotator's note
+  // instead of dressing the tab title in serif.
+  const quote = String(annotation.sourceExcerpt || '').trim();
+  const note = String(annotation.commentary || '').trim()
+    || (annotation.commentaryMode === 'audio' ? 'An audio annotation — listen on the page.' : '');
+  // A media capture with no marked range has no moment to claim: no
+  // 0:00–0:00 chip, no player frame pretending a clip exists.
+  const hasRange = !isArticle && duration > 0;
   return {
-    quote: annotation.sourceExcerpt || annotation.sourceTitle || 'A kept moment',
-    note: annotation.commentary || 'An audio annotation — listen on the page.',
+    quote,
+    note: quote || note ? note : title,
     author: author?.handle || 'annotated',
-    sourceName: annotation.sourceTitle || annotation.sourceHost || 'Source',
+    sourceName: title,
     sourceDomain: annotation.sourceHost || '',
     sourceType: annotation.sourceType || 'source',
     momentLabel: isArticle
       ? (Number.isInteger(paragraph) && paragraph > 0 ? `¶ ${paragraph}` : '¶')
-      : `${formatClipTime(annotation.clipStart)}–${formatClipTime(annotation.clipEnd)}`,
-    clipBadge: isArticle ? '' : `${formatClipTime(duration)} · ${annotation.sourceType === 'video' ? '240p' : 'audio'}`,
+      : (hasRange ? `${formatClipTime(annotation.clipStart)}–${formatClipTime(annotation.clipEnd)}` : ''),
+    // the 240p/audio note claims a hosted transcode; a range without one
+    // shows only its duration
+    clipBadge: hasRange
+      ? (annotation.mediaStatus === 'ready'
+        ? `${formatClipTime(duration)} · ${annotation.sourceType === 'video' ? '240p' : 'audio'}`
+        : formatClipTime(duration))
+      : '',
   };
 };
 
@@ -163,10 +185,10 @@ export function annotationCard(data) {
       justifyContent: 'space-between', padding: '0 56px', flexShrink: 0,
     }, [
       el('div', { display: 'flex', alignItems: 'center' }, [wordmark(32)]),
-      txt({
+      ...(data.momentLabel ? [txt({
         fontFamily: 'CardMono', fontSize: 25, fontWeight: 700, color: '#FFFFFF',
         backgroundColor: T.accent, borderRadius: 8, padding: '6px 18px',
-      }, data.momentLabel),
+      }, data.momentLabel)] : []),
     ]),
 
     // body: the source speaks first — huge serif, a clip frame, or the shot
@@ -175,17 +197,20 @@ export function annotationCard(data) {
       padding: '42px 56px 14px',
     }, [
       ...(hasClipFrame ? [clipFrame(data.clipBadge, data.poster || null)] : []),
-      hasShotFrame
-        ? shotFrame(data.screenshot)
-        : el('div', { display: 'flex' }, [
-          txt({ fontFamily: 'CardSerif', fontSize: 68, lineHeight: 1, color: T.accentBright, marginRight: 18, marginTop: -4 }, '“'),
-          txt({
-            fontFamily: 'CardSerif', fontSize: quoteSize(quote, hasClipFrame),
-            lineHeight: 1.28, color: T.paper,
-          }, quote),
-        ]),
-      // the annotator answers in sans, softer
-      txt({ fontSize: 26, lineHeight: 1.45, marginTop: 24, color: T.soft }, note),
+      ...(hasShotFrame ? [shotFrame(data.screenshot)] : []),
+      // The quote leads only when the source actually said something.
+      // Otherwise the annotator's note is the card's voice — sans, paper,
+      // sized like the quote would have been, and never in quote marks.
+      ...(quote && !hasShotFrame ? [el('div', { display: 'flex' }, [
+        txt({ fontFamily: 'CardSerif', fontSize: 68, lineHeight: 1, color: T.accentBright, marginRight: 18, marginTop: -4 }, '“'),
+        txt({
+          fontFamily: 'CardSerif', fontSize: quoteSize(quote, hasClipFrame),
+          lineHeight: 1.28, color: T.paper,
+        }, quote),
+      ])] : []),
+      quote || hasShotFrame
+        ? txt({ fontSize: 26, lineHeight: 1.45, marginTop: 24, color: T.soft }, note)
+        : txt({ fontSize: quoteSize(note, hasClipFrame) - 6, lineHeight: 1.34, color: T.paper }, note),
     ]),
 
     // the source, given its own line rather than a clipped meta string:

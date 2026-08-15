@@ -3,6 +3,7 @@
 // (verbs, chips, times) that keeps web, extension, and native describing
 // the same thing the same way.
 
+import { cleanSourceTitle } from './source-title.js';
 import { isTopic } from './topics.js';
 
 export const VISIBILITIES: readonly string[] = ['public', 'unlisted', 'private'];
@@ -97,7 +98,7 @@ export const annotationToFeedItem = (annotation: AnnotationRecord): FeedItem => 
   host: annotation.sourceHost || hostOf(annotation.sourceUrl),
   sourceUrl: annotation.sourceUrl,
   canonicalUrl: annotation.canonicalUrl || annotation.sourceUrl,
-  sourceTitle: annotation.sourceTitle || annotation.sourceHost || 'Source',
+  sourceTitle: cleanSourceTitle(annotation.sourceTitle) || annotation.sourceHost || 'Source',
   slug: annotation.slug,
   url: annotation.url,
   clipStart: Number(annotation.clipStart) || 0,

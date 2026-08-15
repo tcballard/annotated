@@ -7,6 +7,7 @@ import { isTopic, TOPICS } from './topics.js';
 import { openOriginalHref, openOriginalLabel } from './deep-link.js';
 import { shareDescriptor, shareTargets } from './share-kit.js';
 import { DEFAULT_PREFERENCES, parsePreferences } from './preferences.js';
+import { cleanSourceTitle } from './source-title.js';
 import { BRAND_ICONS, PRODUCT_ICONS } from './icons.js';
 import { avatarColor, avatarInitial } from './avatar.js';
 import { normalizeCaptureDraft } from './capture-state.js';
@@ -1028,7 +1029,7 @@ relationSelect.addEventListener('change', () => {
 });
 
 const syncSource = () => {
-  sourceTitle.textContent = currentTab.title || 'Reading this tab…';
+  sourceTitle.textContent = cleanSourceTitle(currentTab.title) || 'Reading this tab…';
   const icon = faviconUrl(currentTab.url);
   sourceFavicon.hidden = !icon;
   if (icon && sourceFavicon.src !== icon) sourceFavicon.src = icon;
@@ -1099,7 +1100,7 @@ const draftPayload = () => ({
   anchorPrefix: selection.prefix || '',
   anchorSuffix: selection.suffix || '',
   }),
-  sourceTitle: currentTab.title,
+  sourceTitle: cleanSourceTitle(currentTab.title),
   sourceHost: currentTab.host,
   audioAssetId,
   audioDuration: audioDurationSeconds,
@@ -1816,7 +1817,7 @@ const annotationToItem = (annotation) => ({
   avatarUrl: annotation.author?.avatarUrl || '',
   time: relTime(annotation.createdAt),
   type: annotation.sourceType,
-  sourceTitle: annotation.sourceTitle || annotation.sourceHost || 'Source',
+  sourceTitle: cleanSourceTitle(annotation.sourceTitle) || annotation.sourceHost || 'Source',
   host: annotation.sourceHost || '',
   sourceUrl: annotation.sourceUrl,
   canonicalUrl: annotation.canonicalUrl || annotation.sourceUrl,
@@ -1873,7 +1874,7 @@ publishButton.addEventListener('click', async () => {
   const payload = {
     sourceUrl: currentTab.url,
     sourceType: currentTab.sourceType,
-    sourceTitle: currentTab.title,
+    sourceTitle: cleanSourceTitle(currentTab.title),
     sourceHost: currentTab.host,
     sourceExcerpt: currentTab.sourceType === 'article' ? selection.text : (resolvedSource?.excerpt || ''),
     canonicalUrl: resolvedSource?.url || currentTab.url,

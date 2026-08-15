@@ -11,8 +11,9 @@ import { getObjectStore } from './object-store.js';
 import { cancelMediaJob, enqueueMediaJob, mediaWorkerExecution, recoverMediaJobs, retryMediaJobForAnnotation } from './media-worker.js';
 import { resolveSource } from './source-resolver.js';
 import { followingFeedRequiresAuth, normalizeFeedCursor, normalizeFeedLimit, normalizeFeedQuery, normalizeSourceUrlKey } from './feed.js';
-import { ogCardData, renderOgCardCached, youtubeThumbnailUrl } from './og-card.js';
+import { OG_CARD_VERSION, ogCardData, renderOgCardCached, youtubeThumbnailUrl } from './og-card.js';
 import { escapeHtml, injectAnnotationMeta } from './permalink-meta.js';
+import { cleanSourceTitle } from './source-title.js';
 import { allowsIndexing, canViewAnnotation, VISIBILITIES } from './visibility.js';
 import { normalizeHost } from './discovery.js';
 import { isTopic } from './topics.js';
@@ -479,7 +480,7 @@ const handleApi = async (request, response, pathname) => {
     if (!match) return notFound(response);
     const annotation = await findAnnotation(decodeURIComponent(match[1]), '', { includeRemoved: false });
     if (!annotation || annotation.visibility === 'private') return notFound(response);
-    return send(response, 200, { version: '1.0', type: 'rich', provider_name: 'Annotated', provider_url: publicOrigin, title: annotation.sourceTitle, html: `<iframe src="${publicOrigin}/a/${encodeURIComponent(annotation.slug)}/embed?v=1" loading="lazy" title="Annotated source evidence" style="width:100%;height:240px;border:0"></iframe>`, width: 600, height: 240 });
+    return send(response, 200, { version: '1.0', type: 'rich', provider_name: 'Annotated', provider_url: publicOrigin, title: cleanSourceTitle(annotation.sourceTitle) || annotation.sourceHost || 'Source', html: `<iframe src="${publicOrigin}/a/${encodeURIComponent(annotation.slug)}/embed?v=1" loading="lazy" title="Annotated source evidence" style="width:100%;height:240px;border:0"></iframe>`, width: 600, height: 240 });
   }
 
   if (request.method === 'POST' && pathname === '/api/annotations') {
@@ -730,7 +731,7 @@ const servePermalink = async (response, slug) => {
 const claimFormHtml = ({ annotation, mode = 'form', error = '', values = {} }) => {
   const title = mode === 'received' ? 'Dispute received' : mode === 'gone' ? 'Already taken down' : mode === 'missing' ? 'Annotation not found' : 'Dispute fair use';
   const context = annotation
-    ? `<p class="ctx">About: <strong>${escapeHtml(annotation.sourceTitle || 'an annotation')}</strong>${annotation.sourceHost ? ` · ${escapeHtml(annotation.sourceHost)}` : ''}</p>`
+    ? `<p class="ctx">About: <strong>${escapeHtml(cleanSourceTitle(annotation.sourceTitle) || 'an annotation')}</strong>${annotation.sourceHost ? ` · ${escapeHtml(annotation.sourceHost)}` : ''}</p>`
     : '';
   const body = mode === 'received'
     ? `<p><strong>Thank you for flagging this.</strong> The report is attached to the annotation and will be reviewed. If it is upheld, the annotation is taken down and listed on the public <a href="/transparency">transparency report</a>.</p>${annotation ? `<p><a href="/a/${encodeURIComponent(annotation.slug)}">Back to the annotation</a></p>` : ''}`
@@ -815,7 +816,7 @@ const serveOgCard = async (request, response, slug, { download = false } = {}) =
   if (!found) return notFound(response);
   const { annotation, author } = found;
   try {
-    const cacheKey = [annotation.id, annotation.mediaStatus, annotation.openCount || 0, annotation.editedAt || '', annotation.visibility || 'public', annotation.screenshotAssetId || '', annotation.posterAssetId || ''].join(':');
+    const cacheKey = [OG_CARD_VERSION, annotation.id, annotation.mediaStatus, annotation.openCount || 0, annotation.editedAt || '', annotation.visibility || 'public', annotation.screenshotAssetId || '', annotation.posterAssetId || ''].join(':');
     // Crawlers refetch share cards on every unfurl. The ETag is the cache
     // key that already names everything the pixels depend on, so an
     // unchanged card answers 304 before any render happens — and s-maxage
@@ -842,9 +843,8 @@ const serveOgCard = async (request, response, slug, { download = false } = {}) =
           } catch { /* text layout */ }
         }
       }
-      // The CLIP frame shows the actual video: the transcode's own poster
-      // frame once the clip is ready, else the YouTube thumbnail while it
-      // is still in the queue. Any failure keeps the framed-player look.
+      // The CLIP frame shows the actual video — the transcode's own poster
+      // frame once the clip is ready. Any failure keeps the framed-player look.
       if (data.clipBadge && annotation.posterAssetId) {
         try {
           const record = await findMedia(annotation.posterAssetId);
@@ -854,7 +854,11 @@ const serveOgCard = async (request, response, slug, { download = false } = {}) =
           }
         } catch { /* framed-player look */ }
       }
-      if (data.clipBadge && !data.poster) {
+      // Without a poster or a shot the provider thumbnail still earns its
+      // place: inside the CLIP frame when a range exists, or as the square
+      // beside the source line on a rangeless capture — the card shows the
+      // work either way instead of falling back to bare text.
+      if (!data.poster && !data.screenshot) {
         const thumbnail = youtubeThumbnailUrl(annotation);
         if (thumbnail) {
           try {

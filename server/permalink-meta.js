@@ -1,3 +1,5 @@
+import { cleanSourceTitle } from './source-title.js';
+
 // Server-side meta injection for /a/:slug permalinks. Crawlers and link
 // unfurlers never execute the SPA, so the landing page HTML must carry the
 // annotation's title, description, canonical URL, and OG card before any
@@ -17,10 +19,15 @@ const clip = (value, max) => {
 
 export const permalinkMeta = (annotation, author, publicOrigin) => {
   const handle = author?.handle || 'annotated';
-  const quote = clip(annotation.sourceExcerpt || annotation.sourceTitle, 120);
-  const title = `“${quote}” — @${handle} on annotated`;
+  const sourceName = cleanSourceTitle(annotation.sourceTitle) || annotation.sourceHost || 'a source';
+  // Quote marks only around words the source said. Without an excerpt the
+  // unfurl names the work instead of dressing its title as a quotation.
+  const quote = clip(annotation.sourceExcerpt, 120);
+  const title = quote
+    ? `“${quote}” — @${handle} on annotated`
+    : `${clip(sourceName, 90)} — kept by @${handle} on annotated`;
   const description = clip(
-    annotation.commentary || `An audio annotation of ${annotation.sourceTitle || 'a source'} — with a live link back to the original.`,
+    annotation.commentary || `An annotation of ${sourceName} — with a live link back to the original.`,
     200,
   );
   const url = `${publicOrigin}/a/${encodeURIComponent(annotation.slug)}`;
