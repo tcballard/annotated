@@ -7,6 +7,7 @@
 import { use, useContext, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from './Icon';
 import SystemIcon from './SystemIcon';
 import { annotationToFeedItem } from '../lib/core/feed-item';
@@ -45,6 +46,7 @@ export const groupStories = (items: FeedItem[]): Story[] => {
 
 export default function SearchScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { me } = useContext(AccountContext);
   const actions = useFeedActions();
   const [query, setQuery] = useState('');
@@ -179,7 +181,7 @@ export default function SearchScreen() {
 
   return (
     <View style={styles.frame}>
-      <View style={styles.chrome}>
+      <View style={[styles.chrome, { paddingTop: insets.top }]}>
       <HeaderAvatar />
       <View style={styles.searchBox}>
         <Icon name="search" size={16} color={meta} />
