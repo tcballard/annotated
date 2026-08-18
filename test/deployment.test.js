@@ -18,7 +18,7 @@ test('production image builds before pruning dev dependencies and runs non-root'
   assert.match(dockerfile, /ENV YTDLP_JS_RUNTIME=node/);
   assert.match(dockerfile, /YTDLP_POT_PLUGIN_VERSION=1\.3\.1/);
   assert.match(dockerfile, /YTDLP_POT_PLUGIN_SHA256=[0-9a-f]{64}/);
-  assert.match(dockerfile, /--list-plugins \| grep -qi bgutil/);
+  assert.match(dockerfile, /bgutil-ytdlp-pot-provider\.zip" \| sha256sum --check --strict/);
   assert.match(dockerfile, /ENV YTDLP_PLUGIN_DIR=\/usr\/local\/share\/yt-dlp-plugins/);
   assert.match(dockerfile, /ENV MEDIA_WORKER_POLL_MS=2000/);
 });

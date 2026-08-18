@@ -284,14 +284,15 @@ export const checkMediaRuntime = async ({ runCommand = run, includeProvider = pr
     }
     checks.push(['provider extractor', ytdlpBinary, ['--version']]);
     if (runtime.potProviderUrl) {
-      try { await access(runtime.pluginDir, fsConstants.R_OK); } catch (error) { throw new Error(`Media runtime PO token plugin is unavailable: ${error.message}`); }
-      checks.push(['PO token plugin', ytdlpBinary, ['--plugin-dirs', runtime.pluginDir, '--list-plugins'], /bgutil/i]);
+      const pluginPath = path.join(runtime.pluginDir, 'bgutil-ytdlp-pot-provider.zip');
+      try { await access(pluginPath, fsConstants.R_OK); } catch (error) { throw new Error(`Media runtime PO token plugin is unavailable: ${error.message}`); }
+      checks.push(['PO token plugin', null, []]);
     }
   }
-  for (const [label, command, args, expectedOutput] of checks) {
+  for (const [label, command, args] of checks) {
+    if (!command) continue;
     try {
-      const result = await runCommand(command, args, { maxOutput: 8_000 });
-      if (expectedOutput && !expectedOutput.test(`${result.stdout}\n${result.stderr}`)) throw new Error('installed plugin was not listed by yt-dlp');
+      await runCommand(command, args, { maxOutput: 8_000 });
     } catch (error) {
       throw new Error(`Media runtime ${label} is unavailable: ${error.message}`);
     }

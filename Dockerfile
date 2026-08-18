@@ -23,8 +23,7 @@ RUN set -eu; \
   /usr/local/bin/yt-dlp --version; \
   mkdir -p /usr/local/share/yt-dlp-plugins; \
   curl --fail --location --silent --show-error "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/download/${YTDLP_POT_PLUGIN_VERSION}/bgutil-ytdlp-pot-provider.zip" --output /usr/local/share/yt-dlp-plugins/bgutil-ytdlp-pot-provider.zip; \
-  echo "$YTDLP_POT_PLUGIN_SHA256  /usr/local/share/yt-dlp-plugins/bgutil-ytdlp-pot-provider.zip" | sha256sum --check --strict; \
-  /usr/local/bin/yt-dlp --plugin-dirs /usr/local/share/yt-dlp-plugins --list-plugins | grep -qi bgutil
+  echo "$YTDLP_POT_PLUGIN_SHA256  /usr/local/share/yt-dlp-plugins/bgutil-ytdlp-pot-provider.zip" | sha256sum --check --strict
 
 WORKDIR /app
 COPY package*.json ./

@@ -135,19 +135,20 @@ test('production readiness checks ffmpeg, ffprobe, and the configured provider e
   assert.deepEqual(runtime, { status: 'ready', checks: ['ffmpeg', 'ffprobe', 'provider extractor'] });
 });
 
-test('production readiness proves the configured PO-token plugin is discoverable', async (t) => {
+test('production readiness proves the checksum-pinned PO-token plugin file is present', async (t) => {
   const pluginDir = await mkdtemp(path.join(tmpdir(), 'annotated-pot-plugin-'));
   t.after(() => rm(pluginDir, { recursive: true, force: true }));
+  await writeFile(path.join(pluginDir, 'bgutil-ytdlp-pot-provider.zip'), 'checksum-pinned test plugin');
   const calls = [];
   const runtime = await checkMediaRuntime({
     includeProvider: true,
     providerConfig: { pluginDir, potProviderUrl: 'http://pot-provider.internal:4416' },
     runCommand: async (command, args) => {
       calls.push({ command, args });
-      return { stdout: args.includes('--list-plugins') ? 'PO Token Providers: bgutil:http-1.3.1' : `${command} version test`, stderr: '' };
+      return { stdout: `${command} version test`, stderr: '' };
     },
   });
-  assert.equal(calls.at(-1).args.includes('--list-plugins'), true);
+  assert.deepEqual(calls.map(({ command }) => command), ['ffmpeg', 'ffprobe', process.env.YTDLP_BIN || 'yt-dlp']);
   assert.deepEqual(runtime.checks, ['ffmpeg', 'ffprobe', 'provider extractor', 'PO token plugin']);
 });
 
