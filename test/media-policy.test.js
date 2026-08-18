@@ -119,7 +119,7 @@ test('provider runtime configuration rejects unsafe or unusable deployment value
   assert.throws(() => validateProviderRuntimeConfig({ playerClient: 'web;rm' }), /unsupported characters/);
   assert.throws(() => validateProviderRuntimeConfig({ pluginDir: 'relative/plugins' }), /absolute directory/);
   assert.throws(() => validateProviderRuntimeConfig({ potProviderUrl: 'file:///tmp/provider', pluginDir: '/plugins' }), /http or https/);
-  assert.throws(() => validateProviderRuntimeConfig({ potProviderUrl: 'https://pot.example' }), /YTDLP_PLUGIN_DIR is required/);
+  assert.throws(() => validateProviderRuntimeConfig({ potProviderUrl: 'https://pot.example', pluginDir: '' }), /YTDLP_PLUGIN_DIR is required/);
 });
 
 test('production readiness checks ffmpeg, ffprobe, and the configured provider extractor', async () => {
