@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -18,6 +18,15 @@ test('video transcodes are capped at 90 seconds and 240p', () => {
   const args = buildFfmpegArgs({ sourceType: 'video', clipStart: 5, clipEnd: 200 }, 'input.mp4', 'output.mp4');
   assert.equal(args[args.indexOf('-t') + 1], '90');
   assert.equal(args[args.indexOf('-vf') + 1], 'scale=-2:240');
+  assert.equal(args[args.indexOf('-preset') + 1], 'superfast');
+});
+
+test('video transcode speed is configurable within bounded production settings', () => {
+  const args = buildFfmpegArgs({ sourceType: 'video', clipStart: 0, clipEnd: 10 }, 'input.mp4', 'output.mp4', { preset: 'ultrafast', crf: 32 });
+  assert.equal(args[args.indexOf('-preset') + 1], 'ultrafast');
+  assert.equal(args[args.indexOf('-crf') + 1], '32');
+  assert.throws(() => buildFfmpegArgs({ sourceType: 'video', clipStart: 0, clipEnd: 10 }, 'in', 'out', { preset: 'slow', crf: 30 }), /supported libx264 preset/);
+  assert.throws(() => buildFfmpegArgs({ sourceType: 'video', clipStart: 0, clipEnd: 10 }, 'in', 'out', { preset: 'superfast', crf: 50 }), /18 to 40/);
 });
 
 test('podcast transcodes remove video and use the requested bounded duration', () => {
@@ -33,6 +42,31 @@ test('poster extraction seeks a third in, bounded to three seconds, one frame', 
   assert.equal(args[args.length - 1], 'poster.jpg');
   assert.equal(buildPosterArgs(6, 'c.mp4', 'p.jpg')[1 + buildPosterArgs(6, 'c.mp4', 'p.jpg').indexOf('-ss')], '2', 'short clips seek a third of the way in');
   assert.equal(buildPosterArgs(0, 'c.mp4', 'p.jpg')[1 + buildPosterArgs(0, 'c.mp4', 'p.jpg').indexOf('-ss')], '0');
+});
+
+test('a background poster attaches only to the ready clip it was generated from', async (t) => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'annotated-poster-store-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(path.join(directory, 'store.json'), JSON.stringify({
+    annotations: [{ id: 'annotation-1', mediaAssetId: 'clip-1', posterAssetId: null, mediaStatus: 'ready' }],
+    media: [], mediaJobs: [], users: [], comments: [], follows: [], likes: [], claims: [], sessions: [], extensionTickets: [], moderationAudit: [],
+  }));
+  const script = `
+    const { attachMediaPoster } = await import('./server/media-job-repository.js');
+    const { readStore } = await import('./server/store.js');
+    const stale = await attachMediaPoster('annotation-1', 'old-clip', { id: 'stale-poster' });
+    const attached = await attachMediaPoster('annotation-1', 'clip-1', { id: 'poster-1', key: 'posters/poster-1.jpg' });
+    console.log(JSON.stringify({ stale, attached, store: await readStore() }));
+  `;
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: process.cwd(), encoding: 'utf8', env: { ...process.env, ANNOTATED_STORAGE: 'file', ANNOTATED_DATA_DIR: directory },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.stale, false);
+  assert.equal(output.attached, true);
+  assert.equal(output.store.annotations[0].posterAssetId, 'poster-1');
+  assert.deepEqual(output.store.media.map((item) => item.id), ['poster-1']);
 });
 
 test('provider arguments make runtime egress configuration explicit', () => {
@@ -58,14 +92,34 @@ test('provider arguments make runtime egress configuration explicit', () => {
   assert.equal(podcastArgs.includes('--extractor-args'), false);
 });
 
+test('YouTube provider arguments wire mweb to the pinned HTTP PO-token plugin', () => {
+  const args = buildProviderArgs(
+    { sourceType: 'video', provider: 'youtube' },
+    'https://www.youtube.com/watch?v=example',
+    { jsRuntime: 'node', pluginDir: '/opt/yt-dlp-plugins', potProviderUrl: 'http://pot-provider.railway.internal:4416' },
+  );
+  assert.deepEqual(args, [
+    '--no-playlist',
+    '--js-runtimes', 'node',
+    '--plugin-dirs', '/opt/yt-dlp-plugins',
+    '--extractor-args', 'youtube:player_client=mweb;fetch_pot=always',
+    '--extractor-args', 'youtubepot-bgutilhttp:base_url=http://pot-provider.railway.internal:4416',
+    '--format', 'best[height<=240]/best',
+    '--get-url', 'https://www.youtube.com/watch?v=example',
+  ]);
+});
+
 test('provider runtime configuration rejects unsafe or unusable deployment values', () => {
   assert.deepEqual(validateProviderRuntimeConfig({ proxy: 'https://proxy.example', cookiesFile: '/run/secrets/youtube.cookies', jsRuntime: 'node', playerClient: 'web_safari' }), {
-    proxy: 'https://proxy.example', cookiesFile: '/run/secrets/youtube.cookies', jsRuntime: 'node', playerClient: 'web_safari',
+    proxy: 'https://proxy.example', cookiesFile: '/run/secrets/youtube.cookies', jsRuntime: 'node', playerClient: 'web_safari', pluginDir: '', potProviderUrl: '',
   });
   assert.throws(() => validateProviderRuntimeConfig({ proxy: 'file:///tmp/proxy' }), /http, https, or socks/);
   assert.throws(() => validateProviderRuntimeConfig({ cookiesFile: 'relative.cookies' }), /absolute file path/);
   assert.throws(() => validateProviderRuntimeConfig({ jsRuntime: 'node --unsafe' }), /unsupported characters/);
   assert.throws(() => validateProviderRuntimeConfig({ playerClient: 'web;rm' }), /unsupported characters/);
+  assert.throws(() => validateProviderRuntimeConfig({ pluginDir: 'relative/plugins' }), /absolute directory/);
+  assert.throws(() => validateProviderRuntimeConfig({ potProviderUrl: 'file:///tmp/provider', pluginDir: '/plugins' }), /http or https/);
+  assert.throws(() => validateProviderRuntimeConfig({ potProviderUrl: 'https://pot.example' }), /YTDLP_PLUGIN_DIR is required/);
 });
 
 test('production readiness checks ffmpeg, ffprobe, and the configured provider extractor', async () => {
@@ -79,6 +133,22 @@ test('production readiness checks ffmpeg, ffprobe, and the configured provider e
   });
   assert.deepEqual(calls.map(({ command }) => command), ['ffmpeg', 'ffprobe', process.env.YTDLP_BIN || 'yt-dlp']);
   assert.deepEqual(runtime, { status: 'ready', checks: ['ffmpeg', 'ffprobe', 'provider extractor'] });
+});
+
+test('production readiness proves the configured PO-token plugin is discoverable', async (t) => {
+  const pluginDir = await mkdtemp(path.join(tmpdir(), 'annotated-pot-plugin-'));
+  t.after(() => rm(pluginDir, { recursive: true, force: true }));
+  const calls = [];
+  const runtime = await checkMediaRuntime({
+    includeProvider: true,
+    providerConfig: { pluginDir, potProviderUrl: 'http://pot-provider.internal:4416' },
+    runCommand: async (command, args) => {
+      calls.push({ command, args });
+      return { stdout: args.includes('--list-plugins') ? 'PO Token Providers: bgutil:http-1.3.1' : `${command} version test`, stderr: '' };
+    },
+  });
+  assert.equal(calls.at(-1).args.includes('--list-plugins'), true);
+  assert.deepEqual(runtime.checks, ['ffmpeg', 'ffprobe', 'provider extractor', 'PO token plugin']);
 });
 
 test('production readiness fails explicitly when a media runtime binary is unavailable', async () => {

@@ -12,12 +12,27 @@ Before starting a production container:
    YouTube extraction also has an explicit egress configuration boundary. The
    image defaults `YTDLP_JS_RUNTIME=node`; if the hosting provider challenges
    shared egress, configure a managed `YTDLP_PROXY` and/or a secret-mounted
-   `YTDLP_COOKIES_FILE` (absolute path), with an optional `YTDLP_PLAYER_CLIENT`.
+   `YTDLP_COOKIES_FILE` (absolute path). The image also installs the pinned
+   bgutil PO-token plugin. Run its HTTP provider as a separate private service
+   and set `YTDLP_POT_PROVIDER_URL` (for example,
+   `http://pot-provider.railway.internal:4416`); the worker then uses yt-dlp's
+   recommended `mweb` client and dynamically fetched tokens. Override that
+   client only with `YTDLP_PLAYER_CLIENT` when deployed evidence requires it.
    These values are passed as argument arrays to `yt-dlp`, never through a
    shell. A configured cookie path is checked during readiness, and the
    cookie file must stay outside the image and repository. A proxy or cookie
    is an operational dependency, not proof of successful extraction; run the
-   bounded provider smoke before calling YouTube complete.
+   bounded provider smoke before calling YouTube complete. A PO token can help
+   with YouTube attestation, but does not cure an IP-level 429: managed egress
+   remains a separate requirement.
+
+   Worker pickup defaults to two seconds (`MEDIA_WORKER_POLL_MS=2000`). Each
+   provider, transcode, probe, object-store, database, and background-poster
+   stage emits a `durationMs` field. Video uses the bounded `superfast` x264
+   preset by default; compare `ultrafast`, `superfast`, and `veryfast` on the
+   target worker CPU with `npm run benchmark:media` before changing
+   `MEDIA_WORKER_VIDEO_PRESET`. Poster extraction is cosmetic and occurs after
+   the verified clip is marked ready, so it no longer extends publish latency.
 5. Verify a real OAuth callback, source resolution, media upload, feed write, and claim review in the deployed environment.
 
 For public CDN delivery, set `S3_PUBLIC_BASE_URL` to the delivery origin and
@@ -284,7 +299,8 @@ The Docker image includes the pinned provider extractor described below. The
 standalone worker probes `ffmpeg`, `ffprobe`, and `YTDLP_BIN` before polling;
 the API never executes those binaries. That proves the runtime is present; it
 does not claim a deployed provider transcode or browser playback run. The optional
-`YTDLP_PROXY`, `YTDLP_COOKIES_FILE`, and `YTDLP_PLAYER_CLIENT` settings are
+`YTDLP_PROXY`, `YTDLP_COOKIES_FILE`, `YTDLP_PLAYER_CLIENT`, and
+`YTDLP_POT_PROVIDER_URL` settings are
 deliberately deployment configuration rather than image contents.
 
-The image builds with dev dependencies present so Vite can produce the bundle, prunes them before runtime, excludes local state/secrets through `.dockerignore`, and runs as the unprivileged `annotated` user. It installs the pinned [yt-dlp 2026.06.09 standalone release](https://github.com/yt-dlp/yt-dlp/releases/tag/2026.06.09) with architecture-specific SHA-256 verification from the release's [`SHA2-256SUMS`](https://github.com/yt-dlp/yt-dlp/releases/download/2026.06.09/SHA2-256SUMS) (`yt-dlp_linux` for amd64 and `yt-dlp_linux_aarch64` for arm64) before setting `YTDLP_BIN`. Build it from a clean checkout and fail the release if the image build or `/api/ready` health check fails.
+The image builds with dev dependencies present so Vite can produce the bundle, prunes them before runtime, excludes local state/secrets through `.dockerignore`, and runs as the unprivileged `annotated` user. It installs the pinned [yt-dlp 2026.06.09 standalone release](https://github.com/yt-dlp/yt-dlp/releases/tag/2026.06.09) with architecture-specific SHA-256 verification from the release's [`SHA2-256SUMS`](https://github.com/yt-dlp/yt-dlp/releases/download/2026.06.09/SHA2-256SUMS) (`yt-dlp_linux` for amd64 and `yt-dlp_linux_aarch64` for arm64) before setting `YTDLP_BIN`. It also checksum-pins [bgutil-ytdlp-pot-provider 1.3.1](https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/tag/1.3.1) and proves yt-dlp can discover the plugin during the image build. Build it from a clean checkout and fail the release if the image build or `/api/ready` health check fails.

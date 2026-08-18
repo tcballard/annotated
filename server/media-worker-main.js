@@ -22,7 +22,8 @@ const {
 const { resolveS3MaxAttempts } = await import('./object-store.js');
 const { mediaQueueSnapshot } = await import('./media-job-repository.js');
 
-const intervalMs = Math.max(2_000, Number(process.env.MEDIA_WORKER_POLL_MS || 15_000));
+const intervalMs = Number(process.env.MEDIA_WORKER_POLL_MS || 2_000);
+if (!Number.isSafeInteger(intervalMs) || intervalMs < 2_000) throw new Error('MEDIA_WORKER_POLL_MS must be an integer of at least 2000.');
 
 await checkStore(); // refuses a stale schema, exactly like the API's readiness gate
 const runtime = await checkMediaRuntime();
@@ -36,9 +37,16 @@ console.log(JSON.stringify({
   runtime: runtime.status || 'ok',
 }));
 
+let polling = false;
 const poll = async () => {
-  await recoverMediaJobs();
-  console.log(JSON.stringify({ event: 'media_worker_heartbeat', workerId: mediaWorkerId, queue: await mediaQueueSnapshot() }));
+  if (polling) return;
+  polling = true;
+  try {
+    await recoverMediaJobs();
+    console.log(JSON.stringify({ event: 'media_worker_heartbeat', workerId: mediaWorkerId, queue: await mediaQueueSnapshot() }));
+  } finally {
+    polling = false;
+  }
 };
 
 await poll();

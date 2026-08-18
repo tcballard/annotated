@@ -38,6 +38,7 @@
     "load:ramp": "mkdir -p load/out && k6 run load/k6-annotated.js -e PROFILE=ramp -e BASE_URL=$BASE_URL",
     "load:media-drain": "node load/media-drain.mjs",
     "load:report": "node load/report.mjs",
+    "benchmark:media": "node scripts/benchmark-media-transcode.mjs",
     "preview": "vite preview",
     "start": "NODE_ENV=production node server/index.js",
     "worker": "node server/media-worker-main.js"
