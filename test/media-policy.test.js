@@ -110,7 +110,7 @@ test('YouTube provider arguments wire mweb to the pinned HTTP PO-token plugin', 
 });
 
 test('provider runtime configuration rejects unsafe or unusable deployment values', () => {
-  assert.deepEqual(validateProviderRuntimeConfig({ proxy: 'https://proxy.example', cookiesFile: '/run/secrets/youtube.cookies', jsRuntime: 'node', playerClient: 'web_safari' }), {
+  assert.deepEqual(validateProviderRuntimeConfig({ proxy: 'https://proxy.example', cookiesFile: '/run/secrets/youtube.cookies', jsRuntime: 'node', playerClient: 'web_safari', pluginDir: '', potProviderUrl: '' }), {
     proxy: 'https://proxy.example', cookiesFile: '/run/secrets/youtube.cookies', jsRuntime: 'node', playerClient: 'web_safari', pluginDir: '', potProviderUrl: '',
   });
   assert.throws(() => validateProviderRuntimeConfig({ proxy: 'file:///tmp/proxy' }), /http, https, or socks/);

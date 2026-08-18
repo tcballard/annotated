@@ -172,7 +172,7 @@ export const buildProviderArgs = (job, sourceUrl, config = {}) => {
   if (runtime.proxy) args.push('--proxy', runtime.proxy);
   if (runtime.cookiesFile) args.push('--cookies', runtime.cookiesFile);
   const youtube = job.provider === 'youtube' || /(?:youtube\.com|youtu\.be)/i.test(sourceUrl);
-  if (youtube && runtime.pluginDir) args.push('--plugin-dirs', runtime.pluginDir);
+  if (youtube && runtime.potProviderUrl) args.push('--plugin-dirs', runtime.pluginDir);
   if (youtube && runtime.potProviderUrl) {
     args.push('--extractor-args', `youtube:player_client=${runtime.playerClient || 'mweb'};fetch_pot=always`);
     args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${runtime.potProviderUrl}`);
