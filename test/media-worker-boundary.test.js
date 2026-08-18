@@ -82,6 +82,8 @@ test('the worker executable establishes its role before loading media orchestrat
   assert.match(source, /mediaWorkerExecution\.concurrency/);
   assert.match(source, /mediaWorkerRetryPolicy\.maxAttempts/);
   assert.match(source, /resolveS3MaxAttempts\(\)/);
+  assert.match(source, /MEDIA_WORKER_POLL_MS \|\| 2_000/);
+  assert.match(source, /if \(polling\) return/);
 });
 
 test('the production API cannot execute media binaries even through an imported helper', () => {
@@ -102,6 +104,8 @@ test('API audio validation is in-process and waveform binary work stays worker-o
 test('worker failures are classified for bounded retry and provider circuit telemetry', async () => {
   const { classifyMediaFailure, createProviderGate } = await import('../server/media-worker.js');
   assert.equal(classifyMediaFailure(new Error('yt-dlp provider timed out')), 'provider-timeout');
+  assert.equal(classifyMediaFailure(new Error('HTTP Error 429: Too Many Requests')), 'provider-rate-limit');
+  assert.equal(classifyMediaFailure(new Error('Missing required Visitor Data; PO Token unavailable')), 'provider-configuration');
   assert.equal(classifyMediaFailure(new Error('S3 object upload failed')), 'object-storage');
   assert.equal(classifyMediaFailure(new Error('ffmpeg codec failed')), 'transcode');
   assert.equal(classifyMediaFailure(new Error('unclassified failure')), 'unknown');

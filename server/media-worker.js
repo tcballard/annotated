@@ -9,6 +9,7 @@ import { assertPublicUrl } from './ssrf.js';
 import { parseSourceUrl } from './source-resolver.js';
 import {
   cancelMediaRecord,
+  attachMediaPoster,
   claimMediaRecord,
   completeMediaRecord,
   deferMediaRecord,
@@ -47,10 +48,16 @@ const ytdlpProxy = String(process.env.YTDLP_PROXY || '').trim();
 const ytdlpCookiesFile = String(process.env.YTDLP_COOKIES_FILE || '').trim();
 const ytdlpJsRuntime = String(process.env.YTDLP_JS_RUNTIME || 'node').trim();
 const ytdlpPlayerClient = String(process.env.YTDLP_PLAYER_CLIENT || '').trim();
+const ytdlpPluginDir = String(process.env.YTDLP_PLUGIN_DIR || '').trim();
+const ytdlpPotProviderUrl = String(process.env.YTDLP_POT_PROVIDER_URL || '').trim();
+const videoPreset = String(process.env.MEDIA_WORKER_VIDEO_PRESET || 'superfast').trim();
+const videoCrf = Number(process.env.MEDIA_WORKER_VIDEO_CRF || 30);
 const queue = [];
+const posterQueue = [];
 const activeProcesses = new Map();
 const cancelledJobs = new Set();
 let activeJobs = 0;
+let activePosters = 0;
 
 const mediaLog = (event, job, details = {}) => console.info(JSON.stringify({
   event,
@@ -61,6 +68,7 @@ const mediaLog = (event, job, details = {}) => console.info(JSON.stringify({
   provider: job?.provider || job?.sourceType || 'direct',
   ...details,
 }));
+const stageMs = (startedAt) => Math.max(0, Date.now() - startedAt);
 
 const providerKey = (job) => String(job.provider || job.sourceType || 'direct').toLowerCase();
 export const createProviderGate = ({ concurrency, failureThreshold, cooldownMs, now = () => Date.now() }) => {
@@ -100,6 +108,8 @@ const releaseProvider = providerControl.release;
 export const classifyMediaFailure = (error) => {
   const message = String(error?.message || error || '').toLowerCase();
   if (message.includes('cancel')) return 'cancelled';
+  if (message.includes('http error 429') || message.includes('too many requests') || message.includes('confirm you\'re not a bot') || message.includes('bot verification')) return 'provider-rate-limit';
+  if (message.includes('missing required visitor data') || message.includes('po token') || message.includes('pot provider')) return 'provider-configuration';
   if (message.includes('timed out') && (message.includes('provider') || message.includes('yt-dlp'))) return 'provider-timeout';
   if (message.includes('timed out')) return 'transcode-timeout';
   if (message.includes('s3') || message.includes('object') || message.includes('bucket') || message.includes('upload')) return 'object-storage';
@@ -116,13 +126,16 @@ const outputFor = (sourceType, id) => sourceType === 'video'
 
 const providerProtocols = new Set(['http:', 'https:', 'socks4:', 'socks4a:', 'socks5:', 'socks5h:']);
 const providerArgPattern = /^[A-Za-z0-9._,-]+$/;
+const videoPresets = new Set(['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium']);
 
-export const validateProviderRuntimeConfig = ({ proxy = ytdlpProxy, cookiesFile = ytdlpCookiesFile, jsRuntime = ytdlpJsRuntime, playerClient = ytdlpPlayerClient } = {}) => {
+export const validateProviderRuntimeConfig = ({ proxy = ytdlpProxy, cookiesFile = ytdlpCookiesFile, jsRuntime = ytdlpJsRuntime, playerClient = ytdlpPlayerClient, pluginDir = ytdlpPluginDir, potProviderUrl = ytdlpPotProviderUrl } = {}) => {
   const normalized = {
     proxy: String(proxy || '').trim(),
     cookiesFile: String(cookiesFile || '').trim(),
     jsRuntime: String(jsRuntime || '').trim(),
     playerClient: String(playerClient || '').trim(),
+    pluginDir: String(pluginDir || '').trim(),
+    potProviderUrl: String(potProviderUrl || '').trim(),
   };
   if (normalized.proxy) {
     let parsed;
@@ -134,6 +147,13 @@ export const validateProviderRuntimeConfig = ({ proxy = ytdlpProxy, cookiesFile 
   }
   if (normalized.jsRuntime && !providerArgPattern.test(normalized.jsRuntime)) throw new Error('YTDLP_JS_RUNTIME contains unsupported characters.');
   if (normalized.playerClient && !providerArgPattern.test(normalized.playerClient)) throw new Error('YTDLP_PLAYER_CLIENT contains unsupported characters.');
+  if (normalized.pluginDir && (!path.isAbsolute(normalized.pluginDir) || normalized.pluginDir.includes('\0'))) throw new Error('YTDLP_PLUGIN_DIR must be an absolute directory path.');
+  if (normalized.potProviderUrl) {
+    let parsed;
+    try { parsed = new URL(normalized.potProviderUrl); } catch { throw new Error('YTDLP_POT_PROVIDER_URL must be a valid URL.'); }
+    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) throw new Error('YTDLP_POT_PROVIDER_URL must use an http or https URL.');
+    if (!normalized.pluginDir) throw new Error('YTDLP_PLUGIN_DIR is required when YTDLP_POT_PROVIDER_URL is configured.');
+  }
   return normalized;
 };
 
@@ -143,25 +163,35 @@ export const buildProviderArgs = (job, sourceUrl, config = {}) => {
     cookiesFile: config.cookiesFile ?? ytdlpCookiesFile,
     jsRuntime: config.jsRuntime ?? ytdlpJsRuntime,
     playerClient: config.playerClient ?? ytdlpPlayerClient,
+    pluginDir: config.pluginDir ?? ytdlpPluginDir,
+    potProviderUrl: config.potProviderUrl ?? ytdlpPotProviderUrl,
   });
   const format = job.sourceType === 'video' ? 'best[height<=240]/best' : 'bestaudio/best';
   const args = ['--no-playlist'];
   if (runtime.jsRuntime) args.push('--js-runtimes', runtime.jsRuntime);
   if (runtime.proxy) args.push('--proxy', runtime.proxy);
   if (runtime.cookiesFile) args.push('--cookies', runtime.cookiesFile);
-  if (runtime.playerClient && (job.provider === 'youtube' || /(?:youtube\.com|youtu\.be)/i.test(sourceUrl))) {
+  const youtube = job.provider === 'youtube' || /(?:youtube\.com|youtu\.be)/i.test(sourceUrl);
+  if (youtube && runtime.potProviderUrl) args.push('--plugin-dirs', runtime.pluginDir);
+  if (youtube && runtime.potProviderUrl) {
+    args.push('--extractor-args', `youtube:player_client=${runtime.playerClient || 'mweb'};fetch_pot=always`);
+    args.push('--extractor-args', `youtubepot-bgutilhttp:base_url=${runtime.potProviderUrl}`);
+  } else if (youtube && runtime.playerClient) {
     args.push('--extractor-args', `youtube:player_client=${runtime.playerClient}`);
   }
   args.push('--format', format, '--get-url', sourceUrl);
   return args;
 };
 
-export const buildFfmpegArgs = (job, input, outputPath) => {
+export const buildFfmpegArgs = (job, input, outputPath, { preset = videoPreset, crf = videoCrf } = {}) => {
   const duration = Math.max(0, Math.min(90, Number(job.clipEnd) - Number(job.clipStart)));
   if (!duration) throw new Error('Media clips must have a positive duration.');
   const args = ['-hide_banner', '-loglevel', 'error', '-y', '-ss', String(Math.max(0, Number(job.clipStart) || 0)), '-i', input, '-t', String(duration)];
-  if (job.sourceType === 'video') args.push('-vf', 'scale=-2:240', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '30', '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart');
-  else args.push('-vn', '-c:a', 'libopus', '-b:a', '64k');
+  if (job.sourceType === 'video') {
+    if (!videoPresets.has(preset)) throw new Error('MEDIA_WORKER_VIDEO_PRESET must be a supported libx264 preset.');
+    if (!Number.isInteger(crf) || crf < 18 || crf > 40) throw new Error('MEDIA_WORKER_VIDEO_CRF must be an integer from 18 to 40.');
+    args.push('-vf', 'scale=-2:240', '-c:v', 'libx264', '-preset', preset, '-crf', String(crf), '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart');
+  } else args.push('-vn', '-c:a', 'libopus', '-b:a', '64k');
   args.push(outputPath);
   return args;
 };
@@ -253,10 +283,16 @@ export const checkMediaRuntime = async ({ runCommand = run, includeProvider = pr
       try { await access(runtime.cookiesFile, fsConstants.R_OK); } catch (error) { throw new Error(`Media runtime provider cookies are unavailable: ${error.message}`); }
     }
     checks.push(['provider extractor', ytdlpBinary, ['--version']]);
+    if (runtime.potProviderUrl) {
+      const pluginPath = path.join(runtime.pluginDir, 'bgutil-ytdlp-pot-provider.zip');
+      try { await access(pluginPath, fsConstants.R_OK); } catch (error) { throw new Error(`Media runtime PO token plugin is unavailable: ${error.message}`); }
+      checks.push(['PO token plugin', null, []]);
+    }
   }
   for (const [label, command, args] of checks) {
+    if (!command) continue;
     try {
-      await runCommand(command, args, { maxOutput: 2_000 });
+      await runCommand(command, args, { maxOutput: 8_000 });
     } catch (error) {
       throw new Error(`Media runtime ${label} is unavailable: ${error.message}`);
     }
@@ -306,6 +342,43 @@ const claimMediaJob = async (job) => {
   return claimMediaRecord({ jobId: typeof job === 'string' ? job : job.id, workerId, leaseMs, maxAttempts });
 };
 
+const createAndAttachPoster = async ({ job, mediaAssetId, outputPath }) => {
+  const startedAt = Date.now();
+  const posterId = randomUUID();
+  const posterFileName = `${posterId}.jpg`;
+  const posterPath = path.join(mediaWorkDirectory, posterFileName);
+  let storedPoster = null;
+  try {
+    await run('ffmpeg', buildPosterArgs(Number(job.clipEnd) - Number(job.clipStart), outputPath, posterPath));
+    const posterAsset = await storeMediaFile(posterPath, { id: posterId, key: `posters/${posterFileName}`, mimeType: 'image/jpeg' });
+    storedPoster = { id: posterId, key: `posters/${posterFileName}`, fileName: posterAsset.fileName || `posters/${posterFileName}`, mimeType: 'image/jpeg', bytes: posterAsset.bytes, kind: 'poster', createdAt: new Date().toISOString() };
+    const attached = await attachMediaPoster(job.annotationId, mediaAssetId, storedPoster);
+    if (!attached) {
+      await removeStoredMedia(storedPoster).catch(() => {});
+      return;
+    }
+    mediaLog('media_poster_attached', job, { posterAssetId: posterId, durationMs: stageMs(startedAt) });
+  } catch (error) {
+    if (storedPoster) await removeStoredMedia(storedPoster).catch(() => {});
+    console.error(JSON.stringify({ event: 'poster_extraction_failed', traceId: job.traceId || job.id, jobId: job.id, annotationId: job.annotationId, durationMs: stageMs(startedAt), error: String(error?.message || error).slice(0, 300) }));
+  } finally {
+    await Promise.all([removeMediaFile(posterPath), removeMediaFile(outputPath)]);
+  }
+};
+
+const drainPosterQueue = () => {
+  while (activePosters < 1 && posterQueue.length) {
+    const task = posterQueue.shift();
+    activePosters += 1;
+    void createAndAttachPoster(task).finally(() => { activePosters -= 1; drainPosterQueue(); });
+  }
+};
+
+const schedulePosterAttachment = (task) => {
+  posterQueue.push(task);
+  drainPosterQueue();
+};
+
 const runJob = async (jobId) => {
   const job = await claimMediaJob(jobId);
   if (!job) return;
@@ -324,19 +397,21 @@ const runJob = async (jobId) => {
   const key = `clips/${output.fileName}`;
   const outputPath = path.join(mediaWorkDirectory, output.fileName);
   let storedAsset;
-  let posterStored = null;
   try {
     await mkdir(mediaWorkDirectory, { recursive: true });
+    let startedAt = Date.now();
     const input = await resolveInput(job);
-    mediaLog('media_provider_resolved', job);
+    mediaLog('media_provider_resolved', job, { durationMs: stageMs(startedAt) });
     const args = buildFfmpegArgs(job, input, outputPath);
+    startedAt = Date.now();
     await run('ffmpeg', args, { jobId: job.id });
-    mediaLog('media_transcode_completed', job);
+    mediaLog('media_transcode_completed', job, { durationMs: stageMs(startedAt) });
+    startedAt = Date.now();
     const probeResult = await run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type,codec_name,width,height', '-of', 'json', outputPath], { jobId: job.id });
     let probe;
     try { probe = JSON.parse(probeResult.stdout); } catch { throw new Error('Media output inspection returned invalid data.'); }
     validateMediaProbe(job.sourceType, probe);
-    mediaLog('media_probe_validated', job);
+    mediaLog('media_probe_validated', job, { durationMs: stageMs(startedAt) });
     if (cancelledJobs.has(job.id) || await mediaJobCancelled(job.id)) {
       await removeMediaFile(outputPath);
       cancelledJobs.delete(job.id);
@@ -344,44 +419,29 @@ const runJob = async (jobId) => {
     }
     // Podcast clips carry waveform peaks for the player; failure is cosmetic.
     const peaks = job.sourceType === 'podcast' ? await extractAudioPeaks(outputPath) : null;
-    // Video clips carry a poster frame so cards never open on a black box.
-    // Poster failure is cosmetic and never fails the clip.
-    if (job.sourceType === 'video') {
-      const posterId = randomUUID();
-      const posterFileName = `${posterId}.jpg`;
-      const posterPath = path.join(mediaWorkDirectory, posterFileName);
-      try {
-        await run('ffmpeg', buildPosterArgs(Number(job.clipEnd) - Number(job.clipStart), outputPath, posterPath), { jobId: job.id });
-        const posterAsset = await storeMediaFile(posterPath, { id: posterId, key: `posters/${posterFileName}`, mimeType: 'image/jpeg' });
-        posterStored = { id: posterId, key: `posters/${posterFileName}`, fileName: posterAsset.fileName || `posters/${posterFileName}`, mimeType: 'image/jpeg', bytes: posterAsset.bytes, kind: 'poster', createdAt: new Date().toISOString() };
-      } catch (error) {
-        console.error(JSON.stringify({ event: 'poster_extraction_failed', jobId: job.id, error: String(error?.message || error).slice(0, 300) }));
-      } finally {
-        await removeMediaFile(posterPath);
-      }
-    }
     const sha256 = createHash('sha256').update(await readFile(outputPath)).digest('hex');
     const videoStream = (probe.streams || []).find((stream) => stream.codec_type === 'video');
+    startedAt = Date.now();
     const asset = await storeMediaFile(outputPath, { id: assetId, key, mimeType: output.mimeType });
-    mediaLog('media_object_stored', job, { assetId, bytes: asset.bytes, objectAttempts: asset.attempts || 1 });
+    mediaLog('media_object_stored', job, { assetId, bytes: asset.bytes, objectAttempts: asset.attempts || 1, durationMs: stageMs(startedAt) });
     storedAsset = { id: assetId, key, fileName: asset.fileName || key, mimeType: output.mimeType };
+    startedAt = Date.now();
     const published = await completeMediaRecord(job, {
       asset: { id: assetId, key, fileName: asset.fileName, mimeType: output.mimeType, bytes: asset.bytes, peaks, kind: 'clip', sha256, width: Number(videoStream?.width) || null, height: Number(videoStream?.height) || null, probe, verifiedAt: new Date().toISOString(), rightsState: 'unreviewed', createdAt: new Date().toISOString() },
-      poster: posterStored,
     });
     if (!published) {
       await removeStoredMedia(storedAsset).catch(() => {});
-      if (posterStored) await removeStoredMedia(posterStored).catch(() => {});
       await removeMediaFile(outputPath);
       cancelledJobs.delete(job.id);
       return;
     }
     providerSucceeded = true;
+    mediaLog('media_record_published', job, { durationMs: stageMs(startedAt) });
     mediaLog('media_job_ready', job, { assetId, processingMs: Math.max(0, Date.now() - Date.parse(job.startedAt || job.createdAt || '')) });
-    await removeMediaFile(outputPath);
+    if (job.sourceType === 'video') schedulePosterAttachment({ job, mediaAssetId: assetId, outputPath });
+    else await removeMediaFile(outputPath);
   } catch (error) {
     if (storedAsset) await removeStoredMedia(storedAsset).catch(() => {});
-    if (posterStored) await removeStoredMedia(posterStored).catch(() => {});
     await removeMediaFile(outputPath);
     const boundedError = String(error?.message || 'Media processing failed.').slice(0, 500);
     if (cancelledJobs.has(job.id) || await mediaJobCancelled(job.id)) {
@@ -389,8 +449,9 @@ const runJob = async (jobId) => {
       return;
     }
     const failureClass = classifyMediaFailure(error);
-    providerFailed = ['provider', 'provider-timeout'].includes(failureClass);
-    const failure = await failMediaRecord(job, { error: boundedError, failureClass, maxAttempts, retryDelayMs });
+    providerFailed = ['provider', 'provider-timeout', 'provider-rate-limit', 'provider-configuration'].includes(failureClass);
+    const failureDelayMs = failureClass === 'provider-rate-limit' ? Math.max(retryDelayMs, 60_000) : retryDelayMs;
+    const failure = await failMediaRecord(job, { error: boundedError, failureClass, maxAttempts, retryDelayMs: failureDelayMs });
     if (!failure.recorded) {
       cancelledJobs.delete(job.id);
       return;

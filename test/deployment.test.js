@@ -16,6 +16,11 @@ test('production image builds before pruning dev dependencies and runs non-root'
   assert.match(dockerfile, /\/usr\/local\/bin\/yt-dlp --version/);
   assert.match(dockerfile, /ENV YTDLP_BIN=\/usr\/local\/bin\/yt-dlp/);
   assert.match(dockerfile, /ENV YTDLP_JS_RUNTIME=node/);
+  assert.match(dockerfile, /YTDLP_POT_PLUGIN_VERSION=1\.3\.1/);
+  assert.match(dockerfile, /YTDLP_POT_PLUGIN_SHA256=[0-9a-f]{64}/);
+  assert.match(dockerfile, /bgutil-ytdlp-pot-provider\.zip" \| sha256sum --check --strict/);
+  assert.match(dockerfile, /ENV YTDLP_PLUGIN_DIR=\/usr\/local\/share\/yt-dlp-plugins/);
+  assert.match(dockerfile, /ENV MEDIA_WORKER_POLL_MS=2000/);
 });
 
 test('authoritative release image overlays the verified dist without rebuilding source', async () => {
@@ -142,6 +147,7 @@ test('release docs distinguish verified Railway staging from public release', as
   assert.doesNotMatch(deployment, /does not pretend that a provider extractor is present/);
   assert.match(deployment, /YTDLP_PROXY/);
   assert.match(deployment, /YTDLP_COOKIES_FILE/);
+  assert.match(deployment, /YTDLP_POT_PROVIDER_URL/);
   assert.match(deployment, /passed as argument arrays/);
 });
 
@@ -151,6 +157,8 @@ test('provider egress settings are visible in the local configuration contract',
   assert.match(env, /YTDLP_PROXY=https:\/\/proxy\.example/);
   assert.match(env, /YTDLP_COOKIES_FILE=\/run\/secrets\/youtube\.cookies/);
   assert.match(env, /YTDLP_PLAYER_CLIENT=web_safari/);
+  assert.match(env, /YTDLP_POT_PROVIDER_URL=http:\/\/pot-provider\.railway\.internal:4416/);
+  assert.match(env, /MEDIA_WORKER_POLL_MS=2000/);
 });
 
 test('web build includes a privacy policy with the extension data boundary', async () => {

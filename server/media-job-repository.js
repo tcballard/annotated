@@ -178,6 +178,35 @@ export async function completeMediaRecord(job, { asset, poster = null }) {
   });
 }
 
+// Posters are cosmetic and must not keep an otherwise verified clip in the
+// processing state. Attach them after the clip is ready, but only while the
+// annotation still points at the completed clip.
+export async function attachMediaPoster(annotationId, mediaAssetId, poster) {
+  if (!queryNative) {
+    let attached = false;
+    await updateStore((store) => {
+      const annotation = (store.annotations || []).find((item) => item.id === annotationId);
+      if (!annotation || annotation.mediaAssetId !== mediaAssetId || annotation.mediaStatus !== 'ready') return store;
+      attached = true;
+      return {
+        ...store,
+        media: [...(store.media || []), poster],
+        annotations: store.annotations.map((item) => item.id === annotationId ? { ...item, posterAssetId: poster.id } : item),
+      };
+    });
+    return attached;
+  }
+  return transactDatabase(async (client) => {
+    const selected = await client.query('SELECT * FROM annotated_annotations WHERE id=$1 FOR UPDATE', [annotationId]);
+    if (!selected.rows[0]) return false;
+    const annotation = mapAnnotation(selected.rows[0]);
+    if (annotation.mediaAssetId !== mediaAssetId || annotation.mediaStatus !== 'ready') return false;
+    await writeLegacy(client, 'media', poster.id, poster);
+    await writeLegacy(client, 'annotations', annotation.id, { ...annotation, posterAssetId: poster.id });
+    return true;
+  });
+}
+
 export async function failMediaRecord(job, { error, failureClass, maxAttempts, retryDelayMs }) {
   const attempts = number(job.attempts) + 1;
   const retry = attempts < maxAttempts;
