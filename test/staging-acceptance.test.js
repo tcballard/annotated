@@ -7,6 +7,9 @@ test('staging acceptance command verifies only public, non-mutating boundaries',
   assert.match(script, /STAGING_ORIGIN/);
   assert.match(script, /\/api\/health/);
   assert.match(script, /\/api\/ready/);
+  assert.match(script, /ready\.mediaRuntime\?\.status, 'external'/);
+  assert.match(script, /ready\.mediaRuntime\?\.role, 'api'/);
+  assert.match(script, /ready\.mediaRuntime\?\.concurrency, 0/);
   assert.match(script, /\/api\/auth\/providers/);
   assert.match(script, /\/api\/auth\/\$\{provider\}\/start/);
   assert.match(script, /getSetCookie/);

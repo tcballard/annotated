@@ -87,8 +87,9 @@ checks.push({ path: '/api/auth/extension/exchange', origin: extensionOrigin, sta
 const ready = await json('/api/ready');
 assert.equal(ready.status, 'ready');
 assert.equal(ready.persistence, 'postgres');
-assert.equal(ready.mediaRuntime?.status, 'ready');
-assert.deepEqual(ready.mediaRuntime?.checks, ['ffmpeg', 'ffprobe', 'provider extractor']);
+assert.equal(ready.mediaRuntime?.status, 'external');
+assert.equal(ready.mediaRuntime?.role, 'api');
+assert.equal(ready.mediaRuntime?.concurrency, 0);
 
 const providers = await json('/api/auth/providers');
 assert.equal(providers.required, true);
